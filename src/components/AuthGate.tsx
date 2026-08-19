@@ -29,13 +29,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     }
   }
 
-  if (loading) {
-    return null
-  }
-
-  if (isAuthenticated) {
-    return <>{children}</>
-  }
+  if (loading) return null
+  if (isAuthenticated) return <>{children}</>
 
   return (
     <div style={{
@@ -44,30 +39,30 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       flexDirection: 'column',
       justifyContent: 'center',
       alignItems: 'center',
-      background: '#0f0f12'
+      background: '#f8fafc',
     }}>
       <div style={{
-        background: '#141418',
-        border: '1px solid #27272a',
-        padding: '40px 32px',
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        padding: '40px 36px',
         borderRadius: '20px',
-        boxShadow: '0 20px 40px rgba(0, 0, 0, 0.4)',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.07)',
         width: '100%',
         maxWidth: '400px',
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center'
+        alignItems: 'center',
       }}>
         {/* GUGA PRINT LOGO */}
         <div style={{ marginBottom: '28px', textAlign: 'center' }}>
           <img
             src="/logo.png"
             alt="GUGA PRINT"
-            style={{ maxHeight: '68px', maxWidth: '100%', objectFit: 'contain' }}
+            style={{ maxHeight: '64px', maxWidth: '100%', objectFit: 'contain' }}
           />
         </div>
 
-        <p style={{ margin: '0 0 28px 0', color: '#a1a1aa', fontSize: '14px', textAlign: 'center' }}>
+        <p style={{ margin: '0 0 28px 0', color: '#64748b', fontSize: '14px', textAlign: 'center' }}>
           Ingresá la contraseña del sistema para continuar
         </p>
 
@@ -83,14 +78,14 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
                 padding: '12px 16px',
                 paddingRight: '48px',
                 borderRadius: '10px',
-                border: '1px solid #3f3f46',
-                background: '#0f0f12',
-                color: '#f4f4f5',
+                border: '1px solid #e2e8f0',
+                background: '#f8fafc',
+                color: '#0f172a',
                 fontSize: '15px',
                 outline: 'none',
                 transition: 'border-color 0.2s',
                 fontFamily: 'inherit',
-                boxSizing: 'border-box'
+                boxSizing: 'border-box',
               }}
               autoFocus
             />
@@ -107,7 +102,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
                 padding: 0,
                 cursor: 'pointer',
                 display: 'flex',
-                color: '#71717a'
+                color: '#94a3b8',
               }}
             >
               {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -126,8 +121,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
               fontSize: '15px',
               fontWeight: '700',
               cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(249, 115, 22, 0.25)',
-              transition: 'opacity 0.2s'
+              boxShadow: '0 4px 12px rgba(20, 155, 142, 0.2)',
+              transition: 'opacity 0.2s',
             }}
           >
             Ingresar al Panel
@@ -135,7 +130,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
         </form>
       </div>
 
-      <p style={{ marginTop: '24px', color: '#71717a', fontSize: '12px' }}>
+      <p style={{ marginTop: '24px', color: '#94a3b8', fontSize: '12px' }}>
         GUGA Imprenta & Diseño · Panel de Control
       </p>
     </div>
