@@ -1,0 +1,230 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
+import Header from '@/components/Header'
+import { CajaMovimiento } from '@/lib/types'
+import { formatCurrency, formatDateTime } from '@/lib/helpers'
+import { Plus, ArrowUpCircle, ArrowDownCircle, Wallet, TrendingUp, TrendingDown } from 'lucide-react'
+import toast from 'react-hot-toast'
+
+export default function CajaPage() {
+  const [movimientos, setMovimientos] = useState<CajaMovimiento[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showModal, setShowModal] = useState(false)
+  const [form, setForm] = useState({ tipo: 'ingreso', monto: 0, concepto: '' })
+  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0])
+
+  useEffect(() => {
+    loadData()
+  }, [filterDate])
+
+  const loadData = async () => {
+    const startOfDay = `${filterDate}T00:00:00`
+    const endOfDay = `${filterDate}T23:59:59`
+
+    const { data } = await supabase
+      .from('caja_movimientos')
+      .select('*')
+      .gte('fecha', startOfDay)
+      .lte('fecha', endOfDay)
+      .order('fecha', { ascending: false })
+
+    if (data) setMovimientos(data)
+    setLoading(false)
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (form.monto <= 0 || !form.concepto.trim()) {
+      toast.error('Completá todos los campos')
+      return
+    }
+    const { error } = await supabase.from('caja_movimientos').insert(form)
+    if (error) { toast.error('Error al registrar'); return }
+    toast.success('Movimiento de caja registrado')
+    setShowModal(false)
+    setForm({ tipo: 'ingreso', monto: 0, concepto: '' })
+    loadData()
+  }
+
+  const ingresos = movimientos.filter(m => m.tipo === 'ingreso').reduce((sum, m) => sum + Number(m.monto), 0)
+  const egresos = movimientos.filter(m => m.tipo === 'egreso').reduce((sum, m) => sum + Number(m.monto), 0)
+  const saldo = ingresos - egresos
+
+  if (loading) return <div className="spinner" style={{ margin: '50px auto' }} />
+
+  return (
+    <>
+      <Header title="Caja Diaria" subtitle="Control de ingresos y egresos de efectivo" />
+      <main style={{ padding: '28px', flex: 1 }}>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <label style={{ margin: 0, fontSize: 13 }}>Fecha:</label>
+            <input
+              className="input"
+              type="date"
+              value={filterDate}
+              onChange={e => setFilterDate(e.target.value)}
+              style={{ width: 170 }}
+            />
+          </div>
+
+          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+            <Plus size={16} /> Nuevo Movimiento
+          </button>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="grid-stats" style={{ marginBottom: 24 }}>
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: 'var(--success-muted)', color: 'var(--success)' }}>
+              <TrendingUp size={20} />
+            </div>
+            <div>
+              <div className="stat-label">Ingresos del Día</div>
+              <div className="stat-value" style={{ color: 'var(--success)' }}>{formatCurrency(ingresos)}</div>
+            </div>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: 'var(--danger-muted)', color: 'var(--danger)' }}>
+              <TrendingDown size={20} />
+            </div>
+            <div>
+              <div className="stat-label">Egresos del Día</div>
+              <div className="stat-value" style={{ color: 'var(--danger)' }}>{formatCurrency(egresos)}</div>
+            </div>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>
+              <Wallet size={20} />
+            </div>
+            <div>
+              <div className="stat-label">Balance / Saldo</div>
+              <div className="stat-value" style={{ color: saldo >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                {formatCurrency(saldo)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="section-title">Movimientos Registrados ({movimientos.length})</div>
+
+          {movimientos.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {movimientos.map(mov => (
+                <div
+                  key={mov.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px 14px',
+                    background: 'var(--bg-hover)',
+                    borderRadius: 10,
+                    border: '1px solid var(--border)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {mov.tipo === 'ingreso' ? (
+                      <ArrowUpCircle size={22} style={{ color: 'var(--success)' }} />
+                    ) : (
+                      <ArrowDownCircle size={22} style={{ color: 'var(--danger)' }} />
+                    )}
+                    <div>
+                      <strong style={{ fontSize: 14 }}>{mov.concepto}</strong>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {formatDateTime(mov.fecha || '')}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{
+                    fontWeight: 800,
+                    fontSize: 16,
+                    color: mov.tipo === 'ingreso' ? 'var(--success)' : 'var(--danger)',
+                  }}>
+                    {mov.tipo === 'ingreso' ? '+' : '-'}{formatCurrency(mov.monto)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <Wallet size={32} />
+              <p>Sin movimientos registrados para este día</p>
+            </div>
+          )}
+        </div>
+
+        {/* Modal */}
+        {showModal && (
+          <div className="modal-backdrop" onClick={() => setShowModal(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
+              <div className="modal-header">
+                <h2>Nuevo Movimiento de Caja</h2>
+                <button className="btn btn-ghost btn-sm" onClick={() => setShowModal(false)}>✕</button>
+              </div>
+              <form onSubmit={handleSubmit}>
+                <div className="modal-body">
+                  <div className="form-group">
+                    <label>Tipo de Movimiento</label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        className={`btn ${form.tipo === 'ingreso' ? 'btn-success' : 'btn-secondary'}`}
+                        onClick={() => setForm({ ...form, tipo: 'ingreso' })}
+                        style={{ flex: 1, justifyContent: 'center' }}
+                      >
+                        <ArrowUpCircle size={16} /> Ingreso
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn ${form.tipo === 'egreso' ? 'btn-danger' : 'btn-secondary'}`}
+                        onClick={() => setForm({ ...form, tipo: 'egreso' })}
+                        style={{ flex: 1, justifyContent: 'center' }}
+                      >
+                        <ArrowDownCircle size={16} /> Egreso
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Monto ($) *</label>
+                    <input
+                      className="input"
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={form.monto === 0 ? '' : form.monto}
+                      onChange={e => setForm({ ...form, monto: e.target.value === '' ? 0 : Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Concepto / Detalle *</label>
+                    <input
+                      className="input"
+                      placeholder="ej. Cobro seña folletos / Compra cambio"
+                      value={form.concepto}
+                      onChange={e => setForm({ ...form, concepto: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
+                  <button type="submit" className="btn btn-primary">Registrar Movimiento</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </main>
+    </>
+  )
+}
