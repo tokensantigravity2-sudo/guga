@@ -42,7 +42,7 @@ export default function PedidosPage() {
   const [itemCantidad, setItemCantidad] = useState(100)
   const [itemPrecioUnitario, setItemPrecioUnitario] = useState(0)
 
-  // Ticket state
+  // Ticket statee
   const [showTicket, setShowTicket] = useState(false)
   const [ticketData, setTicketData] = useState<Pedido | null>(null)
 
