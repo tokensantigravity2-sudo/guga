@@ -32,7 +32,8 @@ export default function ClientesPage() {
   }, [])
 
   const loadClientes = async () => {
-    const { data } = await supabase.from('clientes').select('*').order('created_at', { ascending: false })
+    const { data, error } = await supabase.from('clientes').select('*').order('created_at', { ascending: false })
+    if (error) toast.error('Error al cargar clientes: ' + error.message)
     if (data) setClientes(data)
     setLoading(false)
   }
@@ -57,26 +58,45 @@ export default function ClientesPage() {
       return
     }
 
+    const payload = {
+      nombre: form.nombre.trim(),
+      telefono: form.telefono.trim() || null,
+      email: form.email.trim() || null,
+      direccion: form.direccion.trim() || null,
+      rut: form.rut.trim() || null,
+      notas: form.notas.trim() || null,
+      tipo: form.tipo || 'regular',
+    }
+
     if (editingCliente) {
-      const { error } = await supabase.from('clientes').update(form).eq('id', editingCliente.id)
-      if (error) { toast.error('Error al actualizar'); return }
+      const { error } = await supabase.from('clientes').update(payload).eq('id', editingCliente.id)
+      if (error) { toast.error('Error al actualizar cliente: ' + error.message); return }
       toast.success('Cliente actualizado')
     } else {
-      const { error } = await supabase.from('clientes').insert(form)
-      if (error) { toast.error('Error al registrar cliente'); return }
+      const { error } = await supabase.from('clientes').insert(payload)
+      if (error) { toast.error('Error al registrar cliente: ' + error.message); return }
       toast.success('Cliente creado')
     }
 
     closeModal()
-    loadClientes()
+    await loadClientes()
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('¿Eliminar cliente?')) return
+  const handleDelete = async (id: string, nombre: string) => {
+    if (!confirm(`¿Eliminar al cliente "${nombre}"?`)) return
     const { error } = await supabase.from('clientes').delete().eq('id', id)
-    if (error) { toast.error('Error al eliminar'); return }
+    if (error) {
+      toast.error('No se pudo eliminar el cliente (puede tener pedidos asociados): ' + error.message)
+      return
+    }
     toast.success('Cliente eliminado')
-    loadClientes()
+    await loadClientes()
+  }
+
+  const openNewModal = () => {
+    setEditingCliente(null)
+    setForm({ nombre: '', telefono: '', email: '', direccion: '', rut: '', notas: '', tipo: 'regular' })
+    setShowModal(true)
   }
 
   const openEdit = (c: Cliente) => {
@@ -134,7 +154,7 @@ export default function ClientesPage() {
             />
           </div>
 
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+          <button className="btn btn-primary" onClick={openNewModal}>
             <Plus size={16} /> Nuevo Cliente
           </button>
         </div>
@@ -193,10 +213,10 @@ export default function ClientesPage() {
                   <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.direccion || '—'}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 4 }}>
-                      <button className="btn btn-sm btn-secondary" onClick={() => openEdit(c)}>
+                      <button className="btn btn-sm btn-secondary" onClick={() => openEdit(c)} title="Editar cliente">
                         <Edit2 size={13} />
                       </button>
-                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(c.id)}>
+                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(c.id, c.nombre)} title="Eliminar cliente">
                         <Trash2 size={13} />
                       </button>
                     </div>

@@ -35,10 +35,11 @@ export default function StockPage() {
   }, [])
 
   const loadData = async () => {
-    const [{ data: s }, { data: p }] = await Promise.all([
+    const [{ data: s, error: sErr }, { data: p }] = await Promise.all([
       supabase.from('stock').select('*').order('nombre'),
       supabase.from('proveedores').select('*').order('nombre'),
     ])
+    if (sErr) toast.error('Error al cargar stock: ' + sErr.message)
     if (s) setStock(s)
     if (p) setProveedores(p)
     setLoading(false)
@@ -47,27 +48,39 @@ export default function StockPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.nombre.trim()) { toast.error('Nombre obligatorio'); return }
-    const payload = { ...form, proveedor_id: form.proveedor_id || null }
+    const payload = {
+      nombre: form.nombre.trim(),
+      cantidad: Number(form.cantidad) || 0,
+      unidad: form.unidad || 'unidad',
+      minimo: Number(form.minimo) || 0,
+      costo_unitario: Number(form.costo_unitario) || 0,
+      proveedor_id: form.proveedor_id || null,
+      categoria: form.categoria || 'Papel',
+    }
 
     if (editingItem) {
       const { error } = await supabase.from('stock').update(payload).eq('id', editingItem.id)
-      if (error) { toast.error('Error al actualizar'); return }
+      if (error) { toast.error('Error al actualizar material: ' + error.message); return }
       toast.success('Material actualizado')
     } else {
       const { error } = await supabase.from('stock').insert(payload)
-      if (error) { toast.error('Error al registrar material'); return }
+      if (error) { toast.error('Error al registrar material: ' + error.message); return }
       toast.success('Material registrado')
     }
 
     closeModal()
-    loadData()
+    await loadData()
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('¿Eliminar este material del stock?')) return
-    await supabase.from('stock').delete().eq('id', id)
+  const handleDelete = async (id: string, nombre: string) => {
+    if (!confirm(`¿Eliminar el material "${nombre}" del stock?`)) return
+    const { error } = await supabase.from('stock').delete().eq('id', id)
+    if (error) {
+      toast.error('No se pudo eliminar: ' + error.message)
+      return
+    }
     toast.success('Material eliminado')
-    loadData()
+    await loadData()
   }
 
   const handleMovimiento = async () => {
@@ -76,18 +89,30 @@ export default function StockPage() {
       ? Number(movItem.cantidad) + movCantidad
       : Math.max(0, Number(movItem.cantidad) - movCantidad)
 
-    await supabase.from('stock').update({ cantidad: newCantidad }).eq('id', movItem.id)
+    const { error } = await supabase.from('stock').update({ cantidad: newCantidad }).eq('id', movItem.id)
+    if (error) {
+      toast.error('Error en movimiento de stock: ' + error.message)
+      return
+    }
     toast.success(`${movTipo === 'entrada' ? 'Entrada' : 'Salida'} de stock registrada`)
     setShowMovModal(false)
     setMovCantidad(0)
-    loadData()
+    await loadData()
+  }
+
+  const openNewModal = () => {
+    setEditingItem(null)
+    setForm({
+      nombre: '', cantidad: 0, unidad: 'resma', minimo: 5, costo_unitario: 0, proveedor_id: '', categoria: 'Papel'
+    })
+    setShowModal(true)
   }
 
   const openEdit = (item: StockItem) => {
     setEditingItem(item)
     setForm({
       nombre: item.nombre,
-      cantidad: Number(item.cantidad),
+      cantidad: Number(item.cantidad || 0),
       unidad: item.unidad || 'resma',
       minimo: Number(item.minimo || 5),
       costo_unitario: Number(item.costo_unitario || 0),
@@ -100,41 +125,43 @@ export default function StockPage() {
   const closeModal = () => {
     setShowModal(false)
     setEditingItem(null)
-    setForm({ nombre: '', cantidad: 0, unidad: 'resma', minimo: 5, costo_unitario: 0, proveedor_id: '', categoria: 'Papel' })
+    setForm({
+      nombre: '', cantidad: 0, unidad: 'resma', minimo: 5, costo_unitario: 0, proveedor_id: '', categoria: 'Papel'
+    })
   }
 
-  const filtered = stock.filter(s => s.nombre.toLowerCase().includes(search.toLowerCase()))
-  const bajoStock = stock.filter(s => Number(s.cantidad) <= Number(s.minimo))
+  const openMovimiento = (item: StockItem, tipo: 'entrada' | 'salida') => {
+    setMovItem(item)
+    setMovTipo(tipo)
+    setMovCantidad(0)
+    setShowMovModal(true)
+  }
+
+  const filtered = stock.filter(s =>
+    s.nombre.toLowerCase().includes(search.toLowerCase()) ||
+    s.categoria?.toLowerCase().includes(search.toLowerCase())
+  )
 
   if (loading) return <div className="spinner" style={{ margin: '50px auto' }} />
 
   return (
     <>
-      <Header title="Materiales & Stock" subtitle="Inventario de insumos de imprenta" />
+      <Header title="Stock & Materiales" subtitle="Inventario de insumos de imprenta" />
       <main style={{ padding: '28px', flex: 1 }}>
 
-        {bajoStock.length > 0 && (
-          <div className="alert alert-warning" style={{ marginBottom: 20 }}>
-            <AlertTriangle size={18} style={{ flexShrink: 0 }} />
-            <div>
-              <strong>Alertas de Stock Bajo:</strong> Hay {bajoStock.length} material(es) por debajo del mínimo recomendado ({bajoStock.map(b => b.nombre).join(', ')}).
-            </div>
-          </div>
-        )}
-
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <div style={{ position: 'relative', width: 320 }}>
+          <div style={{ position: 'relative', width: 300 }}>
             <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input
               className="input"
-              placeholder="Buscar material..."
+              placeholder="Buscar material o insumo..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{ paddingLeft: 34 }}
             />
           </div>
 
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+          <button className="btn btn-primary" onClick={openNewModal}>
             <Plus size={16} /> Nuevo Material
           </button>
         </div>
@@ -143,64 +170,63 @@ export default function StockPage() {
           <table>
             <thead>
               <tr>
-                <th>Material</th>
+                <th>Material / Insumo</th>
                 <th>Categoría</th>
                 <th>Stock Actual</th>
                 <th>Mínimo</th>
-                <th>Unidad</th>
                 <th>Costo Unit.</th>
                 <th>Valor Total</th>
-                <th>Proveedor</th>
+                <th>Estado</th>
                 <th style={{ width: 140 }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(item => {
-                const isBajo = Number(item.cantidad) <= Number(item.minimo)
+                const esBajo = Number(item.cantidad) <= Number(item.minimo)
+                const valorTotal = Number(item.cantidad) * Number(item.costo_unitario || 0)
                 return (
-                  <tr key={item.id}>
+                  <tr key={item.id} style={{ background: esBajo ? 'rgba(239,68,68,0.03)' : undefined }}>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <Boxes size={16} style={{ color: isBajo ? 'var(--danger)' : 'var(--success)' }} />
-                        <strong>{item.nombre}</strong>
-                        {isBajo && <span className="badge badge-danger">BAJO</span>}
-                      </div>
+                      <strong style={{ fontSize: 14 }}>{item.nombre}</strong>
                     </td>
-                    <td><span className="badge badge-neutral">{item.categoria || 'Papel'}</span></td>
+                    <td><span className="badge badge-neutral">{item.categoria || 'General'}</span></td>
                     <td>
-                      <strong style={{ fontSize: 14, color: isBajo ? 'var(--danger)' : 'var(--text-primary)' }}>
-                        {item.cantidad}
+                      <strong style={{ fontSize: 15, color: esBajo ? 'var(--danger)' : 'var(--text-primary)' }}>
+                        {item.cantidad} {item.unidad}
                       </strong>
                     </td>
-                    <td style={{ color: 'var(--text-muted)' }}>{item.minimo}</td>
-                    <td>{item.unidad}</td>
+                    <td>{item.minimo} {item.unidad}</td>
                     <td>{formatCurrency(item.costo_unitario || 0)}</td>
-                    <td><strong>{formatCurrency((item.costo_unitario || 0) * item.cantidad)}</strong></td>
-                    <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      {proveedores.find(p => p.id === item.proveedor_id)?.nombre || '—'}
+                    <td><strong style={{ color: 'var(--accent)' }}>{formatCurrency(valorTotal)}</strong></td>
+                    <td>
+                      {esBajo ? (
+                        <span className="badge badge-danger">
+                          <AlertTriangle size={10} /> ¡Bajo Stock!
+                        </span>
+                      ) : (
+                        <span className="badge badge-success">✓ Normal</span>
+                      )}
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: 4 }}>
                         <button
                           className="btn btn-sm btn-success"
-                          style={{ padding: '4px 8px' }}
-                          onClick={() => { setMovItem(item); setMovTipo('entrada'); setShowMovModal(true) }}
-                          title="Entrada"
+                          title="Entrada de stock"
+                          onClick={() => openMovimiento(item, 'entrada')}
                         >
                           <ArrowDown size={13} />
                         </button>
                         <button
-                          className="btn btn-sm btn-secondary"
-                          style={{ padding: '4px 8px' }}
-                          onClick={() => { setMovItem(item); setMovTipo('salida'); setShowMovModal(true) }}
-                          title="Salida"
+                          className="btn btn-sm btn-ghost"
+                          title="Salida de stock"
+                          onClick={() => openMovimiento(item, 'salida')}
                         >
                           <ArrowUp size={13} />
                         </button>
-                        <button className="btn btn-sm btn-secondary" style={{ padding: '4px 8px' }} onClick={() => openEdit(item)}>
+                        <button className="btn btn-sm btn-secondary" title="Editar" onClick={() => openEdit(item)}>
                           <Edit2 size={13} />
                         </button>
-                        <button className="btn btn-sm btn-danger" style={{ padding: '4px 8px' }} onClick={() => handleDelete(item.id)}>
+                        <button className="btn btn-sm btn-danger" title="Eliminar" onClick={() => handleDelete(item.id, item.nombre)}>
                           <Trash2 size={13} />
                         </button>
                       </div>
@@ -213,17 +239,17 @@ export default function StockPage() {
           {filtered.length === 0 && (
             <div className="empty-state">
               <Boxes size={32} />
-              <p>Sin materiales registrados</p>
+              <p>Sin materiales en el inventario</p>
             </div>
           )}
         </div>
 
-        {/* Modal */}
+        {/* Modal edit/create */}
         {showModal && (
           <div className="modal-backdrop" onClick={closeModal}>
             <div className="modal" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
-                <h2>{editingItem ? 'Editar Material' : 'Nuevo Material / Insumo'}</h2>
+                <h2>{editingItem ? 'Editar Material' : 'Registrar Nuevo Material'}</h2>
                 <button className="btn btn-ghost btn-sm" onClick={closeModal}>✕</button>
               </div>
               <form onSubmit={handleSubmit}>
@@ -233,7 +259,7 @@ export default function StockPage() {
                       <label>Nombre del Material *</label>
                       <input
                         className="input"
-                        placeholder="ej. Papel Couché 300g A4"
+                        placeholder="ej. Papel Couche 300g A4"
                         value={form.nombre}
                         onChange={e => setForm({ ...form, nombre: e.target.value })}
                         required
@@ -243,12 +269,13 @@ export default function StockPage() {
                       <label>Categoría</label>
                       <select className="input" value={form.categoria} onChange={e => setForm({ ...form, categoria: e.target.value })}>
                         <option value="Papel">Papel / Cartulina</option>
-                        <option value="Vinilo">Vinilo</option>
-                        <option value="Lona">Lona</option>
-                        <option value="Tintas">Tintas / Tóner</option>
-                        <option value="Acabados">Acabados (Laminado, Barniz)</option>
-                        <option value="Empaque">Empaque / Cajas</option>
-                        <option value="Otro">Otro</option>
+                        <option value="Vinilo">Vinilo Adhesivo</option>
+                        <option value="Lona">Lona Vinílica</option>
+                        <option value="Tintas">Tintas / Cartuchos</option>
+                        <option value="Toner">Tóner</option>
+                        <option value="Acabados">Acabados / Laminados</option>
+                        <option value="Empaque">Empaque / Packaging</option>
+                        <option value="Otros">Otros Insumos</option>
                       </select>
                     </div>
                   </div>

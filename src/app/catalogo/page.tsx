@@ -31,8 +31,12 @@ export default function CatalogoPage() {
   }, [])
 
   const loadServicios = async () => {
-    const { data } = await supabase.from('servicios').select('*').order('categoria').order('nombre')
-    if (data) setServicios(data)
+    const { data, error } = await supabase.from('servicios').select('*').order('categoria').order('nombre')
+    if (error) {
+      toast.error('Error al cargar catálogo: ' + error.message)
+    } else if (data) {
+      setServicios(data)
+    }
     setLoading(false)
   }
 
@@ -43,34 +47,86 @@ export default function CatalogoPage() {
       return
     }
 
+    const payload = {
+      nombre: form.nombre.trim(),
+      descripcion: form.descripcion.trim() || null,
+      precio_base: Number(form.precio_base) || 0,
+      categoria: form.categoria,
+      unidad: form.unidad || 'unidad',
+      tiempo_estimado: form.tiempo_estimado.trim() || null,
+      disponible: form.disponible !== false,
+    }
+
     if (editingServicio) {
-      const { error } = await supabase.from('servicios').update(form).eq('id', editingServicio.id)
-      if (error) { toast.error('Error al actualizar'); return }
+      const { error } = await supabase
+        .from('servicios')
+        .update(payload)
+        .eq('id', editingServicio.id)
+
+      if (error) {
+        toast.error('Error al actualizar servicio: ' + error.message)
+        return
+      }
       toast.success('Servicio actualizado')
     } else {
-      const { error } = await supabase.from('servicios').insert(form)
-      if (error) { toast.error('Error al crear'); return }
+      const { error } = await supabase
+        .from('servicios')
+        .insert(payload)
+
+      if (error) {
+        toast.error('Error al crear servicio: ' + error.message)
+        return
+      }
       toast.success('Servicio creado')
     }
 
     closeModal()
-    loadServicios()
+    await loadServicios()
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('¿Eliminar este servicio del catálogo?')) return
-    const { error } = await supabase.from('servicios').delete().eq('id', id)
-    if (error) { toast.error('Error al eliminar'); return }
+  const handleDelete = async (id: string, nombre: string) => {
+    if (!confirm(`¿Estás seguro de eliminar el servicio "${nombre}"?`)) return
+
+    const { error } = await supabase
+      .from('servicios')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      toast.error('No se pudo eliminar: ' + error.message)
+      return
+    }
     toast.success('Servicio eliminado')
-    loadServicios()
+    await loadServicios()
   }
 
   const toggleDisponible = async (srv: Servicio) => {
-    const { error } = await supabase.from('servicios').update({ disponible: !srv.disponible }).eq('id', srv.id)
-    if (!error) {
-      toast.success(srv.disponible ? 'Pausado' : 'Activado')
-      loadServicios()
+    const nextState = !srv.disponible
+    const { error } = await supabase
+      .from('servicios')
+      .update({ disponible: nextState })
+      .eq('id', srv.id)
+
+    if (error) {
+      toast.error('Error al cambiar disponibilidad: ' + error.message)
+    } else {
+      toast.success(nextState ? 'Servicio activado' : 'Servicio pausado')
+      setServicios(prev => prev.map(s => s.id === srv.id ? { ...s, disponible: nextState } : s))
     }
+  }
+
+  const openNewModal = () => {
+    setEditingServicio(null)
+    setForm({
+      nombre: '',
+      descripcion: '',
+      precio_base: 0,
+      categoria: categoriaFilter || 'Folletos',
+      unidad: 'unidad',
+      tiempo_estimado: '2-3 días',
+      disponible: true
+    })
+    setShowModal(true)
   }
 
   const openEdit = (srv: Servicio) => {
@@ -78,8 +134,8 @@ export default function CatalogoPage() {
     setForm({
       nombre: srv.nombre,
       descripcion: srv.descripcion || '',
-      precio_base: Number(srv.precio_base),
-      categoria: srv.categoria,
+      precio_base: Number(srv.precio_base || 0),
+      categoria: srv.categoria || 'Folletos',
       unidad: srv.unidad || 'unidad',
       tiempo_estimado: srv.tiempo_estimado || '2-3 días',
       disponible: srv.disponible !== false,
@@ -138,7 +194,7 @@ export default function CatalogoPage() {
             ))}
           </div>
 
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+          <button className="btn btn-primary" onClick={openNewModal}>
             <Plus size={16} /> Nuevo Servicio
           </button>
         </div>
@@ -183,10 +239,10 @@ export default function CatalogoPage() {
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: 4 }}>
-                      <button className="btn btn-sm btn-secondary" onClick={() => openEdit(srv)}>
+                      <button className="btn btn-sm btn-secondary" onClick={() => openEdit(srv)} title="Editar servicio">
                         <Edit2 size={13} />
                       </button>
-                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(srv.id)}>
+                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(srv.id, srv.nombre)} title="Eliminar servicio">
                         <Trash2 size={13} />
                       </button>
                     </div>

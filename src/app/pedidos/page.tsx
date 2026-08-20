@@ -213,10 +213,21 @@ export default function PedidosPage() {
   const handleCambiarEstado = async (id: string, nuevoEstado: string) => {
     const { error } = await supabase.from('pedidos').update({ estado: nuevoEstado }).eq('id', id)
     if (error) {
-      toast.error('Error al actualizar estado')
+      toast.error('Error al actualizar estado: ' + error.message)
       return
     }
     toast.success(`Estado actualizado a ${nuevoEstado}`)
+    loadData()
+  }
+
+  const handleDeletePedido = async (id: string, numero: string) => {
+    if (!confirm(`¿Estás seguro de eliminar el pedido #${numero}?`)) return
+    const { error } = await supabase.from('pedidos').delete().eq('id', id)
+    if (error) {
+      toast.error('Error al eliminar pedido: ' + error.message)
+      return
+    }
+    toast.success(`Pedido #${numero} eliminado`)
     loadData()
   }
 
@@ -584,12 +595,22 @@ export default function PedidosPage() {
                       <td><span className="badge badge-neutral">{p.metodo_pago}</span></td>
                       <td><strong>{formatCurrency(p.total)}</strong></td>
                       <td>
-                        <button
-                          className="btn btn-sm btn-secondary"
-                          onClick={() => { setTicketData(p); setShowTicket(true) }}
-                        >
-                          <Printer size={13} /> Ticket
-                        </button>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button
+                            className="btn btn-sm btn-secondary"
+                            onClick={() => { setTicketData(p); setShowTicket(true) }}
+                            title="Imprimir ticket"
+                          >
+                            <Printer size={13} /> Ticket
+                          </button>
+                          <button
+                            className="btn btn-sm btn-danger"
+                            onClick={() => handleDeletePedido(p.id, p.numero)}
+                            title="Eliminar pedido"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

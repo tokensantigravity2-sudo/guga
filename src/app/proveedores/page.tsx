@@ -30,10 +30,14 @@ export default function ProveedoresPage() {
   }, [])
 
   const loadData = async () => {
-    const { data } = await supabase.from('proveedores').select('*').order('nombre')
-    if (data) setProveedores(data)
+    const [{ data: provs, error: pErr }, { data: gastos }] = await Promise.all([
+      supabase.from('proveedores').select('*').order('nombre'),
+      supabase.from('gastos').select('proveedor_id, monto'),
+    ])
 
-    const { data: gastos } = await supabase.from('gastos').select('proveedor_id, monto')
+    if (pErr) toast.error('Error al cargar proveedores: ' + pErr.message)
+    if (provs) setProveedores(provs)
+
     if (gastos) {
       const stats = new Map<string, number>()
       gastos.forEach(g => {
@@ -48,25 +52,44 @@ export default function ProveedoresPage() {
     e.preventDefault()
     if (!form.nombre.trim()) { toast.error('Nombre obligatorio'); return }
 
+    const payload = {
+      nombre: form.nombre.trim(),
+      telefono: form.telefono.trim() || null,
+      email: form.email.trim() || null,
+      direccion: form.direccion.trim() || null,
+      rubro: form.rubro || 'Papel',
+      notas: form.notas.trim() || null,
+    }
+
     if (editingProveedor) {
-      const { error } = await supabase.from('proveedores').update(form).eq('id', editingProveedor.id)
-      if (error) { toast.error('Error al actualizar'); return }
+      const { error } = await supabase.from('proveedores').update(payload).eq('id', editingProveedor.id)
+      if (error) { toast.error('Error al actualizar proveedor: ' + error.message); return }
       toast.success('Proveedor actualizado')
     } else {
-      const { error } = await supabase.from('proveedores').insert(form)
-      if (error) { toast.error('Error al crear'); return }
+      const { error } = await supabase.from('proveedores').insert(payload)
+      if (error) { toast.error('Error al crear proveedor: ' + error.message); return }
       toast.success('Proveedor creado')
     }
 
     closeModal()
-    loadData()
+    await loadData()
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('¿Eliminar este proveedor?')) return
-    await supabase.from('proveedores').delete().eq('id', id)
+  const handleDelete = async (id: string, nombre: string) => {
+    if (!confirm(`¿Eliminar al proveedor "${nombre}"?`)) return
+    const { error } = await supabase.from('proveedores').delete().eq('id', id)
+    if (error) {
+      toast.error('No se pudo eliminar (puede tener gastos o materiales vinculados): ' + error.message)
+      return
+    }
     toast.success('Proveedor eliminado')
-    loadData()
+    await loadData()
+  }
+
+  const openNewModal = () => {
+    setEditingProveedor(null)
+    setForm({ nombre: '', telefono: '', email: '', direccion: '', rubro: 'Papel', notas: '' })
+    setShowModal(true)
   }
 
   const openEdit = (p: Proveedor) => {
@@ -109,7 +132,7 @@ export default function ProveedoresPage() {
             />
           </div>
 
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+          <button className="btn btn-primary" onClick={openNewModal}>
             <Plus size={16} /> Nuevo Proveedor
           </button>
         </div>
@@ -161,10 +184,10 @@ export default function ProveedoresPage() {
                   <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{p.direccion || '—'}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 4 }}>
-                      <button className="btn btn-sm btn-secondary" onClick={() => openEdit(p)}>
+                      <button className="btn btn-sm btn-secondary" onClick={() => openEdit(p)} title="Editar proveedor">
                         <Edit2 size={13} />
                       </button>
-                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(p.id)}>
+                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(p.id, p.nombre)} title="Eliminar proveedor">
                         <Trash2 size={13} />
                       </button>
                     </div>
