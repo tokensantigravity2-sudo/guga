@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { Proveedor, Gasto, ItemListaPrecio, StockItem } from '@/lib/types'
 import { formatCurrency, formatDate, getInitials } from '@/lib/helpers'
-import { Search, Plus, Phone, Mail, MapPin, Edit2, Trash2, Package, Tag, FileText, List, Layers } from 'lucide-react'
+import { Search, Plus, Phone, Mail, MapPin, Edit2, Trash2, Package, Tag, FileText, List, Layers, ChevronDown } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function ProveedoresPage() {
@@ -13,6 +13,8 @@ export default function ProveedoresPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterTipo, setFilterTipo] = useState<'todos' | 'insumos' | 'tercerizados'>('todos')
+  const [filterRubro, setFilterRubro] = useState('')
+  const [selectedProveedorDropdown, setSelectedProveedorDropdown] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editingProveedor, setEditingProveedor] = useState<Proveedor | null>(null)
   const [proveedorStats, setProveedorStats] = useState<Map<string, number>>(new Map())
@@ -178,9 +180,13 @@ export default function ProveedoresPage() {
     setForm({ nombre: '', telefono: '', email: '', direccion: '', rubro: 'Papel', notas: '', es_tercerizado: false })
   }
 
+  const rubrosUnicos = [...new Set(proveedores.map(p => p.rubro).filter(Boolean))]
+
   const filtered = proveedores.filter(p => {
     if (filterTipo === 'tercerizados' && !p.es_tercerizado) return false
     if (filterTipo === 'insumos' && p.es_tercerizado) return false
+    if (filterRubro && p.rubro !== filterRubro) return false
+    if (selectedProveedorDropdown && p.id !== selectedProveedorDropdown) return false
     return p.nombre.toLowerCase().includes(search.toLowerCase()) || p.rubro?.toLowerCase().includes(search.toLowerCase())
   })
 
@@ -188,26 +194,67 @@ export default function ProveedoresPage() {
 
   return (
     <>
-      <Header title="Proveedores & Tercerizados" subtitle="Gestión de proveedores de insumos, listas de precios y talleres tercerizados" />
+      <Header title="Proveedores & Tercerizados" subtitle="Gestión de proveedores con lista desplegable y listas de precios" />
       <main style={{ padding: '28px', flex: 1 }}>
 
+        {/* Top Control Bar with Dropdowns */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <div style={{ position: 'relative', width: 280 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
+
+            {/* LISTA DESPLEGABLE DE PROVEEDORES */}
+            <div style={{ minWidth: 220 }}>
+              <select
+                className="input"
+                value={selectedProveedorDropdown}
+                onChange={e => {
+                  setSelectedProveedorDropdown(e.target.value)
+                  if (e.target.value) {
+                    const p = proveedores.find(pr => pr.id === e.target.value)
+                    if (p) openHistory(p)
+                  }
+                }}
+                style={{ fontWeight: 600, borderColor: 'var(--accent)' }}
+              >
+                <option value="">📋 Seleccionar Proveedor (Lista Desplegable)...</option>
+                {proveedores.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.es_tercerizado ? '🏭' : '📦'} {p.nombre} ({p.rubro || 'General'})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Búsqueda por texto */}
+            <div style={{ position: 'relative', width: 220 }}>
               <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
               <input
                 className="input"
-                placeholder="Buscar proveedor o rubro..."
+                placeholder="Buscar por texto..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 style={{ paddingLeft: 34 }}
               />
             </div>
 
-            <div style={{ display: 'flex', gap: 6 }}>
+            {/* LISTA DESPLEGABLE DE RUBROS */}
+            <div style={{ width: 170 }}>
+              <select
+                className="input"
+                value={filterRubro}
+                onChange={e => setFilterRubro(e.target.value)}
+              >
+                <option value="">Todos los Rubros</option>
+                {rubrosUnicos.map(r => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Botones de tipo */}
+            <div style={{ display: 'flex', gap: 4 }}>
               <button
                 className={`btn btn-sm ${filterTipo === 'todos' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setFilterTipo('todos')}
+                onClick={() => { setFilterTipo('todos'); setSelectedProveedorDropdown(''); setFilterRubro('') }}
               >
                 Todos ({proveedores.length})
               </button>
