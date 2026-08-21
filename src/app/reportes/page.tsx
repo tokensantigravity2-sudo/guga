@@ -452,34 +452,6 @@ export default function ReportesPage() {
           </div>
 
           <div className="stat-card">
-            <div className="stat-icon" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>
-              <Wallet size={22} />
-            </div>
-            <div>
-              <div className="stat-label">Saldo Neto de Caja</div>
-              <div className="stat-value" style={{ color: resumen.cajaSaldo >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                {formatCurrency(resumen.cajaSaldo)}
-              </div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                Flujo neto en caja diaria
-              </div>
-            </div>
-          </div>
-
-          <div className="stat-card">
-            <div className="stat-icon" style={{ background: 'var(--info-muted)', color: 'var(--info)' }}>
-              <ShoppingCart size={22} />
-            </div>
-            <div>
-              <div className="stat-label">Ticket Promedio</div>
-              <div className="stat-value">{formatCurrency(resumen.ticketPromedio)}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                Promedio por pedido
-              </div>
-            </div>
-          </div>
-
-          <div className="stat-card">
             <div className="stat-icon" style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b' }}>
               <Boxes size={22} />
             </div>
