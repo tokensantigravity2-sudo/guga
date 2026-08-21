@@ -3,13 +3,14 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
-import { Servicio } from '@/lib/types'
+import { Servicio, Proveedor } from '@/lib/types'
 import { formatCurrency, CATEGORIAS_SERVICIO } from '@/lib/helpers'
-import { Search, Plus, Edit2, Trash2, X, Printer, Check } from 'lucide-react'
+import { Search, Plus, Edit2, Trash2, X, Printer, Check, Factory, Home } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function CatalogoPage() {
   const [servicios, setServicios] = useState<Servicio[]>([])
+  const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -21,9 +22,13 @@ export default function CatalogoPage() {
     descripcion: '',
     precio_base: 0,
     categoria: 'Folletos',
+    nuevaCategoria: '',
     unidad: 'unidad',
     tiempo_estimado: '2-3 días',
     disponible: true,
+    es_tercerizado: false,
+    proveedor_tercerizado_id: '',
+    costo_tercerizado: 0,
   })
 
   useEffect(() => {
@@ -31,12 +36,17 @@ export default function CatalogoPage() {
   }, [])
 
   const loadServicios = async () => {
-    const { data, error } = await supabase.from('servicios').select('*').order('categoria').order('nombre')
+    const [{ data, error }, { data: provs }] = await Promise.all([
+      supabase.from('servicios').select('*').order('categoria').order('nombre'),
+      supabase.from('proveedores').select('*').order('nombre')
+    ])
+
     if (error) {
       toast.error('Error al cargar catálogo: ' + error.message)
     } else if (data) {
       setServicios(data)
     }
+    if (provs) setProveedores(provs)
     setLoading(false)
   }
 
@@ -47,14 +57,19 @@ export default function CatalogoPage() {
       return
     }
 
+    const catFinal = form.categoria === 'OTRO' ? (form.nuevaCategoria.trim() || 'General') : form.categoria
+
     const payload = {
       nombre: form.nombre.trim(),
       descripcion: form.descripcion.trim() || null,
       precio_base: Number(form.precio_base) || 0,
-      categoria: form.categoria,
+      categoria: catFinal,
       unidad: form.unidad || 'unidad',
       tiempo_estimado: form.tiempo_estimado.trim() || null,
       disponible: form.disponible !== false,
+      es_tercerizado: form.es_tercerizado,
+      proveedor_tercerizado_id: form.es_tercerizado ? (form.proveedor_tercerizado_id || null) : null,
+      costo_tercerizado: form.es_tercerizado ? (Number(form.costo_tercerizado) || 0) : 0,
     }
 
     if (editingServicio) {
@@ -122,23 +137,32 @@ export default function CatalogoPage() {
       descripcion: '',
       precio_base: 0,
       categoria: categoriaFilter || 'Folletos',
+      nuevaCategoria: '',
       unidad: 'unidad',
       tiempo_estimado: '2-3 días',
-      disponible: true
+      disponible: true,
+      es_tercerizado: false,
+      proveedor_tercerizado_id: '',
+      costo_tercerizado: 0,
     })
     setShowModal(true)
   }
 
   const openEdit = (srv: Servicio) => {
     setEditingServicio(srv)
+    const isStandardCat = CATEGORIAS_SERVICIO.includes(srv.categoria)
     setForm({
       nombre: srv.nombre,
       descripcion: srv.descripcion || '',
       precio_base: Number(srv.precio_base || 0),
-      categoria: srv.categoria || 'Folletos',
+      categoria: isStandardCat ? srv.categoria : 'OTRO',
+      nuevaCategoria: isStandardCat ? '' : srv.categoria,
       unidad: srv.unidad || 'unidad',
       tiempo_estimado: srv.tiempo_estimado || '2-3 días',
       disponible: srv.disponible !== false,
+      es_tercerizado: !!srv.es_tercerizado,
+      proveedor_tercerizado_id: srv.proveedor_tercerizado_id || '',
+      costo_tercerizado: Number(srv.costo_tercerizado || 0),
     })
     setShowModal(true)
   }
@@ -146,10 +170,6 @@ export default function CatalogoPage() {
   const closeModal = () => {
     setShowModal(false)
     setEditingServicio(null)
-    setForm({
-      nombre: '', descripcion: '', precio_base: 0,
-      categoria: 'Folletos', unidad: 'unidad', tiempo_estimado: '2-3 días', disponible: true
-    })
   }
 
   const filtered = servicios.filter(s => {
@@ -162,7 +182,7 @@ export default function CatalogoPage() {
 
   return (
     <>
-      <Header title="Catálogo de Servicios" subtitle="Productos e impresiones ofrecidas" />
+      <Header title="Catálogo de Servicios" subtitle="Productos de imprenta propios y tercerizados" />
       <main style={{ padding: '28px', flex: 1 }}>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -204,6 +224,7 @@ export default function CatalogoPage() {
             <thead>
               <tr>
                 <th>Servicio</th>
+                <th>Origen</th>
                 <th>Categoría</th>
                 <th>Precio Base</th>
                 <th>Unidad</th>
@@ -224,6 +245,17 @@ export default function CatalogoPage() {
                         </div>
                       )}
                     </div>
+                  </td>
+                  <td>
+                    {srv.es_tercerizado ? (
+                      <span className="badge badge-warning" style={{ gap: 4 }}>
+                        <Factory size={10} /> Tercerizado
+                      </span>
+                    ) : (
+                      <span className="badge badge-neutral" style={{ gap: 4 }}>
+                        <Home size={10} /> Propio
+                      </span>
+                    )}
                   </td>
                   <td><span className="badge badge-accent">{srv.categoria}</span></td>
                   <td><strong style={{ color: 'var(--accent)' }}>{formatCurrency(srv.precio_base)}</strong></td>
@@ -269,6 +301,59 @@ export default function CatalogoPage() {
               </div>
               <form onSubmit={handleSubmit}>
                 <div className="modal-body">
+
+                  {/* Origen del Servicio: Propio vs Tercerizado */}
+                  <div className="form-group" style={{ marginBottom: 14 }}>
+                    <label>Origen de Fabricación / Servicio</label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        className={`btn ${!form.es_tercerizado ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => setForm({ ...form, es_tercerizado: false })}
+                        style={{ flex: 1, justifyContent: 'center' }}
+                      >
+                        <Home size={15} /> Imprenta Propia
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn ${form.es_tercerizado ? 'btn-warning' : 'btn-secondary'}`}
+                        onClick={() => setForm({ ...form, es_tercerizado: true })}
+                        style={{ flex: 1, justifyContent: 'center' }}
+                      >
+                        <Factory size={15} /> Servicio Tercerizado
+                      </button>
+                    </div>
+                  </div>
+
+                  {form.es_tercerizado && (
+                    <div className="form-grid" style={{ padding: 12, background: 'var(--bg-hover)', borderRadius: 8, border: '1px solid var(--border)', marginBottom: 14 }}>
+                      <div className="form-group">
+                        <label>Taller / Proveedor Tercerizado</label>
+                        <select
+                          className="input"
+                          value={form.proveedor_tercerizado_id}
+                          onChange={e => setForm({ ...form, proveedor_tercerizado_id: e.target.value })}
+                        >
+                          <option value="">Seleccionar taller...</option>
+                          {proveedores.map(p => (
+                            <option key={p.id} value={p.id}>{p.nombre} {p.rubro ? `(${p.rubro})` : ''}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Costo de Tercerización ($)</label>
+                        <input
+                          className="input"
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={form.costo_tercerizado === 0 ? '' : form.costo_tercerizado}
+                          onChange={e => setForm({ ...form, costo_tercerizado: e.target.value === '' ? 0 : Number(e.target.value) })}
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   <div className="form-grid">
                     <div className="form-group">
                       <label>Nombre del Servicio *</label>
@@ -290,9 +375,23 @@ export default function CatalogoPage() {
                         {CATEGORIAS_SERVICIO.map(c => (
                           <option key={c} value={c}>{c}</option>
                         ))}
+                        <option value="OTRO">➕ Otra Categoría Personalizada...</option>
                       </select>
                     </div>
                   </div>
+
+                  {form.categoria === 'OTRO' && (
+                    <div className="form-group" style={{ marginBottom: 12 }}>
+                      <label>Escribir Nueva Categoría *</label>
+                      <input
+                        className="input"
+                        placeholder="ej. Gigantografías / Sellos"
+                        value={form.nuevaCategoria}
+                        onChange={e => setForm({ ...form, nuevaCategoria: e.target.value })}
+                        required
+                      />
+                    </div>
+                  )}
 
                   <div className="form-group">
                     <label>Descripción</label>
@@ -307,7 +406,7 @@ export default function CatalogoPage() {
 
                   <div className="form-grid">
                     <div className="form-group">
-                      <label>Precio Base ($)</label>
+                      <label>Precio Base de Venta ($)</label>
                       <input
                         className="input"
                         type="number"

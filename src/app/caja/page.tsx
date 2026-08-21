@@ -5,13 +5,14 @@ import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { CajaMovimiento } from '@/lib/types'
 import { formatCurrency, formatDateTime } from '@/lib/helpers'
-import { Plus, ArrowUpCircle, ArrowDownCircle, Wallet, TrendingUp, TrendingDown } from 'lucide-react'
+import { Plus, ArrowUpCircle, ArrowDownCircle, Wallet, TrendingUp, TrendingDown, Edit2, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function CajaPage() {
   const [movimientos, setMovimientos] = useState<CajaMovimiento[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [editingMov, setEditingMov] = useState<CajaMovimiento | null>(null)
   const [form, setForm] = useState({ tipo: 'ingreso', monto: 0, concepto: '' })
   const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0])
 
@@ -23,13 +24,14 @@ export default function CajaPage() {
     const startOfDay = `${filterDate}T00:00:00`
     const endOfDay = `${filterDate}T23:59:59`
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('caja_movimientos')
       .select('*')
       .gte('fecha', startOfDay)
       .lte('fecha', endOfDay)
       .order('fecha', { ascending: false })
 
+    if (error) toast.error('Error al cargar caja: ' + error.message)
     if (data) setMovimientos(data)
     setLoading(false)
   }
@@ -37,15 +39,67 @@ export default function CajaPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (form.monto <= 0 || !form.concepto.trim()) {
-      toast.error('Completá todos los campos')
+      toast.error('Completá todos los campos correctamente')
       return
     }
-    const { error } = await supabase.from('caja_movimientos').insert(form)
-    if (error) { toast.error('Error al registrar'); return }
-    toast.success('Movimiento de caja registrado')
-    setShowModal(false)
+
+    const payload = {
+      tipo: form.tipo,
+      monto: Number(form.monto),
+      concepto: form.concepto.trim(),
+    }
+
+    if (editingMov) {
+      const { error } = await supabase.from('caja_movimientos').update(payload).eq('id', editingMov.id)
+      if (error) { toast.error('Error al actualizar movimiento: ' + error.message); return }
+
+      // Si era un egreso con referencia de gasto, actualizar el gasto
+      if (editingMov.referencia_id && form.tipo === 'egreso') {
+        await supabase.from('gastos').update({ monto: form.monto, concepto: form.concepto }).eq('id', editingMov.referencia_id)
+      }
+
+      toast.success('Movimiento actualizado')
+    } else {
+      const { error } = await supabase.from('caja_movimientos').insert(payload)
+      if (error) { toast.error('Error al registrar movimiento: ' + error.message); return }
+      toast.success('Movimiento de caja registrado')
+    }
+
+    closeModal()
+    await loadData()
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('¿Eliminar este movimiento de caja?')) return
+    const { error } = await supabase.from('caja_movimientos').delete().eq('id', id)
+    if (error) {
+      toast.error('Error al eliminar movimiento: ' + error.message)
+      return
+    }
+    toast.success('Movimiento eliminado')
+    await loadData()
+  }
+
+  const openNewModal = () => {
+    setEditingMov(null)
     setForm({ tipo: 'ingreso', monto: 0, concepto: '' })
-    loadData()
+    setShowModal(true)
+  }
+
+  const openEditModal = (mov: CajaMovimiento) => {
+    setEditingMov(mov)
+    setForm({
+      tipo: mov.tipo,
+      monto: Number(mov.monto),
+      concepto: mov.concepto || '',
+    })
+    setShowModal(true)
+  }
+
+  const closeModal = () => {
+    setShowModal(false)
+    setEditingMov(null)
+    setForm({ tipo: 'ingreso', monto: 0, concepto: '' })
   }
 
   const ingresos = movimientos.filter(m => m.tipo === 'ingreso').reduce((sum, m) => sum + Number(m.monto), 0)
@@ -71,7 +125,7 @@ export default function CajaPage() {
             />
           </div>
 
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+          <button className="btn btn-primary" onClick={openNewModal}>
             <Plus size={16} /> Nuevo Movimiento
           </button>
         </div>
@@ -142,12 +196,22 @@ export default function CajaPage() {
                       </div>
                     </div>
                   </div>
-                  <div style={{
-                    fontWeight: 800,
-                    fontSize: 16,
-                    color: mov.tipo === 'ingreso' ? 'var(--success)' : 'var(--danger)',
-                  }}>
-                    {mov.tipo === 'ingreso' ? '+' : '-'}{formatCurrency(mov.monto)}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <div style={{
+                      fontWeight: 800,
+                      fontSize: 16,
+                      color: mov.tipo === 'ingreso' ? 'var(--success)' : 'var(--danger)',
+                    }}>
+                      {mov.tipo === 'ingreso' ? '+' : '-'}{formatCurrency(mov.monto)}
+                    </div>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button className="btn btn-sm btn-secondary" onClick={() => openEditModal(mov)} title="Editar movimiento">
+                        <Edit2 size={13} />
+                      </button>
+                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(mov.id)} title="Eliminar movimiento">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -162,11 +226,11 @@ export default function CajaPage() {
 
         {/* Modal */}
         {showModal && (
-          <div className="modal-backdrop" onClick={() => setShowModal(false)}>
+          <div className="modal-backdrop" onClick={closeModal}>
             <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
               <div className="modal-header">
-                <h2>Nuevo Movimiento de Caja</h2>
-                <button className="btn btn-ghost btn-sm" onClick={() => setShowModal(false)}>✕</button>
+                <h2>{editingMov ? 'Editar Movimiento de Caja' : 'Nuevo Movimiento de Caja'}</h2>
+                <button className="btn btn-ghost btn-sm" onClick={closeModal}>✕</button>
               </div>
               <form onSubmit={handleSubmit}>
                 <div className="modal-body">
@@ -217,8 +281,8 @@ export default function CajaPage() {
                   </div>
                 </div>
                 <div className="modal-footer">
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
-                  <button type="submit" className="btn btn-primary">Registrar Movimiento</button>
+                  <button type="button" className="btn btn-secondary" onClick={closeModal}>Cancelar</button>
+                  <button type="submit" className="btn btn-primary">{editingMov ? 'Guardar Cambios' : 'Registrar Movimiento'}</button>
                 </div>
               </form>
             </div>

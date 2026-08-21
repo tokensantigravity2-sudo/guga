@@ -1,14 +1,14 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
-import { Servicio, Cliente, PedidoItem, Pedido } from '@/lib/types'
+import { Servicio, Cliente, PedidoItem, Pedido, StockItem } from '@/lib/types'
 import { formatCurrency, formatDateTime, generateNumeroPedido, ESTADOS_PEDIDO } from '@/lib/helpers'
 import {
   Plus, Minus, ShoppingCart, Search, X, Trash2,
   CreditCard, Banknote, ArrowLeftRight, Printer,
-  Check, FileText, Calendar, Filter
+  Check, FileText, Calendar, Filter, UserCheck, ShieldAlert
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import TicketImpresion from '@/components/TicketImpresion'
@@ -17,6 +17,7 @@ export default function PedidosPage() {
   const [servicios, setServicios] = useState<Servicio[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [pedidos, setPedidos] = useState<Pedido[]>([])
+  const [stockItems, setStockItems] = useState<StockItem[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'nuevo' | 'historial'>('nuevo')
 
@@ -25,7 +26,7 @@ export default function PedidosPage() {
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [clienteSearch, setClienteSearch] = useState('')
   const [showClienteDropdown, setShowClienteDropdown] = useState(false)
-  const [descuento, setDescuento] = useState(0)
+  const [descuentoPorcentaje, setDescuentoPorcentaje] = useState(0)
   const [metodoPago, setMetodoPago] = useState('efectivo')
   const [estadoPedido, setEstadoPedido] = useState('presupuesto')
   const [fechaEntrega, setFechaEntrega] = useState('')
@@ -41,15 +42,9 @@ export default function PedidosPage() {
   const [itemAcabado, setItemAcabado] = useState('')
   const [itemCantidad, setItemCantidad] = useState(100)
   const [itemPrecioUnitario, setItemPrecioUnitario] = useState(0)
+  const [itemNoAfectarStock, setItemNoAfectarStock] = useState(false)
 
-  // Ticket statee
-  const [showTicket, setShowTicket] = useState(false)
-  const [ticketData, setTicketData] = useState<Pedido | null>(null)
-
-  // History filter
-  const [historialFilter, setHistorialFilter] = useState('todos')
-
-  // Quick Client creation modal state
+  // Quick Client modal state
   const [showQuickClientModal, setShowQuickClientModal] = useState(false)
   const [quickClientForm, setQuickClientForm] = useState({
     nombre: '',
@@ -59,52 +54,29 @@ export default function PedidosPage() {
     tipo: 'regular',
   })
 
-  const openQuickClientModal = (defaultName = '') => {
-    setQuickClientForm({
-      nombre: defaultName,
-      telefono: '',
-      email: '',
-      rut: '',
-      tipo: 'regular',
-    })
-    setShowQuickClientModal(true)
-  }
+  // Ticket state
+  const [showTicket, setShowTicket] = useState(false)
+  const [ticketData, setTicketData] = useState<Pedido | null>(null)
 
-  const handleCrearQuickCliente = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!quickClientForm.nombre.trim()) {
-      toast.error('El nombre del cliente es obligatorio')
-      return
-    }
-
-    const { data, error } = await supabase.from('clientes').insert(quickClientForm).select().single()
-    if (error) {
-      toast.error('Error al guardar cliente')
-      return
-    }
-
-    toast.success(`Cliente ${data.nombre} creado`)
-    setSelectedCliente(data)
-    setClienteSearch('')
-    setShowClienteDropdown(false)
-    setShowQuickClientModal(false)
-    loadData()
-  }
+  // History filter
+  const [historialFilter, setHistorialFilter] = useState('todos')
 
   useEffect(() => {
     loadData()
   }, [])
 
   const loadData = async () => {
-    const [{ data: srvs }, { data: clts }, { data: pds }] = await Promise.all([
+    const [{ data: srvs }, { data: clts }, { data: pds }, { data: stks }] = await Promise.all([
       supabase.from('servicios').select('*').eq('disponible', true).order('categoria'),
       supabase.from('clientes').select('*').order('nombre'),
       supabase.from('pedidos').select('*').order('created_at', { ascending: false }).limit(50),
+      supabase.from('stock').select('*').order('nombre'),
     ])
 
     if (srvs) setServicios(srvs)
     if (clts) setClientes(clts)
     if (pds) setPedidos(pds)
+    if (stks) setStockItems(stks)
     setLoading(false)
   }
 
@@ -115,6 +87,7 @@ export default function PedidosPage() {
     setItemMedida('')
     setItemMaterial('')
     setItemAcabado('')
+    setItemNoAfectarStock(false)
     setShowItemModal(true)
   }
 
@@ -130,6 +103,7 @@ export default function PedidosPage() {
       medida: itemMedida || undefined,
       material: itemMaterial || undefined,
       acabado: itemAcabado || undefined,
+      no_afectar_stock: itemNoAfectarStock,
     }
 
     setCart(prev => [...prev, newItem])
@@ -156,7 +130,8 @@ export default function PedidosPage() {
   }
 
   const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0)
-  const total = Math.max(0, subtotal - descuento)
+  const descuentoMonto = Math.round((subtotal * (descuentoPorcentaje || 0)) / 100)
+  const total = Math.max(0, subtotal - descuentoMonto)
 
   const handleCrearPedido = async () => {
     if (cart.length === 0) {
@@ -171,7 +146,8 @@ export default function PedidosPage() {
       cliente_nombre: selectedCliente?.nombre || 'Consumidor Final',
       items: cart,
       subtotal,
-      descuento,
+      descuento: descuentoMonto,
+      descuento_porcentaje: descuentoPorcentaje,
       total,
       metodo_pago: metodoPago,
       estado: estadoPedido,
@@ -182,13 +158,17 @@ export default function PedidosPage() {
     const { data, error } = await supabase.from('pedidos').insert(pedidoData).select().single()
 
     if (error) {
-      toast.error('Error al registrar pedido')
-      console.error(error)
+      toast.error('Error al registrar pedido: ' + error.message)
       return
     }
 
-    // Register cash movement if completed or paid
-    if (estadoPedido === 'terminado' || estadoPedido === 'entregado' || metodoPago !== 'cuenta_corriente') {
+    // Afectar stock automáticamente si el estado es aprobado/en_produccion/terminado/entregado
+    if (estadoPedido !== 'presupuesto' && estadoPedido !== 'cancelado') {
+      await descontarStockDePedido(cart)
+    }
+
+    // Movimiento de caja si el pago no es cta corriente
+    if (metodoPago !== 'cuenta_corriente' && estadoPedido !== 'presupuesto') {
       await supabase.from('caja_movimientos').insert({
         tipo: 'ingreso',
         monto: total,
@@ -201,21 +181,45 @@ export default function PedidosPage() {
     setTicketData(data)
     setShowTicket(true)
 
-    // Reset
+    // Reset form
     setCart([])
     setSelectedCliente(null)
-    setDescuento(0)
+    setDescuentoPorcentaje(0)
     setNotas('')
     setFechaEntrega('')
     loadData()
   }
 
-  const handleCambiarEstado = async (id: string, nuevoEstado: string) => {
+  const descontarStockDePedido = async (items: PedidoItem[]) => {
+    for (const item of items) {
+      if (item.no_afectar_stock) continue // Si está marcado "no afectar stock", omitir
+
+      // Buscar si hay un material en stock que coincida con el nombre del servicio o material especificado
+      const targetMaterialName = item.material || item.nombre
+      const match = stockItems.find(s =>
+        s.nombre.toLowerCase().includes(targetMaterialName.toLowerCase()) ||
+        targetMaterialName.toLowerCase().includes(s.nombre.toLowerCase())
+      )
+
+      if (match) {
+        const newCantidad = Math.max(0, Number(match.cantidad) - Number(item.cantidad))
+        await supabase.from('stock').update({ cantidad: newCantidad }).eq('id', match.id)
+      }
+    }
+  }
+
+  const handleCambiarEstado = async (id: string, nuevoEstado: string, pedido: Pedido) => {
     const { error } = await supabase.from('pedidos').update({ estado: nuevoEstado }).eq('id', id)
     if (error) {
       toast.error('Error al actualizar estado: ' + error.message)
       return
     }
+
+    // Descontar stock si pasa de presupuesto a producción/aprobado
+    if (nuevoEstado !== 'presupuesto' && nuevoEstado !== 'cancelado') {
+      await descontarStockDePedido(pedido.items || [])
+    }
+
     toast.success(`Estado actualizado a ${nuevoEstado}`)
     loadData()
   }
@@ -228,6 +232,38 @@ export default function PedidosPage() {
       return
     }
     toast.success(`Pedido #${numero} eliminado`)
+    loadData()
+  }
+
+  const openQuickClientModal = (defaultName = '') => {
+    setQuickClientForm({
+      nombre: defaultName,
+      telefono: '',
+      email: '',
+      rut: '',
+      tipo: 'regular',
+    })
+    setShowQuickClientModal(true)
+  }
+
+  const handleCrearQuickCliente = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!quickClientForm.nombre.trim()) {
+      toast.error('El nombre del cliente es obligatorio')
+      return
+    }
+
+    const { data, error } = await supabase.from('clientes').insert(quickClientForm).select().single()
+    if (error) {
+      toast.error('Error al guardar cliente: ' + error.message)
+      return
+    }
+
+    toast.success(`Cliente ${data.nombre} creado`)
+    setSelectedCliente(data)
+    setClienteSearch('')
+    setShowClienteDropdown(false)
+    setShowQuickClientModal(false)
     loadData()
   }
 
@@ -244,10 +280,15 @@ export default function PedidosPage() {
     return p.estado === historialFilter
   })
 
-  const filteredClientes = clientes.filter(c =>
-    c.nombre.toLowerCase().includes(clienteSearch.toLowerCase()) ||
-    c.telefono?.toLowerCase().includes(clienteSearch.toLowerCase())
-  )
+  // Búsqueda de clientes por Nombre, Teléfono o RUT
+  const filteredClientes = clientes.filter(c => {
+    const q = clienteSearch.toLowerCase()
+    return (
+      c.nombre.toLowerCase().includes(q) ||
+      c.telefono?.toLowerCase().includes(q) ||
+      c.rut?.toLowerCase().includes(q)
+    )
+  })
 
   if (loading) return <div className="spinner" style={{ margin: '50px auto' }} />
 
@@ -317,10 +358,16 @@ export default function PedidosPage() {
                       cursor: 'pointer',
                       transition: 'all 0.15s',
                       border: '1px solid var(--border)',
+                      position: 'relative'
                     }}
                   >
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-                      {srv.categoria}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
+                        {srv.categoria}
+                      </span>
+                      {srv.es_tercerizado && (
+                        <span className="badge badge-warning" style={{ fontSize: 9 }}>Tercerizado</span>
+                      )}
                     </div>
                     <div style={{ fontWeight: 700, fontSize: 14, marginTop: 2, marginBottom: 4 }}>
                       {srv.nombre}
@@ -360,7 +407,7 @@ export default function PedidosPage() {
                 </select>
               </div>
 
-              {/* Client selector */}
+              {/* Client selector (Search by Name, Phone or RUT) */}
               <div className="form-group" style={{ position: 'relative', marginBottom: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                   <label style={{ margin: 0 }}>Cliente</label>
@@ -375,8 +422,8 @@ export default function PedidosPage() {
                 </div>
                 <input
                   className="input"
-                  placeholder="Buscar o escribir cliente..."
-                  value={selectedCliente ? selectedCliente.nombre : clienteSearch}
+                  placeholder="Buscar por Nombre, Teléfono o RUT..."
+                  value={selectedCliente ? `${selectedCliente.nombre} ${selectedCliente.rut ? `(RUT: ${selectedCliente.rut})` : ''}` : clienteSearch}
                   onChange={e => {
                     setClienteSearch(e.target.value)
                     setSelectedCliente(null)
@@ -412,7 +459,7 @@ export default function PedidosPage() {
                         <Plus size={14} /> Crear "{clienteSearch}" como cliente nuevo
                       </div>
                     )}
-                    {filteredClientes.slice(0, 5).map(c => (
+                    {filteredClientes.slice(0, 6).map(c => (
                       <div
                         key={c.id}
                         onClick={() => {
@@ -422,10 +469,13 @@ export default function PedidosPage() {
                         }}
                         style={{
                           padding: '8px 12px', borderBottom: '1px solid var(--border)',
-                          cursor: 'pointer', fontSize: 13, display: 'flex', justifyContent: 'space-between'
+                          cursor: 'pointer', fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                         }}
                       >
-                        <strong>{c.nombre}</strong>
+                        <div>
+                          <strong>{c.nombre}</strong>
+                          {c.rut && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>RUT: {c.rut}</div>}
+                        </div>
                         <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{c.telefono || c.tipo}</span>
                       </div>
                     ))}
@@ -454,9 +504,14 @@ export default function PedidosPage() {
                           <span>{item.nombre}</span>
                           <span style={{ color: 'var(--accent)' }}>{formatCurrency(item.subtotal)}</span>
                         </div>
-                        {(item.medida || item.material || item.acabado) && (
+                        {(item.medida || item.material || item.acabado || item.no_afectar_stock) && (
                           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                            {[item.medida, item.material, item.acabado].filter(Boolean).join(' • ')}
+                            {[
+                              item.medida,
+                              item.material,
+                              item.acabado,
+                              item.no_afectar_stock ? '🚫 No afecta stock' : null
+                            ].filter(Boolean).join(' • ')}
                           </div>
                         )}
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
@@ -488,16 +543,16 @@ export default function PedidosPage() {
                 />
               </div>
 
-              {/* Descuento & Notas */}
+              {/* Descuento en Porcentaje (%) & Forma de Pago */}
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                 <div style={{ flex: 1 }}>
-                  <label>Descuento ($)</label>
+                  <label>Descuento (%)</label>
                   <input
                     className="input"
                     type="number"
-                    value={descuento === 0 ? '' : descuento}
-                    placeholder="0"
-                    onChange={e => setDescuento(e.target.value === '' ? 0 : Number(e.target.value))}
+                    placeholder="0%"
+                    value={descuentoPorcentaje === 0 ? '' : descuentoPorcentaje}
+                    onChange={e => setDescuentoPorcentaje(e.target.value === '' ? 0 : Math.min(100, Math.max(0, Number(e.target.value))))}
                   />
                 </div>
                 <div style={{ flex: 1 }}>
@@ -517,10 +572,10 @@ export default function PedidosPage() {
                   <span>Subtotal</span>
                   <span>{formatCurrency(subtotal)}</span>
                 </div>
-                {descuento > 0 && (
+                {descuentoPorcentaje > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--danger)' }}>
-                    <span>Descuento</span>
-                    <span>-{formatCurrency(descuento)}</span>
+                    <span>Descuento ({descuentoPorcentaje}%)</span>
+                    <span>-{formatCurrency(descuentoMonto)}</span>
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 18, marginTop: 4 }}>
@@ -584,7 +639,7 @@ export default function PedidosPage() {
                           className="input"
                           style={{ padding: '3px 8px', fontSize: 12, height: 'auto', width: 'auto' }}
                           value={p.estado}
-                          onChange={e => handleCambiarEstado(p.id, e.target.value)}
+                          onChange={e => handleCambiarEstado(p.id, e.target.value, p)}
                         >
                           {ESTADOS_PEDIDO.map(est => (
                             <option key={est.value} value={est.value}>{est.label}</option>
@@ -644,8 +699,8 @@ export default function PedidosPage() {
                     <input
                       className="input"
                       type="number"
-                      value={itemCantidad === 0 ? '' : itemCantidad}
                       placeholder="0"
+                      value={itemCantidad === 0 ? '' : itemCantidad}
                       onChange={e => setItemCantidad(e.target.value === '' ? 0 : Number(e.target.value))}
                     />
                   </div>
@@ -654,8 +709,8 @@ export default function PedidosPage() {
                     <input
                       className="input"
                       type="number"
-                      value={itemPrecioUnitario === 0 ? '' : itemPrecioUnitario}
                       placeholder="0.00"
+                      value={itemPrecioUnitario === 0 ? '' : itemPrecioUnitario}
                       onChange={e => setItemPrecioUnitario(e.target.value === '' ? 0 : Number(e.target.value))}
                     />
                   </div>
@@ -691,6 +746,24 @@ export default function PedidosPage() {
                   />
                 </div>
 
+                {/* Checkbox: No Afectar Stock */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                  background: 'var(--bg-hover)', borderRadius: 8, border: '1px solid var(--border)',
+                  marginBottom: 14
+                }}>
+                  <input
+                    type="checkbox"
+                    id="no_stock"
+                    checked={itemNoAfectarStock}
+                    onChange={e => setItemNoAfectarStock(e.target.checked)}
+                    style={{ width: 16, height: 16, cursor: 'pointer' }}
+                  />
+                  <label htmlFor="no_stock" style={{ margin: 0, cursor: 'pointer', textTransform: 'none', fontSize: 13, fontWeight: 600 }}>
+                    🚫 No afectar stock de inventario para este trabajo
+                  </label>
+                </div>
+
                 <div style={{ background: 'var(--bg-hover)', padding: 12, borderRadius: 8, textAlign: 'right' }}>
                   <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Subtotal calculado: </span>
                   <strong style={{ fontSize: 16, color: 'var(--accent)' }}>{formatCurrency(itemCantidad * itemPrecioUnitario)}</strong>
@@ -704,27 +777,6 @@ export default function PedidosPage() {
           </div>
         )}
 
-        {/* Ticket Modal */}
-        {showTicket && ticketData && (
-          <TicketImpresion
-            ticket={{
-              numero: ticketData.numero,
-              fecha: new Date(ticketData.created_at || new Date()),
-              items: (Array.isArray(ticketData.items) ? ticketData.items : []).map((item: any) => ({
-                nombre: item.nombre,
-                cantidad: item.cantidad,
-                precio: item.precio || item.precio_unitario || 0,
-              })),
-              subtotal: ticketData.subtotal,
-              descuento: ticketData.descuento || 0,
-              total: ticketData.total,
-              metodoPago: ticketData.metodo_pago || 'efectivo',
-              clienteNombre: ticketData.cliente_nombre,
-              notas: ticketData.notas,
-            }}
-            onClose={() => setShowTicket(false)}
-          />
-        )}
         {/* Quick Client Modal */}
         {showQuickClientModal && (
           <div className="modal-backdrop" onClick={() => setShowQuickClientModal(false)}>
@@ -801,6 +853,30 @@ export default function PedidosPage() {
               </form>
             </div>
           </div>
+        )}
+
+        {/* Ticket Modal */}
+        {showTicket && ticketData && (
+          <TicketImpresion
+            ticket={{
+              numero: ticketData.numero,
+              fecha: new Date(ticketData.created_at || new Date()),
+              items: (Array.isArray(ticketData.items) ? ticketData.items : []).map((item: any) => ({
+                nombre: item.nombre,
+                cantidad: item.cantidad,
+                precio: item.precio || item.precio_unitario || 0,
+              })),
+              subtotal: ticketData.subtotal,
+              descuento: ticketData.descuento || 0,
+              descuentoPorcentaje: ticketData.descuento_porcentaje,
+              total: ticketData.total,
+              metodoPago: ticketData.metodo_pago || 'efectivo',
+              clienteNombre: ticketData.cliente_nombre,
+              clienteRut: clientes.find(c => c.id === ticketData.cliente_id || c.nombre === ticketData.cliente_nombre)?.rut,
+              notas: ticketData.notas,
+            }}
+            onClose={() => setShowTicket(false)}
+          />
         )}
       </main>
     </>

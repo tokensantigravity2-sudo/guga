@@ -8,9 +8,11 @@ export interface TicketData {
   items: { nombre: string; cantidad: number; precio?: number; precio_unitario?: number; subtotal?: number }[];
   subtotal: number;
   descuento: number;
+  descuentoPorcentaje?: number;
   total: number;
   metodoPago: string;
   clienteNombre?: string;
+  clienteRut?: string;
   notas?: string;
 }
 
@@ -22,7 +24,8 @@ interface TicketImpresionProps {
 const METODO_LABEL: Record<string, string> = {
   efectivo: 'Efectivo',
   tarjeta: 'Tarjeta',
-  transferencia: 'Transferencia'
+  transferencia: 'Transferencia',
+  cuenta_corriente: 'Cta. Corriente'
 };
 
 export default function TicketImpresion({ ticket, onClose }: TicketImpresionProps) {
@@ -61,6 +64,7 @@ export default function TicketImpresion({ ticket, onClose }: TicketImpresionProp
             <div>Pedido: ${ticket.numero}</div>
             <div>Fecha: ${ticket.fecha.toLocaleString()}</div>
             ${ticket.clienteNombre ? `<div>Cliente: ${ticket.clienteNombre}</div>` : ''}
+            ${ticket.clienteRut ? `<div class="bold">RUT: ${ticket.clienteRut}</div>` : ''}
             <div>Pago: ${METODO_LABEL[ticket.metodoPago] || ticket.metodoPago}</div>
             <div class="separator"></div>
             <div class="row bold">
@@ -73,7 +77,7 @@ export default function TicketImpresion({ ticket, onClose }: TicketImpresionProp
               <div class="row">
                 <span style="flex:2"></span>
                 <span style="flex:1;text-align:center">${item.cantidad}</span>
-                <span style="flex:1;text-align:right">${(item.precio || item.precio_unitario || 0).toFixed(2)}</span>
+                <span style="flex:1;text-align:right">$${(item.precio || item.precio_unitario || 0).toFixed(2)}</span>
               </div>
             `).join('')}
             <div class="separator"></div>
@@ -83,7 +87,7 @@ export default function TicketImpresion({ ticket, onClose }: TicketImpresionProp
             </div>
             ${ticket.descuento > 0 ? `
               <div class="row">
-                <span>Descuento:</span>
+                <span>Desc. ${ticket.descuentoPorcentaje ? `(${ticket.descuentoPorcentaje}%)` : ''}:</span>
                 <span>-$${ticket.descuento.toFixed(2)}</span>
               </div>
             ` : ''}
@@ -150,7 +154,7 @@ export default function TicketImpresion({ ticket, onClose }: TicketImpresionProp
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
           <div 
             style={{
-              width: '180px',
+              width: '190px',
               border: '1px solid #e5e7eb',
               padding: '16px',
               fontFamily: 'monospace',
@@ -166,6 +170,7 @@ export default function TicketImpresion({ ticket, onClose }: TicketImpresionProp
             <div>Pedido: {ticket.numero}</div>
             <div>Fecha: {ticket.fecha.toLocaleDateString()}</div>
             {ticket.clienteNombre && <div>Cliente: {ticket.clienteNombre}</div>}
+            {ticket.clienteRut && <div style={{ fontWeight: 'bold' }}>RUT: {ticket.clienteRut}</div>}
             <div>Pago: {METODO_LABEL[ticket.metodoPago] || ticket.metodoPago}</div>
             <div style={{ borderTop: '1px dashed #d1d5db', margin: '8px 0' }}></div>
             <div style={{ display: 'flex', fontWeight: 'bold' }}>
@@ -190,7 +195,7 @@ export default function TicketImpresion({ ticket, onClose }: TicketImpresionProp
             </div>
             {ticket.descuento > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Descuento:</span>
+                <span>Desc. {ticket.descuentoPorcentaje ? `(${ticket.descuentoPorcentaje}%)` : ''}:</span>
                 <span>-${ticket.descuento.toFixed(2)}</span>
               </div>
             )}
@@ -230,9 +235,9 @@ export default function TicketImpresion({ ticket, onClose }: TicketImpresionProp
               padding: '8px 16px',
               borderRadius: '6px',
               border: 'none',
-              background: '#0ea5e9', // Cyan
+              background: '#149b8e',
               color: '#fff',
-              fontWeight: 500,
+              fontWeight: 600,
               cursor: 'pointer'
             }}
           >

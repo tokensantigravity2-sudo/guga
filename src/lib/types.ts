@@ -20,6 +20,9 @@ export interface Servicio {
   tiempo_estimado?: string
   disponible?: boolean
   imagen_url?: string
+  es_tercerizado?: boolean
+  proveedor_tercerizado_id?: string
+  costo_tercerizado?: number
   created_at?: string
 }
 
@@ -32,6 +35,7 @@ export interface PedidoItem {
   medida?: string
   material?: string
   acabado?: string
+  no_afectar_stock?: boolean
 }
 
 export interface Pedido {
@@ -42,6 +46,7 @@ export interface Pedido {
   items: PedidoItem[]
   subtotal: number
   descuento?: number
+  descuento_porcentaje?: number
   total: number
   metodo_pago?: string
   estado?: 'presupuesto' | 'aprobado' | 'en_produccion' | 'terminado' | 'entregado' | 'cancelado'
@@ -49,6 +54,14 @@ export interface Pedido {
   notas?: string
   archivo_url?: string
   created_at?: string
+}
+
+export interface ItemListaPrecio {
+  id?: string
+  producto: string
+  precio: number
+  unidad?: string
+  notas?: string
 }
 
 export interface Gasto {
@@ -59,6 +72,8 @@ export interface Gasto {
   fecha?: string
   proveedor_id?: string
   notas?: string
+  estado_pago?: 'pagado' | 'fiado'
+  fecha_vencimiento?: string
   created_at?: string
 }
 
@@ -70,6 +85,8 @@ export interface Proveedor {
   direccion?: string
   rubro?: string
   notas?: string
+  es_tercerizado?: boolean
+  lista_precios?: ItemListaPrecio[]
   created_at?: string
 }
 
