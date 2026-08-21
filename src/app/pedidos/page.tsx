@@ -8,7 +8,7 @@ import { formatCurrency, formatDateTime, generateNumeroPedido, ESTADOS_PEDIDO } 
 import {
   Plus, Minus, ShoppingCart, Search, X, Trash2,
   CreditCard, Banknote, ArrowLeftRight, Printer,
-  Check, FileText, Calendar, Filter, UserCheck, ShieldAlert
+  Check, FileText, Calendar, Filter, UserCheck, ShieldAlert, Sparkles
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import TicketImpresion from '@/components/TicketImpresion'
@@ -37,6 +37,7 @@ export default function PedidosPage() {
   // Item customization modal
   const [showItemModal, setShowItemModal] = useState(false)
   const [selectedServicio, setSelectedServicio] = useState<Servicio | null>(null)
+  const [itemCustomNombre, setItemCustomNombre] = useState('')
   const [itemMedida, setItemMedida] = useState('')
   const [itemMaterial, setItemMaterial] = useState('')
   const [itemAcabado, setItemAcabado] = useState('')
@@ -82,6 +83,7 @@ export default function PedidosPage() {
 
   const openAddItemModal = (servicio: Servicio) => {
     setSelectedServicio(servicio)
+    setItemCustomNombre(servicio.nombre)
     setItemPrecioUnitario(Number(servicio.precio_base))
     setItemCantidad(100)
     setItemMedida('')
@@ -91,12 +93,33 @@ export default function PedidosPage() {
     setShowItemModal(true)
   }
 
+  const openAddCustomItemModal = () => {
+    setSelectedServicio(null)
+    setItemCustomNombre('')
+    setItemPrecioUnitario(0)
+    setItemCantidad(1)
+    setItemMedida('')
+    setItemMaterial('')
+    setItemAcabado('')
+    setItemNoAfectarStock(true)
+    setShowItemModal(true)
+  }
+
   const addItemToCart = () => {
-    if (!selectedServicio) return
+    const nombreFinal = selectedServicio ? selectedServicio.nombre : itemCustomNombre.trim()
+    if (!nombreFinal) {
+      toast.error('El nombre del trabajo es obligatorio')
+      return
+    }
+    if (itemCantidad <= 0 || itemPrecioUnitario <= 0) {
+      toast.error('Completá la cantidad y precio mayor a 0')
+      return
+    }
+
     const subtotal = itemCantidad * itemPrecioUnitario
     const newItem: PedidoItem = {
-      producto_id: selectedServicio.id,
-      nombre: selectedServicio.nombre,
+      producto_id: selectedServicio?.id || undefined,
+      nombre: nombreFinal,
       cantidad: itemCantidad,
       precio_unitario: itemPrecioUnitario,
       subtotal,
@@ -108,7 +131,7 @@ export default function PedidosPage() {
 
     setCart(prev => [...prev, newItem])
     setShowItemModal(false)
-    toast.success(`${selectedServicio.nombre} agregado al pedido`)
+    toast.success(`${nombreFinal} agregado al pedido`)
   }
 
   const updateCartQuantity = (index: number, delta: number) => {
@@ -135,7 +158,7 @@ export default function PedidosPage() {
 
   const handleCrearPedido = async () => {
     if (cart.length === 0) {
-      toast.error('Agregá servicios al pedido')
+      toast.error('Agregá servicios o trabajos personalizados al pedido')
       return
     }
 
@@ -177,7 +200,7 @@ export default function PedidosPage() {
       })
     }
 
-    toast.success('¡Pedido registrado con éxito!')
+    toast.success('¡Pedido/Presupuesto registrado con éxito!')
     setTicketData(data)
     setShowTicket(true)
 
@@ -194,7 +217,6 @@ export default function PedidosPage() {
     for (const item of items) {
       if (item.no_afectar_stock) continue // Si está marcado "no afectar stock", omitir
 
-      // Buscar si hay un material en stock que coincida con el nombre del servicio o material especificado
       const targetMaterialName = item.material || item.nombre
       const match = stockItems.find(s =>
         s.nombre.toLowerCase().includes(targetMaterialName.toLowerCase()) ||
@@ -280,7 +302,6 @@ export default function PedidosPage() {
     return p.estado === historialFilter
   })
 
-  // Búsqueda de clientes por Nombre, Teléfono o RUT
   const filteredClientes = clientes.filter(c => {
     const q = clienteSearch.toLowerCase()
     return (
@@ -294,7 +315,7 @@ export default function PedidosPage() {
 
   return (
     <>
-      <Header title="Pedidos & Presupuestos" subtitle="Gestión de trabajos de imprenta" />
+      <Header title="Pedidos & Presupuestos" subtitle="Gestión de trabajos de imprenta estándar y personalizados a medida" />
       <main style={{ padding: '28px', flex: 1 }}>
 
         {/* Tabs */}
@@ -318,18 +339,36 @@ export default function PedidosPage() {
 
             {/* Catalog list */}
             <div>
-              {/* Filters */}
-              <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+              {/* Top Controls: Search + Botón Trabajo Personalizado A Medida */}
+              <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
                 <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
                   <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                   <input
                     className="input"
-                    placeholder="Buscar servicio..."
+                    placeholder="Buscar producto en catálogo..."
                     value={productSearch}
                     onChange={e => setProductSearch(e.target.value)}
                     style={{ paddingLeft: 34 }}
                   />
                 </div>
+
+                {/* BOTÓN TRABAJO PERSONALIZADO A MEDIDA */}
+                <button
+                  className="btn"
+                  onClick={openAddCustomItemModal}
+                  style={{
+                    background: 'linear-gradient(135deg, #149b8e 0%, #f59e0b 100%)',
+                    color: 'white',
+                    fontWeight: 700,
+                    boxShadow: '0 4px 12px rgba(20, 155, 142, 0.25)',
+                  }}
+                >
+                  <Sparkles size={15} /> ➕ Trabajo Especial / A Medida
+                </button>
+              </div>
+
+              {/* Category Filter Chips */}
+              <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
                 <button
                   className={`btn btn-sm ${!categoriaFilter ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setCategoriaFilter('')}
@@ -349,6 +388,29 @@ export default function PedidosPage() {
 
               {/* Services Grid */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+
+                {/* Card para crear Trabajo a Medida rápido */}
+                <div
+                  className="card"
+                  onClick={openAddCustomItemModal}
+                  style={{
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                    border: '2px dashed var(--accent)',
+                    background: 'rgba(20, 155, 142, 0.04)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    textAlign: 'center',
+                    padding: 20
+                  }}
+                >
+                  <Sparkles size={24} style={{ color: 'var(--accent)', marginBottom: 8 }} />
+                  <strong style={{ fontSize: 13, color: 'var(--text-primary)' }}>Trabajo Personalizado</strong>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Especificaciones únicas a medida</span>
+                </div>
+
                 {filteredServicios.map(srv => (
                   <div
                     key={srv.id}
@@ -488,7 +550,7 @@ export default function PedidosPage() {
                 {cart.length === 0 ? (
                   <div className="empty-state" style={{ padding: '24px 0' }}>
                     <ShoppingCart size={24} />
-                    <p style={{ fontSize: 12 }}>Haz clic en un servicio para agregarlo</p>
+                    <p style={{ fontSize: 12 }}>Seleccioná un producto o hacé clic en "Trabajo Especial"</p>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -519,8 +581,8 @@ export default function PedidosPage() {
                             {item.cantidad} u × ${item.precio_unitario}
                           </span>
                           <div style={{ display: 'flex', gap: 4 }}>
-                            <button className="btn btn-sm btn-ghost" style={{ padding: '2px 6px' }} onClick={() => updateCartQuantity(index, -10)}>-</button>
-                            <button className="btn btn-sm btn-ghost" style={{ padding: '2px 6px' }} onClick={() => updateCartQuantity(index, 10)}>+</button>
+                            <button className="btn btn-sm btn-ghost" style={{ padding: '2px 6px' }} onClick={() => updateCartQuantity(index, -1)}>-</button>
+                            <button className="btn btn-sm btn-ghost" style={{ padding: '2px 6px' }} onClick={() => updateCartQuantity(index, 1)}>+</button>
                             <button className="btn btn-sm btn-ghost" style={{ padding: '2px 6px', color: 'var(--danger)' }} onClick={() => removeFromCart(index)}>
                               <Trash2 size={12} />
                             </button>
@@ -682,20 +744,40 @@ export default function PedidosPage() {
         )}
 
         {/* Item customization modal */}
-        {showItemModal && selectedServicio && (
+        {showItemModal && (
           <div className="modal-backdrop" onClick={() => setShowItemModal(false)}>
             <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 450 }}>
               <div className="modal-header">
                 <div>
-                  <h2 style={{ fontSize: 16, fontWeight: 700 }}>Personalizar Servicio</h2>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>{selectedServicio.nombre}</p>
+                  <h2 style={{ fontSize: 16, fontWeight: 700 }}>
+                    {selectedServicio ? `Personalizar: ${selectedServicio.nombre}` : '✨ Trabajo Especial / A Medida'}
+                  </h2>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    {selectedServicio ? selectedServicio.categoria : 'Producto o servicio personalizado fuera de catálogo'}
+                  </p>
                 </div>
                 <button className="btn btn-ghost btn-sm" onClick={() => setShowItemModal(false)}>✕</button>
               </div>
               <div className="modal-body">
+
+                {/* Si no proviene del catálogo, se puede escribir el nombre exacto */}
+                {!selectedServicio && (
+                  <div className="form-group" style={{ marginBottom: 12 }}>
+                    <label>Nombre del Trabajo / Producto *</label>
+                    <input
+                      className="input"
+                      placeholder="ej. Cartel Corpóreo 200x80cm / Folleto especial a medida"
+                      value={itemCustomNombre}
+                      onChange={e => setItemCustomNombre(e.target.value)}
+                      autoFocus
+                      required
+                    />
+                  </div>
+                )}
+
                 <div className="form-grid">
                   <div className="form-group">
-                    <label>Cantidad ({selectedServicio.unidad || 'u'})</label>
+                    <label>Cantidad ({selectedServicio?.unidad || 'unidades'}) *</label>
                     <input
                       className="input"
                       type="number"
@@ -705,7 +787,7 @@ export default function PedidosPage() {
                     />
                   </div>
                   <div className="form-group">
-                    <label>Precio Unitario ($)</label>
+                    <label>Precio Unitario ($) *</label>
                     <input
                       className="input"
                       type="number"
