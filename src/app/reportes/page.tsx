@@ -4,11 +4,11 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { formatCurrency, formatDate } from '@/lib/helpers'
-import { Pedido, Gasto, StockItem, Cliente } from '@/lib/types'
+import { Pedido, Gasto, StockItem, Cliente, CajaMovimiento } from '@/lib/types'
 import {
   BarChart3, TrendingUp, TrendingDown, DollarSign, ShoppingCart,
   PieChart as PieChartIcon, Percent, Boxes, Users, Calendar,
-  ArrowUpRight, ArrowDownRight, Layers, CreditCard, Filter
+  ArrowUpRight, ArrowDownRight, Layers, CreditCard, Filter, Wallet
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -62,6 +62,7 @@ export default function ReportesPage() {
   const [pedidosRaw, setPedidosRaw] = useState<Pedido[]>([])
   const [gastosRaw, setGastosRaw] = useState<Gasto[]>([])
   const [stockRaw, setStockRaw] = useState<StockItem[]>([])
+  const [cajaRaw, setCajaRaw] = useState<CajaMovimiento[]>([])
 
   // Aggregated states
   const [resumen, setResumen] = useState({
@@ -73,6 +74,7 @@ export default function ReportesPage() {
     ticketPromedio: 0,
     descuentos: 0,
     inventarioValor: 0,
+    cajaSaldo: 0,
   })
 
   const [mesesData, setMesesData] = useState<MesData[]>([])
@@ -89,13 +91,14 @@ export default function ReportesPage() {
     if (!loading) {
       procesarReportes()
     }
-  }, [periodo, customFrom, customTo, pedidosRaw, gastosRaw, stockRaw])
+  }, [periodo, customFrom, customTo, pedidosRaw, gastosRaw, stockRaw, cajaRaw])
 
   const loadRawData = async () => {
-    const [{ data: p, error: pErr }, { data: g, error: gErr }, { data: s }] = await Promise.all([
+    const [{ data: p, error: pErr }, { data: g, error: gErr }, { data: s }, { data: c }] = await Promise.all([
       supabase.from('pedidos').select('*').not('estado', 'eq', 'cancelado'),
       supabase.from('gastos').select('*'),
       supabase.from('stock').select('*'),
+      supabase.from('caja_movimientos').select('*'),
     ])
 
     if (pErr) toast.error('Error al cargar pedidos: ' + pErr.message)
@@ -104,6 +107,7 @@ export default function ReportesPage() {
     if (p) setPedidosRaw(p)
     if (g) setGastosRaw(g)
     if (s) setStockRaw(s)
+    if (c) setCajaRaw(c)
     setLoading(false)
   }
 
@@ -147,18 +151,44 @@ export default function ReportesPage() {
       return true
     })
 
+    // Filter caja movimientos by date
+    const cajaFiltrada = cajaRaw.filter(c => {
+      const fechaStr = c.fecha || c.created_at
+      if (!fechaStr) return false
+      const d = new Date(fechaStr)
+      if (startDate && d < startDate) return false
+      if (endDate && d > endDate) return false
+      return true
+    })
+
+    // Movimientos directos de caja (entradas que no vienen de un pedido con referencia)
+    const cajaIngresosDirectos = cajaFiltrada
+      .filter(c => c.tipo === 'ingreso' && !c.referencia_id)
+      .reduce((sum, c) => sum + Number(c.monto), 0)
+
+    const cajaSaldoTotal = cajaFiltrada.reduce((sum, c) => sum + (c.tipo === 'ingreso' ? Number(c.monto) : -Number(c.monto)), 0)
+
     // 1. Resumen Ejecutivo
-    const ingresos = pedidosFiltrados.reduce((sum, p) => sum + Number(p.total), 0)
+    const ingresosPedidos = pedidosFiltrados.reduce((sum, p) => sum + Number(p.total), 0)
+    const ingresosTotal = ingresosPedidos + cajaIngresosDirectos
     const gastos = gastosFiltrados.reduce((sum, g) => sum + Number(g.monto), 0)
-    const ganancia = ingresos - gastos
-    const margen = ingresos > 0 ? Math.round((ganancia / ingresos) * 100) : 0
+    const ganancia = ingresosTotal - gastos
+    const margen = ingresosTotal > 0 ? Math.round((ganancia / ingresosTotal) * 100) : 0
     const pedidosCount = pedidosFiltrados.length
-    const ticketPromedio = pedidosCount > 0 ? Math.round(ingresos / pedidosCount) : 0
+    const ticketPromedio = pedidosCount > 0 ? Math.round(ingresosPedidos / pedidosCount) : 0
     const descuentos = pedidosFiltrados.reduce((sum, p) => sum + Number(p.descuento || 0), 0)
     const inventarioValor = stockRaw.reduce((sum, s) => sum + (Number(s.cantidad) * Number(s.costo_unitario || 0)), 0)
 
     setResumen({
-      ingresos, gastos, ganancia, margen, pedidosCount, ticketPromedio, descuentos, inventarioValor
+      ingresos: ingresosTotal,
+      gastos,
+      ganancia,
+      margen,
+      pedidosCount,
+      ticketPromedio,
+      descuentos,
+      inventarioValor,
+      cajaSaldo: cajaSaldoTotal,
     })
 
     // 2. Gráfico por Meses (Comparativo Ingresos vs Gastos)
@@ -170,6 +200,15 @@ export default function ReportesPage() {
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
       const prev = mesesMap.get(key) || { ingresos: 0, gastos: 0, count: 0 }
       mesesMap.set(key, { ...prev, ingresos: prev.ingresos + Number(p.total), count: prev.count + 1 })
+    })
+
+    cajaFiltrada.filter(c => c.tipo === 'ingreso' && !c.referencia_id).forEach(c => {
+      const fechaStr = c.fecha || c.created_at
+      if (!fechaStr) return
+      const date = new Date(fechaStr)
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      const prev = mesesMap.get(key) || { ingresos: 0, gastos: 0, count: 0 }
+      mesesMap.set(key, { ...prev, ingresos: prev.ingresos + Number(c.monto) })
     })
 
     gastosFiltrados.forEach(g => {
@@ -234,7 +273,7 @@ export default function ReportesPage() {
         nombre,
         cantidad: val.cantidad,
         total: val.total,
-        porcentaje: ingresos > 0 ? Math.round((val.total / ingresos) * 100) : 0,
+        porcentaje: ingresosPedidos > 0 ? Math.round((val.total / ingresosPedidos) * 100) : 0,
       }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 10)
@@ -263,6 +302,11 @@ export default function ReportesPage() {
       pagoMap.set(key, (pagoMap.get(key) || 0) + Number(p.total))
     })
 
+    cajaFiltrada.filter(c => c.tipo === 'ingreso' && !c.referencia_id).forEach(c => {
+      const key = c.metodo_pago ? c.metodo_pago.replace('_', ' ').toUpperCase() : 'EFECTIVO'
+      pagoMap.set(key, (pagoMap.get(key) || 0) + Number(c.monto))
+    })
+
     const pagoList: MetodoPagoData[] = Array.from(pagoMap.entries())
       .map(([nombre, total]) => ({ nombre, total }))
       .sort((a, b) => b.total - a.total)
@@ -274,7 +318,7 @@ export default function ReportesPage() {
 
   return (
     <>
-      <Header title="Reportes & Análisis Financiero" subtitle="Estadísticas de facturación, egresos y servicios más vendidos" />
+      <Header title="Reportes & Análisis Financiero" subtitle="Estadísticas de facturación, caja diaria, egresos y servicios más vendidos" />
       <main style={{ padding: '28px', flex: 1 }}>
 
         {/* Filtros de Período y Fecha Personalizable */}
@@ -368,10 +412,10 @@ export default function ReportesPage() {
               <TrendingUp size={22} />
             </div>
             <div>
-              <div className="stat-label">Facturación / Ingresos</div>
+              <div className="stat-label">Facturación / Ingresos Totales</div>
               <div className="stat-value" style={{ color: 'var(--success)' }}>{formatCurrency(resumen.ingresos)}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                {resumen.pedidosCount} pedido(s) cobrados
+                Pedidos + Movimientos de Caja
               </div>
             </div>
           </div>
@@ -384,7 +428,7 @@ export default function ReportesPage() {
               <div className="stat-label">Egresos / Gastos</div>
               <div className="stat-value" style={{ color: 'var(--danger)' }}>{formatCurrency(resumen.gastos)}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                Insumos, personal y servicios
+                Insumos, personal y salidas
               </div>
             </div>
           </div>
@@ -409,13 +453,15 @@ export default function ReportesPage() {
 
           <div className="stat-card">
             <div className="stat-icon" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>
-              <Percent size={22} />
+              <Wallet size={22} />
             </div>
             <div>
-              <div className="stat-label">Margen de Ganancia</div>
-              <div className="stat-value" style={{ color: 'var(--accent)' }}>{resumen.margen}%</div>
+              <div className="stat-label">Saldo Neto de Caja</div>
+              <div className="stat-value" style={{ color: resumen.cajaSaldo >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                {formatCurrency(resumen.cajaSaldo)}
+              </div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                Rentabilidad bruta global
+                Flujo neto en caja diaria
               </div>
             </div>
           </div>
@@ -428,7 +474,7 @@ export default function ReportesPage() {
               <div className="stat-label">Ticket Promedio</div>
               <div className="stat-value">{formatCurrency(resumen.ticketPromedio)}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                Promedio por cliente/pedido
+                Promedio por pedido
               </div>
             </div>
           </div>
@@ -454,7 +500,7 @@ export default function ReportesPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div>
                 <h3 style={{ fontSize: 16, fontWeight: 700 }}>📊 Evolución Financiera Mensual</h3>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Comparativa de Facturación vs Egresos</p>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Comparativa de Facturación + Caja vs Egresos</p>
               </div>
             </div>
 
@@ -469,7 +515,7 @@ export default function ReportesPage() {
                     contentStyle={{ background: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)' }}
                   />
                   <Legend />
-                  <Bar dataKey="ingresos" name="Ingresos ($)" fill="#149b8e" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="ingresos" name="Ingresos Totales ($)" fill="#149b8e" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="gastos" name="Gastos ($)" fill="#ef4444" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="ganancia" name="Ganancia Neta ($)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
                 </BarChart>
@@ -520,77 +566,6 @@ export default function ReportesPage() {
           </div>
         </div>
 
-        {/* Charts Row 2 */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 20, marginBottom: 24 }}>
-          {/* Top Servicios más Vendidos */}
-          <div className="card">
-            <div style={{ marginBottom: 16 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700 }}>🖨️ Top 10 Servicios de Imprenta</h3>
-              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Productos con mayor facturación en el período</p>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {topServicios.map((srv, index) => (
-                <div key={srv.nombre}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-                    <span>
-                      <strong style={{ color: 'var(--accent)' }}>#{index + 1}</strong> {srv.nombre}
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>({srv.cantidad} u)</span>
-                    </span>
-                    <strong>{formatCurrency(srv.total)} ({srv.porcentaje}%)</strong>
-                  </div>
-                  <div style={{ width: '100%', height: 7, background: 'var(--bg-hover)', borderRadius: 4, overflow: 'hidden' }}>
-                    <div style={{ width: `${srv.porcentaje}%`, height: '100%', background: COLORS[index % COLORS.length], borderRadius: 4 }} />
-                  </div>
-                </div>
-              ))}
-              {topServicios.length === 0 && (
-                <div className="empty-state">
-                  <BarChart3 size={32} />
-                  <p>Sin datos de servicios en este período</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Métodos de Pago & Top Clientes */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            <div className="card">
-              <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>💳 Formas de Pago Utilizadas</h3>
-              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>Preferencia de cobro de clientes</p>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {metodosPagoData.map(mp => (
-                  <div key={mp.nombre} style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '10px 12px', background: 'var(--bg-hover)', borderRadius: 8, border: '1px solid var(--border)'
-                  }}>
-                    <span style={{ fontWeight: 600, fontSize: 13 }}>{mp.nombre}</span>
-                    <strong style={{ color: 'var(--accent)', fontSize: 14 }}>{formatCurrency(mp.total)}</strong>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="card">
-              <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>👥 Top Clientes Históricos</h3>
-              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>Clientes con mayor volumen invertido</p>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {topClientes.slice(0, 5).map(c => (
-                  <div key={c.nombre} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
-                    <div>
-                      <strong>{c.nombre}</strong>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.pedidos} pedido(s)</div>
-                    </div>
-                    <strong style={{ color: 'var(--success)' }}>{formatCurrency(c.total)}</strong>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* Detailed Table */}
         <div className="card">
           <div className="section-title">📋 Resumen Tabular por Meses</div>
@@ -601,7 +576,7 @@ export default function ReportesPage() {
                 <tr>
                   <th>Mes / Período</th>
                   <th>Pedidos Cobrados</th>
-                  <th>Facturación / Ingresos</th>
+                  <th>Facturación + Caja</th>
                   <th>Gastos / Egresos</th>
                   <th>Ganancia Neta</th>
                   <th>Margen %</th>

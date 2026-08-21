@@ -4,10 +4,10 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { CajaMovimiento, Cliente } from '@/lib/types'
-import { formatCurrency, formatDateTime } from '@/lib/helpers'
+import { formatCurrency, formatDateTime, CATEGORIAS_GASTO } from '@/lib/helpers'
 import {
   Plus, ArrowUpCircle, ArrowDownCircle, Wallet, TrendingUp, TrendingDown,
-  Edit2, Trash2, User, CreditCard, Receipt, FileText, CheckCircle2, XCircle
+  Edit2, Trash2, User, CreditCard, Receipt, FileText, CheckCircle2, XCircle, Search, X
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -19,12 +19,17 @@ export default function CajaPage() {
   const [editingMov, setEditingMov] = useState<CajaMovimiento | null>(null)
   const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0])
 
+  // Search client state in modal
+  const [clienteSearch, setClienteSearch] = useState('')
+  const [showClienteDropdown, setShowClienteDropdown] = useState(false)
+  const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
+
   const [form, setForm] = useState({
     tipo: 'ingreso' as 'ingreso' | 'egreso',
     monto: 0,
     concepto: '',
-    cliente_id: '',
-    cliente_nombre: '',
+    categoria_egreso: 'Materiales',
+    otraCategoriaEgreso: '',
     metodo_pago: 'efectivo',
     facturado: false,
   })
@@ -60,14 +65,14 @@ export default function CajaPage() {
       return
     }
 
-    const selectedClientObj = clientes.find(c => c.id === form.cliente_id)
-    const clientNameFinal = selectedClientObj ? selectedClientObj.nombre : (form.cliente_nombre.trim() || 'Consumidor Final')
+    const clientNameFinal = selectedCliente ? selectedCliente.nombre : (clienteSearch.trim() || 'Consumidor Final')
+    const catEgresoFinal = form.categoria_egreso === 'OTRO' ? (form.otraCategoriaEgreso.trim() || 'Otros') : form.categoria_egreso
 
     const payload = {
       tipo: form.tipo,
       monto: Number(form.monto),
       concepto: form.concepto.trim(),
-      cliente_id: form.cliente_id || null,
+      cliente_id: selectedCliente?.id || null,
       cliente_nombre: clientNameFinal,
       metodo_pago: form.metodo_pago || 'efectivo',
       facturado: !!form.facturado,
@@ -77,16 +82,40 @@ export default function CajaPage() {
       const { error } = await supabase.from('caja_movimientos').update(payload).eq('id', editingMov.id)
       if (error) { toast.error('Error al actualizar movimiento: ' + error.message); return }
 
-      // Si tenía referencia de gasto y era egreso, actualizar gasto
+      // Si es un egreso con referencia de gasto, actualizar el gasto
       if (editingMov.referencia_id && form.tipo === 'egreso') {
-        await supabase.from('gastos').update({ monto: form.monto, concepto: form.concepto }).eq('id', editingMov.referencia_id)
+        await supabase.from('gastos').update({
+          monto: form.monto,
+          concepto: form.concepto,
+          categoria: catEgresoFinal,
+        }).eq('id', editingMov.referencia_id)
       }
 
       toast.success('Movimiento actualizado')
     } else {
-      const { error } = await supabase.from('caja_movimientos').insert(payload)
+      let refId: string | null = null
+
+      // Si es un egreso de caja, crear también el registro en gastos
+      if (form.tipo === 'egreso') {
+        const { data: newGasto } = await supabase.from('gastos').insert({
+          concepto: `Salida de Caja: ${form.concepto.trim()}`,
+          monto: Number(form.monto),
+          categoria: catEgresoFinal,
+          fecha: filterDate,
+          estado_pago: 'pagado',
+          notas: `Registrado desde Caja Diaria por cliente/proveedor: ${clientNameFinal}`
+        }).select().single()
+
+        if (newGasto) refId = newGasto.id
+      }
+
+      const { error } = await supabase.from('caja_movimientos').insert({
+        ...payload,
+        referencia_id: refId,
+      })
+
       if (error) { toast.error('Error al registrar movimiento: ' + error.message); return }
-      toast.success('Movimiento registrado en caja')
+      toast.success(form.tipo === 'ingreso' ? 'Entrada registrada en caja' : 'Salida de caja registrada y reflejada en Gastos')
     }
 
     closeModal()
@@ -106,12 +135,14 @@ export default function CajaPage() {
 
   const openNewModal = () => {
     setEditingMov(null)
+    setSelectedCliente(null)
+    setClienteSearch('')
     setForm({
       tipo: 'ingreso',
       monto: 0,
       concepto: '',
-      cliente_id: '',
-      cliente_nombre: '',
+      categoria_egreso: 'Materiales',
+      otraCategoriaEgreso: '',
       metodo_pago: 'efectivo',
       facturado: false,
     })
@@ -120,12 +151,15 @@ export default function CajaPage() {
 
   const openEditModal = (mov: CajaMovimiento) => {
     setEditingMov(mov)
+    const matchClient = clientes.find(c => c.id === mov.cliente_id || c.nombre === mov.cliente_nombre)
+    setSelectedCliente(matchClient || null)
+    setClienteSearch(mov.cliente_nombre || '')
     setForm({
       tipo: mov.tipo,
       monto: Number(mov.monto),
       concepto: mov.concepto || '',
-      cliente_id: mov.cliente_id || '',
-      cliente_nombre: mov.cliente_nombre || '',
+      categoria_egreso: 'Materiales',
+      otraCategoriaEgreso: '',
       metodo_pago: mov.metodo_pago || 'efectivo',
       facturado: !!mov.facturado,
     })
@@ -135,6 +169,8 @@ export default function CajaPage() {
   const closeModal = () => {
     setShowModal(false)
     setEditingMov(null)
+    setSelectedCliente(null)
+    setClienteSearch('')
   }
 
   const ingresos = movimientos.filter(m => m.tipo === 'ingreso').reduce((sum, m) => sum + Number(m.monto), 0)
@@ -147,6 +183,16 @@ export default function CajaPage() {
     transferencia: '🏦 Transferencia',
     cuenta_corriente: '📝 Cta. Corriente',
   }
+
+  // Búsqueda de clientes por Nombre, Teléfono o RUT
+  const filteredClientesModal = clientes.filter(c => {
+    const q = clienteSearch.toLowerCase()
+    return (
+      c.nombre.toLowerCase().includes(q) ||
+      c.telefono?.toLowerCase().includes(q) ||
+      c.rut?.toLowerCase().includes(q)
+    )
+  })
 
   if (loading) return <div className="spinner" style={{ margin: '50px auto' }} />
 
@@ -327,28 +373,106 @@ export default function CajaPage() {
                     </div>
                   </div>
 
-                  {/* Cliente / Empresa dropdown */}
-                  <div className="form-group">
-                    <label>Cliente / Empresa (Opcional)</label>
-                    <select
-                      className="input"
-                      value={form.cliente_id}
-                      onChange={e => {
-                        const cid = e.target.value
-                        const clt = clientes.find(c => c.id === cid)
-                        setForm({
-                          ...form,
-                          cliente_id: cid,
-                          cliente_nombre: clt ? clt.nombre : ''
-                        })
-                      }}
-                    >
-                      <option value="">Consumidor Final / Sin cliente registrado</option>
-                      {clientes.map(c => (
-                        <option key={c.id} value={c.id}>{c.nombre} {c.rut ? `(RUT: ${c.rut})` : ''}</option>
-                      ))}
-                    </select>
+                  {/* Search Bar for Client by RUT, Phone, or Name */}
+                  <div className="form-group" style={{ position: 'relative', marginBottom: 12 }}>
+                    <label style={{ marginBottom: 4 }}>Cliente / Empresa (Buscar por RUT, Teléfono o Nombre)</label>
+                    <div style={{ position: 'relative' }}>
+                      <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                      <input
+                        className="input"
+                        placeholder="Buscar por RUT, Teléfono o Nombre..."
+                        value={selectedCliente ? `${selectedCliente.nombre} ${selectedCliente.rut ? `(RUT: ${selectedCliente.rut})` : ''}` : clienteSearch}
+                        onChange={e => {
+                          setClienteSearch(e.target.value)
+                          setSelectedCliente(null)
+                          setShowClienteDropdown(true)
+                        }}
+                        onFocus={() => setShowClienteDropdown(true)}
+                        style={{ paddingLeft: 30 }}
+                      />
+                      {selectedCliente && (
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedCliente(null); setClienteSearch('') }}
+                          style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+
+                    {showClienteDropdown && (clienteSearch || filteredClientesModal.length > 0) && !selectedCliente && (
+                      <div style={{
+                        position: 'absolute', top: '100%', left: 0, right: 0,
+                        background: 'var(--bg-card)', border: '1px solid var(--border-light)',
+                        borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto',
+                        zIndex: 30, boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                      }}>
+                        <div
+                          onClick={() => {
+                            setSelectedCliente(null)
+                            setShowClienteDropdown(false)
+                          }}
+                          style={{
+                            padding: '8px 12px', borderBottom: '1px solid var(--border)',
+                            cursor: 'pointer', fontSize: 12.5, color: 'var(--text-muted)'
+                          }}
+                        >
+                          Consumidor Final / Sin cliente registrado
+                        </div>
+                        {filteredClientesModal.slice(0, 6).map(c => (
+                          <div
+                            key={c.id}
+                            onClick={() => {
+                              setSelectedCliente(c)
+                              setClienteSearch('')
+                              setShowClienteDropdown(false)
+                            }}
+                            style={{
+                              padding: '8px 12px', borderBottom: '1px solid var(--border)',
+                              cursor: 'pointer', fontSize: 12.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                            }}
+                          >
+                            <div>
+                              <strong>{c.nombre}</strong>
+                              {c.rut && <div style={{ fontSize: 11, color: 'var(--accent)' }}>RUT: {c.rut}</div>}
+                            </div>
+                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{c.telefono}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
+
+                  {/* Si es Salida / Egreso, seleccionar Motivo/Categoría igual que en Gastos */}
+                  {form.tipo === 'egreso' && (
+                    <div className="form-group" style={{ marginBottom: 12 }}>
+                      <label>Categoría / Motivo de Salida (se reflejará en Gastos) *</label>
+                      <select
+                        className="input"
+                        value={form.categoria_egreso}
+                        onChange={e => setForm({ ...form, categoria_egreso: e.target.value })}
+                      >
+                        {CATEGORIAS_GASTO.map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                        <option value="OTRO">➕ Otra Categoría Personalizada...</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {form.tipo === 'egreso' && form.categoria_egreso === 'OTRO' && (
+                    <div className="form-group" style={{ marginBottom: 12 }}>
+                      <label>Escribir Nueva Categoría de Egreso *</label>
+                      <input
+                        className="input"
+                        placeholder="ej. Pago Flete / Reparación Maquinaria"
+                        value={form.otraCategoriaEgreso}
+                        onChange={e => setForm({ ...form, otraCategoriaEgreso: e.target.value })}
+                        required
+                      />
+                    </div>
+                  )}
 
                   {/* Descripción / Concepto */}
                   <div className="form-group">
@@ -362,7 +486,7 @@ export default function CajaPage() {
                     />
                   </div>
 
-                  {/* Medio de Pago & Facturado */}
+                  {/* Medio de Pago & Monto */}
                   <div className="form-grid">
                     <div className="form-group">
                       <label>Medio de Pago</label>
