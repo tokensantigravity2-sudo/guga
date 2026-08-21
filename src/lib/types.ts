@@ -108,6 +108,10 @@ export interface CajaMovimiento {
   tipo: 'ingreso' | 'egreso'
   monto: number
   concepto?: string
+  cliente_id?: string
+  cliente_nombre?: string
+  metodo_pago?: string
+  facturado?: boolean
   referencia_id?: string
   fecha?: string
   created_at?: string
