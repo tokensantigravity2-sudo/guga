@@ -101,10 +101,17 @@ export default function ProveedoresPage() {
 
   const handleSavePriceList = async () => {
     if (!selectedProveedorPriceList) return
-    const { error } = await supabase
+    let { error } = await supabase
       .from('proveedores')
       .update({ lista_precios: priceList })
       .eq('id', selectedProveedorPriceList.id)
+
+    if (error && (error.message.includes('column') || error.message.includes('schema'))) {
+      // Si la columna lista_precios no existe en la BD, guardarlo en notas
+      const notasStr = `[LISTA_PRECIOS:${JSON.stringify(priceList)}]`
+      const res = await supabase.from('proveedores').update({ notas: notasStr }).eq('id', selectedProveedorPriceList.id)
+      error = res.error
+    }
 
     if (error) {
       toast.error('Error al guardar lista de precios: ' + error.message)
@@ -117,9 +124,9 @@ export default function ProveedoresPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.nombre.trim()) { toast.error('Nombre obligatorio'); return }
+    if (!form.nombre.trim()) { toast.error('El nombre es obligatorio'); return }
 
-    const payload = {
+    let payload: any = {
       nombre: form.nombre.trim(),
       telefono: form.telefono.trim() || null,
       email: form.email.trim() || null,
@@ -130,13 +137,35 @@ export default function ProveedoresPage() {
     }
 
     if (editingProveedor) {
-      const { error } = await supabase.from('proveedores').update(payload).eq('id', editingProveedor.id)
+      let { error } = await supabase.from('proveedores').update(payload).eq('id', editingProveedor.id)
+      
+      // Fallback si la columna es_tercerizado no existe en el schema de Supabase
+      if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
+        delete payload.es_tercerizado
+        if (form.es_tercerizado && !payload.rubro.includes('Tercerizado')) {
+          payload.rubro = `${payload.rubro} (Tercerizado)`
+        }
+        const res = await supabase.from('proveedores').update(payload).eq('id', editingProveedor.id)
+        error = res.error
+      }
+
       if (error) { toast.error('Error al actualizar proveedor: ' + error.message); return }
       toast.success('Proveedor actualizado')
     } else {
-      const { error } = await supabase.from('proveedores').insert(payload)
+      let { error } = await supabase.from('proveedores').insert(payload)
+
+      // Fallback si la columna es_tercerizado no existe en la BD
+      if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
+        delete payload.es_tercerizado
+        if (form.es_tercerizado && !payload.rubro.includes('Tercerizado')) {
+          payload.rubro = `${payload.rubro} (Tercerizado)`
+        }
+        const res = await supabase.from('proveedores').insert(payload)
+        error = res.error
+      }
+
       if (error) { toast.error('Error al crear proveedor: ' + error.message); return }
-      toast.success('Proveedor creado')
+      toast.success('Proveedor creado con éxito')
     }
 
     closeModal()
@@ -162,14 +191,15 @@ export default function ProveedoresPage() {
 
   const openEdit = (p: Proveedor) => {
     setEditingProveedor(p)
+    const isTerc = !!p.es_tercerizado || !!p.rubro?.includes('Tercerizado')
     setForm({
       nombre: p.nombre,
       telefono: p.telefono || '',
       email: p.email || '',
       direccion: p.direccion || '',
-      rubro: p.rubro || 'Papel',
+      rubro: p.rubro?.replace(' (Tercerizado)', '') || 'Papel',
       notas: p.notas || '',
-      es_tercerizado: !!p.es_tercerizado,
+      es_tercerizado: isTerc,
     })
     setShowModal(true)
   }
@@ -183,8 +213,9 @@ export default function ProveedoresPage() {
   const rubrosUnicos = [...new Set(proveedores.map(p => p.rubro).filter(Boolean))]
 
   const filtered = proveedores.filter(p => {
-    if (filterTipo === 'tercerizados' && !p.es_tercerizado) return false
-    if (filterTipo === 'insumos' && p.es_tercerizado) return false
+    const isTerc = p.es_tercerizado || p.rubro?.includes('Tercerizado')
+    if (filterTipo === 'tercerizados' && !isTerc) return false
+    if (filterTipo === 'insumos' && isTerc) return false
     if (filterRubro && p.rubro !== filterRubro) return false
     if (selectedProveedorDropdown && p.id !== selectedProveedorDropdown) return false
     return p.nombre.toLowerCase().includes(search.toLowerCase()) || p.rubro?.toLowerCase().includes(search.toLowerCase())
@@ -218,7 +249,7 @@ export default function ProveedoresPage() {
                 <option value="">📋 Seleccionar Proveedor (Lista Desplegable)...</option>
                 {proveedores.map(p => (
                   <option key={p.id} value={p.id}>
-                    {p.es_tercerizado ? '🏭' : '📦'} {p.nombre} ({p.rubro || 'General'})
+                    {(p.es_tercerizado || p.rubro?.includes('Tercerizado')) ? '🏭' : '📦'} {p.nombre} ({p.rubro || 'General'})
                   </option>
                 ))}
               </select>
@@ -292,68 +323,71 @@ export default function ProveedoresPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(p => (
-                <tr key={p.id}>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => openHistory(p)}>
-                      <div style={{
-                        width: 36, height: 36, borderRadius: 10,
-                        background: p.es_tercerizado ? 'var(--warning-muted)' : 'var(--info-muted)',
-                        color: p.es_tercerizado ? 'var(--warning)' : 'var(--info)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontWeight: 700, fontSize: 13, flexShrink: 0
-                      }}>
-                        {getInitials(p.nombre)}
+              {filtered.map(p => {
+                const isTerc = p.es_tercerizado || p.rubro?.includes('Tercerizado')
+                return (
+                  <tr key={p.id}>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => openHistory(p)}>
+                        <div style={{
+                          width: 36, height: 36, borderRadius: 10,
+                          background: isTerc ? 'var(--warning-muted)' : 'var(--info-muted)',
+                          color: isTerc ? 'var(--warning)' : 'var(--info)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontWeight: 700, fontSize: 13, flexShrink: 0
+                        }}>
+                          {getInitials(p.nombre)}
+                        </div>
+                        <div>
+                          <strong>{p.nombre}</strong>
+                          {isTerc && (
+                            <div style={{ fontSize: 11, color: 'var(--warning)', fontWeight: 600 }}>
+                              🏭 Servicio Tercerizado
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <strong>{p.nombre}</strong>
-                        {p.es_tercerizado && (
-                          <div style={{ fontSize: 11, color: 'var(--warning)', fontWeight: 600 }}>
-                            🏭 Servicio Tercerizado
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    {p.telefono && (
-                      <div style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Phone size={12} style={{ color: 'var(--text-muted)' }} /> {p.telefono}
-                      </div>
-                    )}
-                    {p.email && (
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Mail size={12} /> {p.email}
-                      </div>
-                    )}
-                  </td>
-                  <td><span className="badge badge-info">{p.rubro || 'General'}</span></td>
-                  <td>
-                    <button
-                      className="btn btn-sm btn-ghost"
-                      style={{ fontSize: 12, color: 'var(--accent)', gap: 4 }}
-                      onClick={() => openPriceList(p)}
-                    >
-                      <List size={13} /> {p.lista_precios?.length || 0} precios
-                    </button>
-                  </td>
-                  <td><strong style={{ color: 'var(--danger)' }}>{formatCurrency(proveedorStats.get(p.id) || 0)}</strong></td>
-                  <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{p.direccion || '—'}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button className="btn btn-sm btn-ghost" onClick={() => openHistory(p)} title="Ver Historial de Compras">
-                        <FileText size={13} />
+                    </td>
+                    <td>
+                      {p.telefono && (
+                        <div style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Phone size={12} style={{ color: 'var(--text-muted)' }} /> {p.telefono}
+                        </div>
+                      )}
+                      {p.email && (
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Mail size={12} /> {p.email}
+                        </div>
+                      )}
+                    </td>
+                    <td><span className="badge badge-info">{p.rubro || 'General'}</span></td>
+                    <td>
+                      <button
+                        className="btn btn-sm btn-ghost"
+                        style={{ fontSize: 12, color: 'var(--accent)', gap: 4 }}
+                        onClick={() => openPriceList(p)}
+                      >
+                        <List size={13} /> {p.lista_precios?.length || 0} precios
                       </button>
-                      <button className="btn btn-sm btn-secondary" onClick={() => openEdit(p)} title="Editar">
-                        <Edit2 size={13} />
-                      </button>
-                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(p.id, p.nombre)} title="Eliminar">
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td><strong style={{ color: 'var(--danger)' }}>{formatCurrency(proveedorStats.get(p.id) || 0)}</strong></td>
+                    <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{p.direccion || '—'}</td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button className="btn btn-sm btn-ghost" onClick={() => openHistory(p)} title="Ver Historial de Compras">
+                          <FileText size={13} />
+                        </button>
+                        <button className="btn btn-sm btn-secondary" onClick={() => openEdit(p)} title="Editar">
+                          <Edit2 size={13} />
+                        </button>
+                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(p.id, p.nombre)} title="Eliminar">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
           {filtered.length === 0 && (
