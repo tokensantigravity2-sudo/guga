@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { Proveedor, Gasto, ItemListaPrecio, StockItem } from '@/lib/types'
 import { formatCurrency, formatDate, getInitials } from '@/lib/helpers'
-import { Search, Plus, Phone, Mail, MapPin, Edit2, Trash2, Package, Tag, FileText, List, Layers, ChevronDown } from 'lucide-react'
+import { Search, Plus, Phone, Mail, MapPin, Edit2, Trash2, Package, Tag, FileText, List, Layers, ChevronDown, MessageCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function ProveedoresPage() {
@@ -28,6 +28,36 @@ export default function ProveedoresPage() {
   // Price List modal state
   const [showPriceListModal, setShowPriceListModal] = useState(false)
   const [selectedProveedorPriceList, setSelectedProveedorPriceList] = useState<Proveedor | null>(null)
+
+  const getPriceListCount = (p: Proveedor): number => {
+    if (p.lista_precios && Array.isArray(p.lista_precios) && p.lista_precios.length > 0) {
+      return p.lista_precios.length
+    }
+    if (p.notas) {
+      const match = p.notas.match(/\[LISTA_PRECIOS:([\s\S]*?)\]$/)
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[1])
+          if (Array.isArray(parsed)) return parsed.length
+        } catch {
+          return 0
+        }
+      }
+    }
+    return 0
+  }
+
+  const getWhatsAppUrl = (phone?: string | null, producto?: string) => {
+    if (!phone) return '#'
+    let cleaned = phone.replace(/\D/g, '')
+    if (cleaned.startsWith('09')) {
+      cleaned = '598' + cleaned.substring(1)
+    } else if (cleaned.startsWith('9') && cleaned.length === 8) {
+      cleaned = '598' + cleaned
+    }
+    const text = producto ? `Buenas, te puedo pedir ${producto}` : 'Buenas, te hago una consulta'
+    return `https://wa.me/${cleaned}?text=${encodeURIComponent(text)}`
+  }
   const [priceList, setPriceList] = useState<ItemListaPrecio[]>([])
   const [newPriceItem, setNewPriceItem] = useState({ producto: '', precio: 0, unidad: 'unidad', notas: '' })
 
@@ -360,12 +390,34 @@ export default function ProveedoresPage() {
                     </td>
                     <td>
                       {p.telefono && (
-                        <div style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <Phone size={12} style={{ color: 'var(--text-muted)' }} /> {p.telefono}
+                        <div style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Phone size={12} style={{ color: 'var(--text-muted)' }} /> {p.telefono}
+                          </span>
+                          <a
+                            href={getWhatsAppUrl(p.telefono)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              background: '#25D366',
+                              color: '#fff',
+                              padding: '2px 6px',
+                              borderRadius: 6,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 3,
+                              textDecoration: 'none'
+                            }}
+                            title="Abrir WhatsApp"
+                          >
+                            <MessageCircle size={11} /> WhatsApp
+                          </a>
                         </div>
                       )}
                       {p.email && (
-                        <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
                           <Mail size={12} /> {p.email}
                         </div>
                       )}
@@ -377,7 +429,7 @@ export default function ProveedoresPage() {
                         style={{ fontSize: 12, color: 'var(--accent)', gap: 4 }}
                         onClick={() => openPriceList(p)}
                       >
-                        <List size={13} /> {p.lista_precios?.length || 0} precios
+                        <List size={13} /> {getPriceListCount(p)} precios
                       </button>
                     </td>
                     <td><strong style={{ color: 'var(--danger)' }}>{formatCurrency(proveedorStats.get(p.id) || 0)}</strong></td>
@@ -461,10 +513,36 @@ export default function ProveedoresPage() {
                           <tr key={idx}>
                             <td><strong>{item.producto}</strong></td>
                             <td><strong style={{ color: 'var(--accent)' }}>{formatCurrency(item.precio)}</strong></td>
-                            <td>
-                              <button className="btn btn-sm btn-ghost" style={{ color: 'var(--danger)' }} onClick={() => handleRemovePriceItem(idx)}>
-                                <Trash2 size={12} />
-                              </button>
+                            <td style={{ textAlign: 'right' }}>
+                              <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                                {selectedProveedorPriceList.telefono && (
+                                  <a
+                                    href={getWhatsAppUrl(selectedProveedorPriceList.telefono, item.producto)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="btn btn-sm"
+                                    style={{
+                                      background: '#25D366',
+                                      color: '#fff',
+                                      border: 'none',
+                                      fontSize: 11,
+                                      fontWeight: 600,
+                                      padding: '3px 8px',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 4,
+                                      textDecoration: 'none',
+                                      borderRadius: 6
+                                    }}
+                                    title={`Pedir "${item.producto}" por WhatsApp`}
+                                  >
+                                    <MessageCircle size={12} /> Pedir
+                                  </a>
+                                )}
+                                <button className="btn btn-sm btn-ghost" style={{ color: 'var(--danger)' }} onClick={() => handleRemovePriceItem(idx)}>
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}

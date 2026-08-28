@@ -50,6 +50,23 @@ export default function CatalogoPage() {
     setLoading(false)
   }
 
+  const parseTercerizadoInfo = (srv: Servicio) => {
+    let esTerc = !!srv.es_tercerizado
+    let provId = srv.proveedor_tercerizado_id || ''
+    let costo = Number(srv.costo_tercerizado || 0)
+    let descLimpia = (srv.descripcion || '').replace(/\[TERCERIZADO:[\s\S]*?\]$/, '').trim()
+
+    if ((srv.descripcion || '').includes('[TERCERIZADO:')) {
+      esTerc = true
+      const match = (srv.descripcion || '').match(/\[TERCERIZADO:(.*?):(.*?)]/)
+      if (match) {
+        provId = match[1] || provId
+        costo = Number(match[2]) || costo
+      }
+    }
+    return { esTerc, provId, costo, descLimpia }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.nombre.trim()) {
@@ -59,9 +76,14 @@ export default function CatalogoPage() {
 
     const catFinal = form.categoria === 'OTRO' ? (form.nuevaCategoria.trim() || 'General') : form.categoria
 
+    const descClean = form.descripcion.replace(/\[TERCERIZADO:[\s\S]*?\]$/, '').trim()
+    const descFinal = form.es_tercerizado
+      ? (descClean ? `${descClean} [TERCERIZADO:${form.proveedor_tercerizado_id || ''}:${form.costo_tercerizado || 0}]` : `[TERCERIZADO:${form.proveedor_tercerizado_id || ''}:${form.costo_tercerizado || 0}]`)
+      : descClean
+
     let payload: any = {
       nombre: form.nombre.trim(),
-      descripcion: form.descripcion.trim() || null,
+      descripcion: descFinal || null,
       precio_base: Number(form.precio_base) || 0,
       categoria: catFinal,
       unidad: form.unidad || 'unidad',
@@ -152,18 +174,19 @@ export default function CatalogoPage() {
   const openEdit = (srv: Servicio) => {
     setEditingServicio(srv)
     const isStandardCat = CATEGORIAS_SERVICIO.includes(srv.categoria)
+    const { esTerc, provId, costo, descLimpia } = parseTercerizadoInfo(srv)
     setForm({
       nombre: srv.nombre,
-      descripcion: srv.descripcion || '',
+      descripcion: descLimpia,
       precio_base: Number(srv.precio_base || 0),
       categoria: isStandardCat ? srv.categoria : 'OTRO',
       nuevaCategoria: isStandardCat ? '' : srv.categoria,
       unidad: srv.unidad || 'unidad',
       tiempo_estimado: srv.tiempo_estimado || '2-3 días',
       disponible: srv.disponible !== false,
-      es_tercerizado: !!srv.es_tercerizado,
-      proveedor_tercerizado_id: srv.proveedor_tercerizado_id || '',
-      costo_tercerizado: Number(srv.costo_tercerizado || 0),
+      es_tercerizado: esTerc,
+      proveedor_tercerizado_id: provId,
+      costo_tercerizado: costo,
     })
     setShowModal(true)
   }
@@ -235,29 +258,31 @@ export default function CatalogoPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(srv => (
-                <tr key={srv.id} style={{ opacity: srv.disponible ? 1 : 0.5 }}>
-                  <td>
-                    <div>
-                      <strong style={{ fontSize: 14 }}>{srv.nombre}</strong>
-                      {srv.descripcion && (
-                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                          {srv.descripcion}
-                        </div>
+              {filtered.map(srv => {
+                const { esTerc, descLimpia } = parseTercerizadoInfo(srv)
+                return (
+                  <tr key={srv.id} style={{ opacity: srv.disponible ? 1 : 0.5 }}>
+                    <td>
+                      <div>
+                        <strong style={{ fontSize: 14 }}>{srv.nombre}</strong>
+                        {descLimpia && (
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                            {descLimpia}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      {esTerc ? (
+                        <span className="badge badge-warning" style={{ gap: 4 }}>
+                          <Factory size={10} /> Tercerizado
+                        </span>
+                      ) : (
+                        <span className="badge badge-neutral" style={{ gap: 4 }}>
+                          <Home size={10} /> Propio
+                        </span>
                       )}
-                    </div>
-                  </td>
-                  <td>
-                    {srv.es_tercerizado ? (
-                      <span className="badge badge-warning" style={{ gap: 4 }}>
-                        <Factory size={10} /> Tercerizado
-                      </span>
-                    ) : (
-                      <span className="badge badge-neutral" style={{ gap: 4 }}>
-                        <Home size={10} /> Propio
-                      </span>
-                    )}
-                  </td>
+                    </td>
                   <td><span className="badge badge-accent">{srv.categoria}</span></td>
                   <td><strong style={{ color: 'var(--accent)' }}>{formatCurrency(srv.precio_base)}</strong></td>
                   <td>{srv.unidad || 'unidad'}</td>
@@ -281,7 +306,8 @@ export default function CatalogoPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
           {filtered.length === 0 && (

@@ -39,21 +39,61 @@ export default function CajaPage() {
   }, [filterDate])
 
   const loadData = async () => {
+    setLoading(true)
     const startOfDay = `${filterDate}T00:00:00`
     const endOfDay = `${filterDate}T23:59:59`
 
-    const [{ data: movs, error: mErr }, { data: clts }] = await Promise.all([
+    const [{ data: movs, error: mErr }, { data: peds }, { data: clts }] = await Promise.all([
       supabase
         .from('caja_movimientos')
         .select('*')
-        .gte('fecha', startOfDay)
-        .lte('fecha', endOfDay)
-        .order('fecha', { ascending: false }),
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('pedidos')
+        .select('*')
+        .order('created_at', { ascending: false }),
       supabase.from('clientes').select('*').order('nombre'),
     ])
 
     if (mErr) toast.error('Error al cargar caja: ' + mErr.message)
-    if (movs) setMovimientos(movs)
+
+    // Filtrar movimientos de caja por la fecha elegida
+    let allMovs: CajaMovimiento[] = []
+    if (movs) {
+      allMovs = movs.filter(m => {
+        const d = (m.fecha || m.created_at || '').substring(0, 10)
+        return d === filterDate
+      })
+    }
+
+    // Conjunto de IDs de pedidos ya registrados en caja_movimientos
+    const refIds = new Set(allMovs.map(m => m.referencia_id).filter(Boolean))
+
+    // Integrar pedidos confirmados de esa fecha que no estén aún en caja_movimientos
+    if (peds) {
+      peds.forEach(p => {
+        const pDate = (p.created_at || '').substring(0, 10)
+        if (pDate === filterDate && p.estado !== 'presupuesto' && p.estado !== 'cancelado' && p.metodo_pago !== 'cuenta_corriente' && !refIds.has(p.id)) {
+          allMovs.push({
+            id: `pedido-${p.id}`,
+            tipo: 'ingreso',
+            monto: p.total,
+            concepto: `Pedido #${p.numero} - ${p.cliente_nombre || 'Consumidor Final'}`,
+            cliente_id: p.cliente_id || null,
+            cliente_nombre: p.cliente_nombre || 'Consumidor Final',
+            metodo_pago: p.metodo_pago || 'efectivo',
+            referencia_id: p.id,
+            fecha: p.created_at || `${filterDate}T12:00:00`,
+            created_at: p.created_at,
+          } as any)
+        }
+      })
+    }
+
+    // Ordenar por fecha descendente
+    allMovs.sort((a, b) => new Date(b.fecha || b.created_at || 0).getTime() - new Date(a.fecha || a.created_at || 0).getTime())
+
+    setMovimientos(allMovs)
     if (clts) setClientes(clts)
     setLoading(false)
   }

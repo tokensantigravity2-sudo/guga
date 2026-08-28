@@ -8,7 +8,7 @@ import { formatCurrency, formatDateTime, generateNumeroPedido, ESTADOS_PEDIDO } 
 import {
   Plus, Minus, ShoppingCart, Search, X, Trash2,
   CreditCard, Banknote, ArrowLeftRight, Printer,
-  Check, FileText, Calendar, Filter, UserCheck, ShieldAlert, Sparkles
+  Check, FileText, Calendar, Filter, UserCheck, ShieldAlert, Sparkles, RotateCcw
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import TicketImpresion from '@/components/TicketImpresion'
@@ -79,7 +79,43 @@ export default function PedidosPage() {
     if (clts) setClientes(clts)
     if (pds) setPedidos(pds)
     if (stks) setStockItems(stks)
+
+    // Verificar si viene un pedido para repetir desde Clientes o Historial
+    const repeatStr = sessionStorage.getItem('guga_repeat_pedido')
+    if (repeatStr) {
+      try {
+        const data = JSON.parse(repeatStr)
+        sessionStorage.removeItem('guga_repeat_pedido')
+        if (data.cliente) {
+          const matchClt = (clts || []).find(c => c.id === data.cliente.id) || data.cliente
+          setSelectedCliente(matchClt)
+        }
+        if (data.items && Array.isArray(data.items)) setCart(data.items)
+        if (data.descuentoPorcentaje) setDescuentoPorcentaje(data.descuentoPorcentaje)
+        if (data.notas) setNotas(data.notas)
+        setActiveTab('nuevo')
+        toast.success(`¡Pedido repetido cargado para ${data.cliente?.nombre || 'el cliente'}!`)
+      } catch (e) {
+        console.error('Error al repetir pedido', e)
+      }
+    }
+
     setLoading(false)
+  }
+
+  const handleRepetirPedidoDirecto = (p: Pedido) => {
+    if (!p.items || p.items.length === 0) {
+      toast.error('Este pedido no contiene ítems para repetir')
+      return
+    }
+    const matchingCliente = clientes.find(c => c.id === p.cliente_id)
+    if (matchingCliente) setSelectedCliente(matchingCliente)
+    setCart(p.items)
+    if (p.descuento_porcentaje) setDescuentoPorcentaje(p.descuento_porcentaje)
+    if (p.notas) setNotas(p.notas)
+    setActiveTab('nuevo')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    toast.success(`¡Ítems del Pedido #${p.numero} cargados en el carrito!`)
   }
 
   const openAddItemModal = (servicio: Servicio) => {
@@ -212,12 +248,26 @@ export default function PedidosPage() {
 
     // Movimiento de caja si el pago no es cta corriente
     if (metodoPago !== 'cuenta_corriente' && estadoPedido !== 'presupuesto') {
-      await supabase.from('caja_movimientos').insert({
+      const nowIso = new Date().toISOString()
+      let movData: any = {
         tipo: 'ingreso',
         monto: total,
         concepto: `Pedido #${numero} - ${selectedCliente?.nombre || 'Consumidor Final'}`,
         referencia_id: data.id,
-      })
+        fecha: nowIso,
+        cliente_id: selectedCliente?.id || null,
+        cliente_nombre: selectedCliente?.nombre || 'Consumidor Final',
+        metodo_pago: metodoPago || 'efectivo',
+        facturado: false,
+      }
+      let { error: movErr } = await supabase.from('caja_movimientos').insert(movData)
+      if (movErr && (movErr.message.includes('column') || movErr.message.includes('schema') || movErr.code === 'PGRST204')) {
+        delete movData.cliente_id
+        delete movData.cliente_nombre
+        delete movData.metodo_pago
+        delete movData.facturado
+        await supabase.from('caja_movimientos').insert(movData)
+      }
     }
 
     toast.success('¡Pedido/Presupuesto registrado con éxito!')
@@ -733,6 +783,14 @@ export default function PedidosPage() {
                       <td><strong>{formatCurrency(p.total)}</strong></td>
                       <td>
                         <div style={{ display: 'flex', gap: 4 }}>
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            style={{ color: 'var(--accent)' }}
+                            onClick={() => handleRepetirPedidoDirecto(p)}
+                            title="Repetir este pedido"
+                          >
+                            <RotateCcw size={13} />
+                          </button>
                           <button
                             className="btn btn-sm btn-secondary"
                             onClick={() => { setTicketData(p); setShowTicket(true) }}

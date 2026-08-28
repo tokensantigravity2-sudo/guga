@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { Cliente, Pedido } from '@/lib/types'
 import { formatCurrency, formatDate, formatDateTime, getInitials } from '@/lib/helpers'
-import { Search, Plus, Phone, Mail, MapPin, Edit2, Trash2, Users, FileText, ShoppingBag, Printer, X } from 'lucide-react'
+import { Search, Plus, Phone, Mail, MapPin, Edit2, Trash2, Users, FileText, ShoppingBag, Printer, X, RotateCcw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import TicketImpresion from '@/components/TicketImpresion'
 
@@ -25,6 +26,8 @@ export default function ClientesPage() {
   // Ticket state
   const [showTicket, setShowTicket] = useState(false)
   const [ticketData, setTicketData] = useState<Pedido | null>(null)
+
+  const router = useRouter()
 
   const [form, setForm] = useState({
     nombre: '',
@@ -74,6 +77,24 @@ export default function ClientesPage() {
     if (error) toast.error('Error al cargar historial: ' + error.message)
     if (data) setHistorialPedidos(data)
     setLoadingHistory(false)
+  }
+
+  const handleRepetirPedido = (p: Pedido) => {
+    if (!p.items || p.items.length === 0) {
+      toast.error('Este pedido no contiene ítems para repetir')
+      return
+    }
+
+    sessionStorage.setItem('guga_repeat_pedido', JSON.stringify({
+      cliente: selectedClienteHistory,
+      items: p.items,
+      descuentoPorcentaje: p.descuento_porcentaje || 0,
+      notas: p.notas || '',
+    }))
+
+    setSelectedClienteHistory(null)
+    toast.success('¡Cargando pedido en el carrito!')
+    router.push('/pedidos')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -309,12 +330,21 @@ export default function ClientesPage() {
 
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span style={{ fontWeight: 800, fontSize: 15 }}>TOTAL: {formatCurrency(p.total)}</span>
-                          <button
-                            className="btn btn-sm btn-secondary"
-                            onClick={() => { setTicketData(p); setShowTicket(true) }}
-                          >
-                            <Printer size={13} /> Imprimir Ticket
-                          </button>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              className="btn btn-sm btn-primary"
+                              onClick={() => handleRepetirPedido(p)}
+                              title="Cargar ítems y cliente en un nuevo pedido"
+                            >
+                              <RotateCcw size={13} /> Repetir Pedido
+                            </button>
+                            <button
+                              className="btn btn-sm btn-secondary"
+                              onClick={() => { setTicketData(p); setShowTicket(true) }}
+                            >
+                              <Printer size={13} /> Ticket
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
