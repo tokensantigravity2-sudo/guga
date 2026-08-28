@@ -67,6 +67,45 @@ export default function CatalogoPage() {
     return { esTerc, provId, costo, descLimpia }
   }
 
+  const syncServiceToProveedorPriceList = async (nombre: string, costo: number, unidad: string, proveedorId: string) => {
+    if (!proveedorId || costo <= 0) return
+    try {
+      const { data: prov } = await supabase.from('proveedores').select('*').eq('id', proveedorId).single()
+      if (!prov) return
+
+      let priceList: any[] = prov.lista_precios || []
+      if (priceList.length === 0 && prov.notas) {
+        const match = prov.notas.match(/\[LISTA_PRECIOS:([\s\S]*?)\]$/)
+        if (match) {
+          try { priceList = JSON.parse(match[1]) } catch { priceList = [] }
+        }
+      }
+
+      const existingIdx = priceList.findIndex(item => item.producto?.toLowerCase() === nombre.toLowerCase())
+      if (existingIdx >= 0) {
+        priceList[existingIdx].precio = costo
+        priceList[existingIdx].unidad = unidad
+      } else {
+        priceList.push({
+          id: Date.now().toString(),
+          producto: nombre,
+          precio: costo,
+          unidad: unidad || 'unidad',
+          notas: 'Catálogo Servicios',
+        })
+      }
+
+      let { error } = await supabase.from('proveedores').update({ lista_precios: priceList }).eq('id', prov.id)
+      if (error && (error.message.includes('column') || error.message.includes('schema'))) {
+        const notasOriginales = (prov.notas || '').replace(/\[LISTA_PRECIOS:[\s\S]*?\]$/, '').trim()
+        const notasStr = notasOriginales ? `${notasOriginales} [LISTA_PRECIOS:${JSON.stringify(priceList)}]` : `[LISTA_PRECIOS:${JSON.stringify(priceList)}]`
+        await supabase.from('proveedores').update({ notas: notasStr }).eq('id', prov.id)
+      }
+    } catch (err) {
+      console.error('Error al sincronizar precio con proveedor:', err)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.nombre.trim()) {
@@ -116,6 +155,15 @@ export default function CatalogoPage() {
       }
       if (error) { toast.error('Error al crear servicio: ' + error.message); return }
       toast.success('Servicio creado')
+    }
+
+    if (form.es_tercerizado && form.proveedor_tercerizado_id && Number(form.costo_tercerizado) > 0) {
+      await syncServiceToProveedorPriceList(
+        form.nombre.trim(),
+        Number(form.costo_tercerizado),
+        form.unidad || 'unidad',
+        form.proveedor_tercerizado_id
+      )
     }
 
     closeModal()

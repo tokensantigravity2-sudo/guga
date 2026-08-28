@@ -46,6 +46,10 @@ export default function PedidosPage() {
   const [itemNoAfectarStock, setItemNoAfectarStock] = useState(false)
   const [itemPrecioEsTotal, setItemPrecioEsTotal] = useState(false)
 
+  // Order options
+  const [adicionalPorcentaje, setAdicionalPorcentaje] = useState(0)
+  const [incluirIva, setIncluirIva] = useState(false)
+
   // Quick Client modal state
   const [showQuickClientModal, setShowQuickClientModal] = useState(false)
   const [quickClientForm, setQuickClientForm] = useState({
@@ -207,7 +211,10 @@ export default function PedidosPage() {
 
   const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0)
   const descuentoMonto = Math.round((subtotal * (descuentoPorcentaje || 0)) / 100)
-  const total = Math.max(0, subtotal - descuentoMonto)
+  const adicionalMonto = Math.round((subtotal * (adicionalPorcentaje || 0)) / 100)
+  const subtotalNeto = Math.max(0, subtotal - descuentoMonto + adicionalMonto)
+  const montoIva = incluirIva ? Math.round(subtotalNeto * 0.22 * 100) / 100 : 0
+  const total = subtotalNeto + montoIva
 
   const handleCrearPedido = async () => {
     if (cart.length === 0) {
@@ -216,7 +223,10 @@ export default function PedidosPage() {
     }
 
     const numero = generateNumeroPedido()
-    const notasFinal = notas ? (descuentoPorcentaje > 0 ? `${notas} [Desc: ${descuentoPorcentaje}%]` : notas) : (descuentoPorcentaje > 0 ? `[Desc: ${descuentoPorcentaje}%]` : null)
+    const descTag = descuentoPorcentaje > 0 ? `[Desc: ${descuentoPorcentaje}%]` : null
+    const adicTag = adicionalPorcentaje > 0 ? `[Adicional: ${adicionalPorcentaje}%]` : null
+    const ivaTag = incluirIva ? `[+IVA 22%]` : null
+    const notasFinal = [notas, descTag, adicTag, ivaTag].filter(Boolean).join(' ') || null
     let pedidoData: any = {
       numero,
       cliente_id: selectedCliente?.id || null,
@@ -283,6 +293,8 @@ export default function PedidosPage() {
     setCart([])
     setSelectedCliente(null)
     setDescuentoPorcentaje(0)
+    setAdicionalPorcentaje(0)
+    setIncluirIva(false)
     setNotas('')
     setFechaEntrega('')
     loadData()
@@ -725,9 +737,9 @@ export default function PedidosPage() {
                 />
               </div>
 
-              {/* Descuento en Porcentaje (%) & Forma de Pago */}
-              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                <div style={{ flex: 1 }}>
+              {/* Descuento (%) & Adicional (%) */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+                <div>
                   <label>Descuento (%)</label>
                   <input
                     className="input"
@@ -737,15 +749,45 @@ export default function PedidosPage() {
                     onChange={e => setDescuentoPorcentaje(e.target.value === '' ? 0 : Math.min(100, Math.max(0, Number(e.target.value))))}
                   />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label>Forma de Pago</label>
-                  <select className="input" value={metodoPago} onChange={e => setMetodoPago(e.target.value)}>
-                    <option value="efectivo">Efectivo</option>
-                    <option value="tarjeta">Tarjeta</option>
-                    <option value="transferencia">Transferencia</option>
-                    <option value="cuenta_corriente">Cta. Corriente</option>
-                  </select>
+                <div>
+                  <label>Adicional (%)</label>
+                  <input
+                    className="input"
+                    type="number"
+                    placeholder="0%"
+                    value={adicionalPorcentaje === 0 ? '' : adicionalPorcentaje}
+                    onChange={e => setAdicionalPorcentaje(e.target.value === '' ? 0 : Math.min(200, Math.max(0, Number(e.target.value))))}
+                  />
                 </div>
+              </div>
+
+              {/* Forma de Pago */}
+              <div className="form-group" style={{ marginBottom: 12 }}>
+                <label>Forma de Pago</label>
+                <select className="input" value={metodoPago} onChange={e => setMetodoPago(e.target.value)}>
+                  <option value="efectivo">Efectivo</option>
+                  <option value="tarjeta">Tarjeta</option>
+                  <option value="transferencia">Transferencia</option>
+                  <option value="cuenta_corriente">Cta. Corriente</option>
+                </select>
+              </div>
+
+              {/* Checkbox: Agregar IVA (22%) */}
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '8px 12px', background: 'var(--bg-hover)', borderRadius: 8,
+                border: '1px solid var(--border)', marginBottom: 12
+              }}>
+                <label htmlFor="incluir_iva" style={{ fontSize: 13, fontWeight: 600, cursor: 'pointer', margin: 0 }}>
+                  🧾 Agregar IVA (+22%)
+                </label>
+                <input
+                  type="checkbox"
+                  id="incluir_iva"
+                  checked={incluirIva}
+                  onChange={e => setIncluirIva(e.target.checked)}
+                  style={{ width: 16, height: 16, cursor: 'pointer' }}
+                />
               </div>
 
               {/* Totals */}
@@ -760,8 +802,20 @@ export default function PedidosPage() {
                     <span>-{formatCurrency(descuentoMonto)}</span>
                   </div>
                 )}
+                {adicionalPorcentaje > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--warning)', fontWeight: 600 }}>
+                    <span>Adicional ({adicionalPorcentaje}%)</span>
+                    <span>+{formatCurrency(adicionalMonto)}</span>
+                  </div>
+                )}
+                {incluirIva && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--info)', fontWeight: 600, marginTop: 2 }}>
+                    <span>IVA (22%)</span>
+                    <span>+{formatCurrency(montoIva)}</span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 18, marginTop: 4 }}>
-                  <span>TOTAL</span>
+                  <span>TOTAL {incluirIva ? '(con IVA)' : ''}</span>
                   <span style={{ color: 'var(--accent)' }}>{formatCurrency(total)}</span>
                 </div>
               </div>

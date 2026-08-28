@@ -1,9 +1,11 @@
 export const formatCurrency = (amount: number): string => {
+  if (amount === undefined || amount === null || isNaN(amount)) return '$ 0';
+  const hasDecimals = amount % 1 !== 0;
   return new Intl.NumberFormat('es-UY', {
     style: 'currency',
     currency: 'UYU',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: hasDecimals ? 2 : 0,
+    maximumFractionDigits: hasDecimals ? 2 : 0,
   }).format(amount);
 };
 

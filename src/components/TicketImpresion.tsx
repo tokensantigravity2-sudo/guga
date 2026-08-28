@@ -29,6 +29,16 @@ const METODO_LABEL: Record<string, string> = {
 };
 
 export default function TicketImpresion({ ticket, onClose }: TicketImpresionProps) {
+  const fmt = (n: number) => (n % 1 !== 0 ? n.toFixed(2) : n.toLocaleString('es-UY'))
+
+  const matchAdic = (ticket.notas || '').match(/\[Adicional:\s*(\d+)%\]/)
+  const adicPct = (ticket as any).adicionalPorcentaje || (matchAdic ? Number(matchAdic[1]) : 0)
+  const montoAdicional = Math.round((ticket.subtotal * adicPct) / 100)
+
+  const neto = Math.max(0, ticket.subtotal - (ticket.descuento || 0) + montoAdicional)
+  const hasIva = (ticket.notas || '').includes('[+IVA 22%]') || (ticket as any).incluirIva
+  const montoIva = hasIva ? Math.round(neto * 0.22 * 100) / 100 : 0
+
   const handlePrint = () => {
     const iframe = document.createElement('iframe');
     iframe.style.display = 'none';
@@ -77,21 +87,33 @@ export default function TicketImpresion({ ticket, onClose }: TicketImpresionProp
               <div class="row">
                 <span style="flex:2"></span>
                 <span style="flex:1;text-align:center">${item.cantidad}</span>
-                <span style="flex:1;text-align:right">$${(item.precio || item.precio_unitario || 0).toFixed(2)}</span>
+                <span style="flex:1;text-align:right">$${fmt(item.precio || item.precio_unitario || 0)}</span>
               </div>
             `).join('')}
             <div class="separator"></div>
             <div class="row">
               <span>Subtotal:</span>
-              <span>$${ticket.subtotal.toFixed(2)}</span>
+              <span>$${fmt(ticket.subtotal)}</span>
             </div>
             ${ticket.descuento > 0 ? `
               <div class="row">
                 <span>Desc. ${ticket.descuentoPorcentaje ? `(${ticket.descuentoPorcentaje}%)` : ''}:</span>
-                <span>-$${ticket.descuento.toFixed(2)}</span>
+                <span>-$${fmt(ticket.descuento)}</span>
               </div>
             ` : ''}
-            <div class="total-large">TOTAL: $${ticket.total.toFixed(2)}</div>
+            ${montoAdicional > 0 ? `
+              <div class="row">
+                <span>Adicional (${adicPct}%):</span>
+                <span>+$${fmt(montoAdicional)}</span>
+              </div>
+            ` : ''}
+            ${montoIva > 0 ? `
+              <div class="row">
+                <span>IVA (22%):</span>
+                <span>+$${fmt(montoIva)}</span>
+              </div>
+            ` : ''}
+            <div class="total-large">TOTAL: $${fmt(ticket.total)}</div>
             ${ticket.notas ? `
               <div class="separator"></div>
               <div>Notas: ${ticket.notas}</div>
@@ -184,23 +206,35 @@ export default function TicketImpresion({ ticket, onClose }: TicketImpresionProp
                 <div style={{ display: 'flex' }}>
                   <span style={{ flex: 2 }}></span>
                   <span style={{ flex: 1, textAlign: 'center' }}>{item.cantidad}</span>
-                  <span style={{ flex: 1, textAlign: 'right' }}>${(item.precio || item.precio_unitario || 0).toFixed(2)}</span>
+                  <span style={{ flex: 1, textAlign: 'right' }}>${fmt(item.precio || item.precio_unitario || 0)}</span>
                 </div>
               </div>
             ))}
             <div style={{ borderTop: '1px dashed #d1d5db', margin: '8px 0' }}></div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Subtotal:</span>
-              <span>${ticket.subtotal.toFixed(2)}</span>
+              <span>${fmt(ticket.subtotal)}</span>
             </div>
             {ticket.descuento > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>Desc. {ticket.descuentoPorcentaje ? `(${ticket.descuentoPorcentaje}%)` : ''}:</span>
-                <span>-${ticket.descuento.toFixed(2)}</span>
+                <span>-${fmt(ticket.descuento)}</span>
+              </div>
+            )}
+            {montoAdicional > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#d97706', fontWeight: 'bold' }}>
+                <span>Adic. ({adicPct}%):</span>
+                <span>+${fmt(montoAdicional)}</span>
+              </div>
+            )}
+            {montoIva > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0284c7', fontWeight: 'bold' }}>
+                <span>IVA (22%):</span>
+                <span>+${fmt(montoIva)}</span>
               </div>
             )}
             <div style={{ fontSize: '16px', fontWeight: 'bold', textAlign: 'right', marginTop: '8px' }}>
-              TOTAL: ${ticket.total.toFixed(2)}
+              TOTAL: ${fmt(ticket.total)}
             </div>
             {ticket.notas && (
               <>

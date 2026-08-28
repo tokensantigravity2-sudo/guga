@@ -120,35 +120,55 @@ export default function CajaPage() {
 
     if (editingMov) {
       if (editingMov.id.startsWith('pedido-')) {
-        toast.error('Este ingreso proviene de un Pedido. Gestioná el pedido directamente en Pedidos.')
-        return
-      }
+        // Es un movimiento proveniente de Pedidos: actualizar el pedido directamente en la BD
+        const pedidoId = editingMov.id.replace('pedido-', '')
+        const { error: pErr } = await supabase.from('pedidos').update({
+          total: Number(form.monto),
+          metodo_pago: form.metodo_pago || 'efectivo',
+          cliente_nombre: clientNameFinal,
+          cliente_id: selectedCliente?.id || null,
+        }).eq('id', pedidoId)
 
-      let { error } = await supabase.from('caja_movimientos').update(payload).eq('id', editingMov.id)
-
-      if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
-        // Fallback si la tabla caja_movimientos carece de columnas cliente_id, cliente_nombre, etc.
-        const cleanPayload = {
-          tipo: form.tipo,
+        // Actualizar también en caja_movimientos si existiera registro físico
+        await supabase.from('caja_movimientos').update({
           monto: Number(form.monto),
-          concepto: `${form.concepto.trim()} [Cliente: ${clientNameFinal} | Pago: ${form.metodo_pago || 'efectivo'}${form.facturado ? ' | Facturado' : ''}]`,
+          metodo_pago: form.metodo_pago || 'efectivo',
+          cliente_nombre: clientNameFinal,
+          cliente_id: selectedCliente?.id || null,
+        }).eq('referencia_id', pedidoId)
+
+        if (pErr) {
+          toast.error('Error al actualizar pedido desde caja: ' + pErr.message)
+          return
         }
-        const res = await supabase.from('caja_movimientos').update(cleanPayload).eq('id', editingMov.id)
-        error = res.error
+        toast.success('Pedido y movimiento de caja actualizados correctamente')
+      } else {
+        let { error } = await supabase.from('caja_movimientos').update(payload).eq('id', editingMov.id)
+
+        if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
+          // Fallback si la tabla caja_movimientos carece de columnas cliente_id, cliente_nombre, etc.
+          const cleanPayload = {
+            tipo: form.tipo,
+            monto: Number(form.monto),
+            concepto: `${form.concepto.trim()} [Cliente: ${clientNameFinal} | Pago: ${form.metodo_pago || 'efectivo'}${form.facturado ? ' | Facturado' : ''}]`,
+          }
+          const res = await supabase.from('caja_movimientos').update(cleanPayload).eq('id', editingMov.id)
+          error = res.error
+        }
+
+        if (error) { toast.error('Error al actualizar movimiento: ' + error.message); return }
+
+        // Si es un egreso con referencia de gasto, actualizar el gasto
+        if (editingMov.referencia_id && form.tipo === 'egreso') {
+          await supabase.from('gastos').update({
+            monto: form.monto,
+            concepto: form.concepto,
+            categoria: catEgresoFinal,
+          }).eq('id', editingMov.referencia_id)
+        }
+
+        toast.success('Movimiento actualizado')
       }
-
-      if (error) { toast.error('Error al actualizar movimiento: ' + error.message); return }
-
-      // Si es un egreso con referencia de gasto, actualizar el gasto
-      if (editingMov.referencia_id && form.tipo === 'egreso') {
-        await supabase.from('gastos').update({
-          monto: form.monto,
-          concepto: form.concepto,
-          categoria: catEgresoFinal,
-        }).eq('id', editingMov.referencia_id)
-      }
-
-      toast.success('Movimiento actualizado')
     } else {
       let refId: string | null = null
 
@@ -196,17 +216,26 @@ export default function CajaPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (id.startsWith('pedido-')) {
-      toast.error('Este ingreso proviene de un Pedido. Para eliminarlo, gestioná o cancelá el pedido en Pedidos.')
-      return
-    }
     if (!confirm('¿Eliminar este movimiento de caja?')) return
-    const { error } = await supabase.from('caja_movimientos').delete().eq('id', id)
-    if (error) {
-      toast.error('Error al eliminar movimiento: ' + error.message)
-      return
+
+    if (id.startsWith('pedido-')) {
+      const pedidoId = id.replace('pedido-', '')
+      const { error: pErr } = await supabase.from('pedidos').update({ estado: 'cancelado' }).eq('id', pedidoId)
+      await supabase.from('caja_movimientos').delete().eq('referencia_id', pedidoId)
+
+      if (pErr) {
+        toast.error('Error al cancelar pedido desde caja: ' + pErr.message)
+        return
+      }
+      toast.success('Pedido cancelado y eliminado de caja')
+    } else {
+      const { error } = await supabase.from('caja_movimientos').delete().eq('id', id)
+      if (error) {
+        toast.error('Error al eliminar movimiento: ' + error.message)
+        return
+      }
+      toast.success('Movimiento eliminado')
     }
-    toast.success('Movimiento eliminado')
     await loadData()
   }
 
@@ -227,10 +256,6 @@ export default function CajaPage() {
   }
 
   const openEditModal = (mov: CajaMovimiento) => {
-    if (mov.id.startsWith('pedido-')) {
-      toast.error('Este ingreso proviene de un Pedido. Gestioná el pedido directamente en Pedidos.')
-      return
-    }
     setEditingMov(mov)
     let conceptoLimpio = mov.concepto || ''
     let clientName = mov.cliente_nombre || ''
