@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { Servicio, Cliente, PedidoItem, Pedido, StockItem } from '@/lib/types'
-import { formatCurrency, formatDateTime, generateNumeroPedido, ESTADOS_PEDIDO } from '@/lib/helpers'
+import { formatCurrency, formatDateTime, generateNumeroPedido, ESTADOS_PEDIDO, CATEGORIAS_SERVICIO } from '@/lib/helpers'
 import {
   Plus, Minus, ShoppingCart, Search, X, Trash2,
   CreditCard, Banknote, ArrowLeftRight, Printer,
@@ -60,8 +60,13 @@ export default function PedidosPage() {
   const [showTicket, setShowTicket] = useState(false)
   const [ticketData, setTicketData] = useState<Pedido | null>(null)
 
-  // History filter
+  // History filters
   const [historialFilter, setHistorialFilter] = useState('todos')
+  const [historialSearch, setHistorialSearch] = useState('')
+  const [historialFechaInicio, setHistorialFechaInicio] = useState('')
+  const [historialFechaFin, setHistorialFechaFin] = useState('')
+  const [historialCategoria, setHistorialCategoria] = useState('')
+  const [historialMetodoPago, setHistorialMetodoPago] = useState('')
 
   useEffect(() => {
     loadData()
@@ -368,8 +373,53 @@ export default function PedidosPage() {
   })
 
   const filteredPedidos = pedidos.filter(p => {
-    if (historialFilter === 'todos') return true
-    return p.estado === historialFilter
+    // 1. Estado
+    if (historialFilter !== 'todos' && p.estado !== historialFilter) return false
+
+    // 2. Método de pago
+    if (historialMetodoPago && p.metodo_pago !== historialMetodoPago) return false
+
+    // 3. Fechas desde / hasta
+    const pDate = (p.created_at || '').substring(0, 10)
+    if (historialFechaInicio && pDate < historialFechaInicio) return false
+    if (historialFechaFin && pDate > historialFechaFin) return false
+
+    // 4. Categoría de servicio / producto
+    if (historialCategoria) {
+      const hasCat = p.items?.some(it => {
+        if (!it.producto_id) return historialCategoria === 'Especiales' || historialCategoria === 'Packaging'
+        const srv = servicios.find(s => s.id === it.producto_id)
+        return srv?.categoria === historialCategoria
+      })
+      if (!hasCat) return false
+    }
+
+    // 5. Búsqueda libre (Cliente, RUT, Teléfono, N° pedido, Notas, Productos)
+    if (historialSearch.trim()) {
+      const q = historialSearch.toLowerCase().trim()
+      const matchNum = p.numero.toLowerCase().includes(q)
+      const matchCliente = p.cliente_nombre?.toLowerCase().includes(q)
+      const matchNotas = p.notas?.toLowerCase().includes(q)
+
+      // Cliente cargado (RUT o Teléfono)
+      const clt = clientes.find(c => c.id === p.cliente_id)
+      const matchRut = clt?.rut?.toLowerCase().includes(q)
+      const matchPhone = clt?.telefono?.toLowerCase().includes(q)
+
+      // Ítems del pedido
+      const matchItem = p.items?.some(it =>
+        it.nombre.toLowerCase().includes(q) ||
+        (it.material && it.material.toLowerCase().includes(q)) ||
+        (it.medida && it.medida.toLowerCase().includes(q)) ||
+        (it.acabado && it.acabado.toLowerCase().includes(q))
+      )
+
+      if (!matchNum && !matchCliente && !matchNotas && !matchRut && !matchPhone && !matchItem) {
+        return false
+      }
+    }
+
+    return true
   })
 
   const filteredClientes = clientes.filter(c => {
@@ -728,22 +778,123 @@ export default function PedidosPage() {
         ) : (
           /* History tab */
           <div>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-              <button
-                className={`btn btn-sm ${historialFilter === 'todos' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setHistorialFilter('todos')}
-              >
-                Todos
-              </button>
-              {ESTADOS_PEDIDO.map(e => (
+            {/* Filter Bar */}
+            <div style={{
+              background: 'var(--bg-card)', padding: '14px 16px', borderRadius: 12,
+              border: '1px solid var(--border)', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 12
+            }}>
+              {/* Row 1: Search & Filters */}
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: 2, minWidth: 240 }}>
+                  <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <input
+                    className="input"
+                    placeholder="Buscar por cliente, RUT, N° pedido, producto..."
+                    value={historialSearch}
+                    onChange={e => setHistorialSearch(e.target.value)}
+                    style={{ paddingLeft: 34 }}
+                  />
+                  {historialSearch && (
+                    <button
+                      onClick={() => setHistorialSearch('')}
+                      style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Desde:</span>
+                  <input
+                    className="input"
+                    type="date"
+                    value={historialFechaInicio}
+                    onChange={e => setHistorialFechaInicio(e.target.value)}
+                    style={{ width: 140, padding: '6px 10px', fontSize: 13 }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>Hasta:</span>
+                  <input
+                    className="input"
+                    type="date"
+                    value={historialFechaFin}
+                    onChange={e => setHistorialFechaFin(e.target.value)}
+                    style={{ width: 140, padding: '6px 10px', fontSize: 13 }}
+                  />
+                </div>
+
+                <div style={{ width: 150 }}>
+                  <select
+                    className="input"
+                    value={historialMetodoPago}
+                    onChange={e => setHistorialMetodoPago(e.target.value)}
+                    style={{ padding: '6px 10px', fontSize: 13 }}
+                  >
+                    <option value="">Medios de Pago</option>
+                    <option value="efectivo">Efectivo</option>
+                    <option value="tarjeta">Tarjeta</option>
+                    <option value="transferencia">Transferencia</option>
+                    <option value="cuenta_corriente">Cta. Corriente</option>
+                  </select>
+                </div>
+
+                <div style={{ width: 160 }}>
+                  <select
+                    className="input"
+                    value={historialCategoria}
+                    onChange={e => setHistorialCategoria(e.target.value)}
+                    style={{ padding: '6px 10px', fontSize: 13 }}
+                  >
+                    <option value="">Todas las Categorías</option>
+                    {CATEGORIAS_SERVICIO.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {(historialSearch || historialFechaInicio || historialFechaFin || historialCategoria || historialMetodoPago || historialFilter !== 'todos') && (
+                  <button
+                    className="btn btn-sm btn-ghost"
+                    onClick={() => {
+                      setHistorialFilter('todos')
+                      setHistorialSearch('')
+                      setHistorialFechaInicio('')
+                      setHistorialFechaFin('')
+                      setHistorialCategoria('')
+                      setHistorialMetodoPago('')
+                    }}
+                    style={{ fontSize: 12, color: 'var(--danger)' }}
+                  >
+                    ✕ Limpiar Filtros
+                  </button>
+                )}
+              </div>
+
+              {/* Row 2: Status Badges */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, marginRight: 4 }}>Estado:</span>
                 <button
-                  key={e.value}
-                  className={`btn btn-sm ${historialFilter === e.value ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setHistorialFilter(e.value)}
+                  className={`btn btn-sm ${historialFilter === 'todos' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setHistorialFilter('todos')}
                 >
-                  {e.label}
+                  Todos ({pedidos.length})
                 </button>
-              ))}
+                {ESTADOS_PEDIDO.map(e => {
+                  const count = pedidos.filter(p => p.estado === e.value).length
+                  return (
+                    <button
+                      key={e.value}
+                      className={`btn btn-sm ${historialFilter === e.value ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setHistorialFilter(e.value)}
+                    >
+                      {e.label} ({count})
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
             <div className="table-wrapper">

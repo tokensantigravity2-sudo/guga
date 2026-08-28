@@ -108,7 +108,7 @@ export default function CajaPage() {
     const clientNameFinal = selectedCliente ? selectedCliente.nombre : (clienteSearch.trim() || 'Consumidor Final')
     const catEgresoFinal = form.categoria_egreso === 'OTRO' ? (form.otraCategoriaEgreso.trim() || 'Otros') : form.categoria_egreso
 
-    const payload = {
+    let payload: any = {
       tipo: form.tipo,
       monto: Number(form.monto),
       concepto: form.concepto.trim(),
@@ -119,7 +119,24 @@ export default function CajaPage() {
     }
 
     if (editingMov) {
-      const { error } = await supabase.from('caja_movimientos').update(payload).eq('id', editingMov.id)
+      if (editingMov.id.startsWith('pedido-')) {
+        toast.error('Este ingreso proviene de un Pedido. Gestioná el pedido directamente en Pedidos.')
+        return
+      }
+
+      let { error } = await supabase.from('caja_movimientos').update(payload).eq('id', editingMov.id)
+
+      if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
+        // Fallback si la tabla caja_movimientos carece de columnas cliente_id, cliente_nombre, etc.
+        const cleanPayload = {
+          tipo: form.tipo,
+          monto: Number(form.monto),
+          concepto: `${form.concepto.trim()} [Cliente: ${clientNameFinal} | Pago: ${form.metodo_pago || 'efectivo'}${form.facturado ? ' | Facturado' : ''}]`,
+        }
+        const res = await supabase.from('caja_movimientos').update(cleanPayload).eq('id', editingMov.id)
+        error = res.error
+      }
+
       if (error) { toast.error('Error al actualizar movimiento: ' + error.message); return }
 
       // Si es un egreso con referencia de gasto, actualizar el gasto
@@ -149,10 +166,26 @@ export default function CajaPage() {
         if (newGasto) refId = newGasto.id
       }
 
-      const { error } = await supabase.from('caja_movimientos').insert({
+      let insertPayload: any = {
         ...payload,
         referencia_id: refId,
-      })
+        fecha: `${filterDate}T${new Date().toISOString().split('T')[1] || '12:00:00.000Z'}`
+      }
+
+      let { error } = await supabase.from('caja_movimientos').insert(insertPayload)
+
+      if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
+        // Fallback si la tabla caja_movimientos carece de columnas cliente_id, cliente_nombre, etc.
+        const cleanInsert = {
+          tipo: form.tipo,
+          monto: Number(form.monto),
+          concepto: `${form.concepto.trim()} [Cliente: ${clientNameFinal} | Pago: ${form.metodo_pago || 'efectivo'}${form.facturado ? ' | Facturado' : ''}]`,
+          referencia_id: refId,
+          fecha: `${filterDate}T${new Date().toISOString().split('T')[1] || '12:00:00.000Z'}`
+        }
+        const res = await supabase.from('caja_movimientos').insert(cleanInsert)
+        error = res.error
+      }
 
       if (error) { toast.error('Error al registrar movimiento: ' + error.message); return }
       toast.success(form.tipo === 'ingreso' ? 'Entrada registrada en caja' : 'Salida de caja registrada y reflejada en Gastos')
@@ -163,6 +196,10 @@ export default function CajaPage() {
   }
 
   const handleDelete = async (id: string) => {
+    if (id.startsWith('pedido-')) {
+      toast.error('Este ingreso proviene de un Pedido. Para eliminarlo, gestioná o cancelá el pedido en Pedidos.')
+      return
+    }
     if (!confirm('¿Eliminar este movimiento de caja?')) return
     const { error } = await supabase.from('caja_movimientos').delete().eq('id', id)
     if (error) {
@@ -190,18 +227,37 @@ export default function CajaPage() {
   }
 
   const openEditModal = (mov: CajaMovimiento) => {
+    if (mov.id.startsWith('pedido-')) {
+      toast.error('Este ingreso proviene de un Pedido. Gestioná el pedido directamente en Pedidos.')
+      return
+    }
     setEditingMov(mov)
-    const matchClient = clientes.find(c => c.id === mov.cliente_id || c.nombre === mov.cliente_nombre)
+    let conceptoLimpio = mov.concepto || ''
+    let clientName = mov.cliente_nombre || ''
+    let metodo = mov.metodo_pago || 'efectivo'
+    let isFact = !!mov.facturado
+
+    if (conceptoLimpio.includes('[Cliente:')) {
+      const match = conceptoLimpio.match(/\[Cliente:\s*(.*?)\s*\|\s*Pago:\s*(.*?)\s*(\|\s*Facturado)?\]/)
+      if (match) {
+        if (!clientName) clientName = match[1]
+        if (!metodo) metodo = match[2] as any
+        if (match[3]) isFact = true
+      }
+      conceptoLimpio = conceptoLimpio.replace(/\[Cliente:.*?\]/, '').trim()
+    }
+
+    const matchClient = clientes.find(c => c.id === mov.cliente_id || c.nombre === clientName)
     setSelectedCliente(matchClient || null)
-    setClienteSearch(mov.cliente_nombre || '')
+    setClienteSearch(clientName)
     setForm({
       tipo: mov.tipo,
       monto: Number(mov.monto),
-      concepto: mov.concepto || '',
+      concepto: conceptoLimpio,
       categoria_egreso: 'Materiales',
       otraCategoriaEgreso: '',
-      metodo_pago: mov.metodo_pago || 'efectivo',
-      facturado: !!mov.facturado,
+      metodo_pago: metodo,
+      facturado: isFact,
     })
     setShowModal(true)
   }
