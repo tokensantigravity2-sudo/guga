@@ -80,7 +80,15 @@ export default function ProveedoresPage() {
 
   const openPriceList = (p: Proveedor) => {
     setSelectedProveedorPriceList(p)
-    setPriceList(p.lista_precios || [])
+    // Intentar leer lista_precios de la columna, si no existe, parsear de notas
+    let list = p.lista_precios || []
+    if (list.length === 0 && p.notas) {
+      const match = p.notas.match(/\[LISTA_PRECIOS:([\s\S]*?)\]$/)
+      if (match) {
+        try { list = JSON.parse(match[1]) } catch { list = [] }
+      }
+    }
+    setPriceList(list)
     setNewPriceItem({ producto: '', precio: 0, unidad: 'unidad', notas: '' })
     setShowPriceListModal(true)
   }
@@ -108,7 +116,9 @@ export default function ProveedoresPage() {
 
     if (error && (error.message.includes('column') || error.message.includes('schema'))) {
       // Si la columna lista_precios no existe en la BD, guardarlo en notas
-      const notasStr = `[LISTA_PRECIOS:${JSON.stringify(priceList)}]`
+      // Preservar notas originales del proveedor quitando cualquier tag anterior
+      const notasOriginales = (selectedProveedorPriceList.notas || '').replace(/\[LISTA_PRECIOS:[\s\S]*?\]$/, '').trim()
+      const notasStr = notasOriginales ? `${notasOriginales} [LISTA_PRECIOS:${JSON.stringify(priceList)}]` : `[LISTA_PRECIOS:${JSON.stringify(priceList)}]`
       const res = await supabase.from('proveedores').update({ notas: notasStr }).eq('id', selectedProveedorPriceList.id)
       error = res.error
     }

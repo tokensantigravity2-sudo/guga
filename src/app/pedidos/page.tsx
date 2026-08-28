@@ -44,6 +44,7 @@ export default function PedidosPage() {
   const [itemCantidad, setItemCantidad] = useState(100)
   const [itemPrecioUnitario, setItemPrecioUnitario] = useState(0)
   const [itemNoAfectarStock, setItemNoAfectarStock] = useState(false)
+  const [itemPrecioEsTotal, setItemPrecioEsTotal] = useState(false)
 
   // Quick Client modal state
   const [showQuickClientModal, setShowQuickClientModal] = useState(false)
@@ -86,6 +87,7 @@ export default function PedidosPage() {
     setItemCustomNombre(servicio.nombre)
     setItemPrecioUnitario(Number(servicio.precio_base))
     setItemCantidad(100)
+    setItemPrecioEsTotal(false)
     setItemMedida('')
     setItemMaterial('')
     setItemAcabado('')
@@ -98,6 +100,7 @@ export default function PedidosPage() {
     setItemCustomNombre('')
     setItemPrecioUnitario(0)
     setItemCantidad(1)
+    setItemPrecioEsTotal(true)
     setItemMedida('')
     setItemMaterial('')
     setItemAcabado('')
@@ -116,13 +119,22 @@ export default function PedidosPage() {
       return
     }
 
-    const subtotal = itemCantidad * itemPrecioUnitario
+    let precioUnit: number
+    let sub: number
+    if (itemPrecioEsTotal) {
+      sub = itemPrecioUnitario // el valor ingresado ES el total del lote
+      precioUnit = itemCantidad > 0 ? Math.round((sub / itemCantidad) * 100) / 100 : 0
+    } else {
+      precioUnit = itemPrecioUnitario
+      sub = itemCantidad * precioUnit
+    }
+
     const newItem: PedidoItem = {
       producto_id: selectedServicio?.id || undefined,
       nombre: nombreFinal,
       cantidad: itemCantidad,
-      precio_unitario: itemPrecioUnitario,
-      subtotal,
+      precio_unitario: precioUnit,
+      subtotal: sub,
       medida: itemMedida || undefined,
       material: itemMaterial || undefined,
       acabado: itemAcabado || undefined,
@@ -163,7 +175,8 @@ export default function PedidosPage() {
     }
 
     const numero = generateNumeroPedido()
-    const pedidoData = {
+    const notasFinal = notas ? (descuentoPorcentaje > 0 ? `${notas} [Desc: ${descuentoPorcentaje}%]` : notas) : (descuentoPorcentaje > 0 ? `[Desc: ${descuentoPorcentaje}%]` : null)
+    let pedidoData: any = {
       numero,
       cliente_id: selectedCliente?.id || null,
       cliente_nombre: selectedCliente?.nombre || 'Consumidor Final',
@@ -175,10 +188,17 @@ export default function PedidosPage() {
       metodo_pago: metodoPago,
       estado: estadoPedido,
       fecha_entrega: fechaEntrega || null,
-      notas: notas || null,
+      notas: notasFinal,
     }
 
-    const { data, error } = await supabase.from('pedidos').insert(pedidoData).select().single()
+    let { data, error } = await supabase.from('pedidos').insert(pedidoData).select().single()
+
+    if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
+      delete pedidoData.descuento_porcentaje
+      const res = await supabase.from('pedidos').insert(pedidoData).select().single()
+      data = res.data
+      error = res.error
+    }
 
     if (error) {
       toast.error('Error al registrar pedido: ' + error.message)
@@ -775,6 +795,21 @@ export default function PedidosPage() {
                   </div>
                 )}
 
+                {/* Tipo de Precio: Total del Lote o Unitario */}
+                {!selectedServicio && (
+                  <div className="form-group" style={{ marginBottom: 8 }}>
+                    <label>Tipo de Precio</label>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button type="button" className={`btn btn-sm ${itemPrecioEsTotal ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setItemPrecioEsTotal(true)}>
+                        💰 Precio Total del Lote
+                      </button>
+                      <button type="button" className={`btn btn-sm ${!itemPrecioEsTotal ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setItemPrecioEsTotal(false)}>
+                        📦 Precio por Unidad
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="form-grid">
                   <div className="form-group">
                     <label>Cantidad ({selectedServicio?.unidad || 'unidades'}) *</label>
@@ -787,7 +822,7 @@ export default function PedidosPage() {
                     />
                   </div>
                   <div className="form-group">
-                    <label>Precio Unitario ($) *</label>
+                    <label>{itemPrecioEsTotal ? 'Precio Total del Lote ($) *' : 'Precio Unitario ($) *'}</label>
                     <input
                       className="input"
                       type="number"
@@ -847,8 +882,13 @@ export default function PedidosPage() {
                 </div>
 
                 <div style={{ background: 'var(--bg-hover)', padding: 12, borderRadius: 8, textAlign: 'right' }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Subtotal calculado: </span>
-                  <strong style={{ fontSize: 16, color: 'var(--accent)' }}>{formatCurrency(itemCantidad * itemPrecioUnitario)}</strong>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{itemPrecioEsTotal ? 'Total del lote:' : 'Subtotal calculado:'} </span>
+                  <strong style={{ fontSize: 16, color: 'var(--accent)' }}>{formatCurrency(itemPrecioEsTotal ? itemPrecioUnitario : itemCantidad * itemPrecioUnitario)}</strong>
+                  {itemPrecioEsTotal && itemCantidad > 0 && (
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                      Precio unitario calculado: {formatCurrency(Math.round((itemPrecioUnitario / itemCantidad) * 100) / 100)} c/u
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="modal-footer">

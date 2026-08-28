@@ -59,7 +59,7 @@ export default function CatalogoPage() {
 
     const catFinal = form.categoria === 'OTRO' ? (form.nuevaCategoria.trim() || 'General') : form.categoria
 
-    const payload = {
+    let payload: any = {
       nombre: form.nombre.trim(),
       descripcion: form.descripcion.trim() || null,
       precio_base: Number(form.precio_base) || 0,
@@ -73,25 +73,26 @@ export default function CatalogoPage() {
     }
 
     if (editingServicio) {
-      const { error } = await supabase
-        .from('servicios')
-        .update(payload)
-        .eq('id', editingServicio.id)
-
-      if (error) {
-        toast.error('Error al actualizar servicio: ' + error.message)
-        return
+      let { error } = await supabase.from('servicios').update(payload).eq('id', editingServicio.id)
+      if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
+        delete payload.es_tercerizado
+        delete payload.proveedor_tercerizado_id
+        delete payload.costo_tercerizado
+        const res = await supabase.from('servicios').update(payload).eq('id', editingServicio.id)
+        error = res.error
       }
+      if (error) { toast.error('Error al actualizar servicio: ' + error.message); return }
       toast.success('Servicio actualizado')
     } else {
-      const { error } = await supabase
-        .from('servicios')
-        .insert(payload)
-
-      if (error) {
-        toast.error('Error al crear servicio: ' + error.message)
-        return
+      let { error } = await supabase.from('servicios').insert(payload)
+      if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
+        delete payload.es_tercerizado
+        delete payload.proveedor_tercerizado_id
+        delete payload.costo_tercerizado
+        const res = await supabase.from('servicios').insert(payload)
+        error = res.error
       }
+      if (error) { toast.error('Error al crear servicio: ' + error.message); return }
       toast.success('Servicio creado')
     }
 
