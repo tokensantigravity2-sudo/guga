@@ -16,6 +16,7 @@ export default function CatalogoPage() {
   const [showModal, setShowModal] = useState(false)
   const [editingServicio, setEditingServicio] = useState<Servicio | null>(null)
   const [categoriaFilter, setCategoriaFilter] = useState('')
+  const [isDraggingImage, setIsDraggingImage] = useState(false)
 
   const [form, setForm] = useState({
     nombre: '',
@@ -66,6 +67,45 @@ export default function CatalogoPage() {
       }
     }
     return { esTerc, provId, costo, descLimpia }
+  }
+
+  const compressAndSetImage = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Por favor seleccioná un archivo de imagen válido')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let width = img.width
+        let height = img.height
+        const maxDim = 800
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width)
+            width = maxDim
+          } else {
+            width = Math.round((width * maxDim) / height)
+            height = maxDim
+          }
+        }
+
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx?.drawImage(img, 0, 0, width, height)
+
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.82)
+        setForm(prev => ({ ...prev, imagen_url: compressedBase64 }))
+        toast.success('Imagen cargada correctamente')
+      }
+      img.src = e.target?.result as string
+    }
+    reader.readAsDataURL(file)
   }
 
   const syncServiceToProveedorPriceList = async (nombre: string, costo: number, unidad: string, proveedorId: string) => {
@@ -541,25 +581,78 @@ export default function CatalogoPage() {
                     />
                   </div>
 
-                  <div className="form-group" style={{ marginBottom: 12 }}>
-                    <label>URL de Imagen del Servicio (opcional)</label>
-                    <input
-                      className="input"
-                      placeholder="https://ejemplo.com/imagen.jpg"
-                      value={form.imagen_url}
-                      onChange={e => setForm({ ...form, imagen_url: e.target.value })}
-                    />
-                    {form.imagen_url && (
-                      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <img
-                          src={form.imagen_url}
-                          alt="Vista previa"
-                          style={{ width: 50, height: 50, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }}
-                          onError={e => { (e.target as HTMLElement).style.display = 'none' }}
-                        />
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Vista previa de la imagen</span>
-                      </div>
-                    )}
+                  {/* Image Upload Area with Drag & Drop */}
+                  <div className="form-group" style={{ marginBottom: 14 }}>
+                    <label>Imagen del Servicio (Cargar o Arrastrar archivo)</label>
+
+                    <div
+                      onDragOver={e => { e.preventDefault(); setIsDraggingImage(true) }}
+                      onDragLeave={e => { e.preventDefault(); setIsDraggingImage(false) }}
+                      onDrop={e => {
+                        e.preventDefault()
+                        setIsDraggingImage(false)
+                        const file = e.dataTransfer.files?.[0]
+                        if (file) compressAndSetImage(file)
+                      }}
+                      style={{
+                        border: `2px dashed ${isDraggingImage ? 'var(--accent)' : 'var(--border)'}`,
+                        background: isDraggingImage ? 'rgba(230, 0, 126, 0.05)' : 'var(--bg-hover)',
+                        borderRadius: 12,
+                        padding: '16px 20px',
+                        textAlign: 'center',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 8
+                      }}
+                      onClick={() => document.getElementById('image_file_input')?.click()}
+                    >
+                      <input
+                        id="image_file_input"
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={e => {
+                          const file = e.target.files?.[0]
+                          if (file) compressAndSetImage(file)
+                        }}
+                      />
+
+                      {form.imagen_url ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', justifyContent: 'center' }}>
+                          <img
+                            src={form.imagen_url}
+                            alt="Vista previa"
+                            style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 10, border: '1px solid var(--border)' }}
+                          />
+                          <div style={{ textAlign: 'left' }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', display: 'block' }}>Imagen cargada</span>
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Hacé clic o arrastrá para cambiarla</span>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-ghost"
+                            style={{ color: 'var(--danger)', marginLeft: 10 }}
+                            onClick={e => {
+                              e.stopPropagation()
+                              setForm(prev => ({ ...prev, imagen_url: '' }))
+                            }}
+                          >
+                            🗑️ Eliminar
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ fontSize: 24 }}>📁</div>
+                          <div>
+                            <strong style={{ fontSize: 13, color: 'var(--accent)' }}>Subir o arrastrar imagen aquí</strong>
+                            <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '2px 0 0' }}>Soporta JPG, PNG, WEBP de tu equipo</p>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="modal-footer">
