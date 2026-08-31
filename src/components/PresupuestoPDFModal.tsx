@@ -171,38 +171,51 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
               maxWidth: 780
             }}
           >
-            {/* Document Header */}
+            {/* Document Header Logo */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #e2e8f0', paddingBottom: 20, marginBottom: 24 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                 <div style={{
-                  width: 54, height: 54, borderRadius: 14,
-                  background: 'linear-gradient(135deg, #e6007e 0%, #0891b2 100%)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#ffffff', fontSize: 28, fontWeight: 800, flexShrink: 0
+                  width: 64,
+                  height: 64,
+                  borderRadius: 16,
+                  background: 'linear-gradient(135deg, #d946ef 0%, #e6007e 40%, #0284c7 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#ffffff',
+                  fontSize: 32,
+                  boxShadow: '0 6px 16px rgba(230, 0, 126, 0.25)',
+                  flexShrink: 0
                 }}>
                   🖨️
                 </div>
                 <div>
-                  <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-0.5px', color: '#0f172a' }}>
+                  <h1 style={{ fontSize: 28, fontWeight: 900, margin: 0, letterSpacing: '-0.5px', color: '#0f172a', lineHeight: 1.1 }}>
                     GUGA IMPRENTA
                   </h1>
-                  <div style={{ fontSize: 13, color: '#e6007e', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase' }}>
-                    Imprenta & Diseño Gráfico
+                  <div style={{ fontSize: 13, color: '#e6007e', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginTop: 3 }}>
+                    IMPRENTA & DISEÑO GRÁFICO
                   </div>
-                  <div style={{ fontSize: 11.5, color: '#475569', marginTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span>📲 WhatsApp: <strong>+598 99 724 454</strong></span>
-                    <span>✉️ Email: <strong>contacto@gugaprint.uy</strong></span>
-                    <span>🌐 Web: <strong>www.gugaprint.uy</strong> | IG: <strong>@gugaprint.uy</strong></span>
+                  <div style={{ fontSize: 11.5, color: '#475569', marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3, fontWeight: 500 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ fontSize: 12 }}>📲</span> WhatsApp: <strong style={{ color: '#0f172a' }}>+598 99 724 454</strong>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ fontSize: 12 }}>✉️</span> Email: <strong style={{ color: '#0f172a' }}>contacto@gugaprint.uy</strong>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ fontSize: 12 }}>🌐</span> Web: <strong style={{ color: '#0f172a' }}>www.gugaprint.uy</strong> <span style={{ color: '#cbd5e1', margin: '0 2px' }}>|</span> IG: <strong style={{ color: '#0f172a' }}>@gugaprint.uy</strong>
+                    </div>
                   </div>
                 </div>
               </div>
 
               <div style={{ textAlign: 'right' }}>
                 <div style={{
-                  display: 'inline-block', padding: '4px 12px', borderRadius: 8,
+                  display: 'inline-block', padding: '6px 14px', borderRadius: 8,
                   background: isPresupuesto ? '#fdf2f8' : '#f0fdf4',
                   color: isPresupuesto ? '#be185d' : '#15803d',
-                  fontWeight: 800, fontSize: 14, textTransform: 'uppercase', marginBottom: 6
+                  fontWeight: 800, fontSize: 13, textTransform: 'uppercase', marginBottom: 6
                 }}>
                   {isPresupuesto ? 'PRESUPUESTO' : 'COMPROBANTE'}
                 </div>
@@ -212,11 +225,6 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
                 <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
                   Fecha: <strong>{formatDate(pedido.created_at || new Date())}</strong>
                 </div>
-                {pedido.fecha_entrega && (
-                  <div style={{ fontSize: 12, color: '#0891b2', fontWeight: 600, marginTop: 2 }}>
-                    Entrega Est.: {formatDate(pedido.fecha_entrega)}
-                  </div>
-                )}
               </div>
             </div>
 

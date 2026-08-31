@@ -38,6 +38,23 @@ export default function CajaPage() {
     loadData()
   }, [filterDate])
 
+  const extractMetodo = (mov: any): string => {
+    if (mov.metodo_pago && mov.metodo_pago !== 'efectivo') {
+      return mov.metodo_pago
+    }
+    const concepto = mov.concepto || ''
+    if (concepto.includes('Pago:')) {
+      const match = concepto.match(/Pago:\s*([a-zA-Z_]+)/i)
+      if (match && match[1]) {
+        const parsed = match[1].toLowerCase().trim()
+        if (['tarjeta', 'transferencia', 'cuenta_corriente', 'efectivo'].includes(parsed)) {
+          return parsed
+        }
+      }
+    }
+    return mov.metodo_pago || 'efectivo'
+  }
+
   const loadData = async () => {
     setLoading(true)
     const startOfDay = `${filterDate}T00:00:00`
@@ -60,7 +77,7 @@ export default function CajaPage() {
     // Filtrar movimientos de caja por la fecha elegida
     let allMovs: CajaMovimiento[] = []
     if (movs) {
-      allMovs = movs.filter(m => {
+      allMovs = movs.map(m => ({ ...m, metodo_pago: extractMetodo(m) })).filter(m => {
         const d = (m.fecha || m.created_at || '').substring(0, 10)
         return d === filterDate
       })
@@ -412,7 +429,7 @@ export default function CajaPage() {
                       <td>{mov.concepto}</td>
                       <td>
                         <span className="badge badge-neutral">
-                          {METODOS_LABEL[mov.metodo_pago || 'efectivo'] || mov.metodo_pago}
+                          {extractMetodo(mov) === 'tarjeta' ? '💳 Tarjeta' : extractMetodo(mov) === 'transferencia' ? '🏦 Transferencia' : extractMetodo(mov) === 'cuenta_corriente' ? '📜 Cta. Corriente' : '💵 Efectivo'}
                         </span>
                       </td>
                       <td>

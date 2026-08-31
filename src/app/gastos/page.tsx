@@ -65,12 +65,39 @@ export default function GastosPage() {
     }
 
     if (editingGasto) {
-      const { error } = await supabase.from('gastos').update(payload).eq('id', editingGasto.id)
-      if (error) { toast.error('Error al actualizar gasto: ' + error.message); return }
+      let { error } = await supabase
+        .from('gastos')
+        .update(payload)
+        .eq('id', editingGasto.id)
+
+      if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
+        delete payload.estado_pago
+        const res = await supabase.from('gastos').update(payload).eq('id', editingGasto.id)
+        error = res.error
+      }
+
+      if (error) {
+        toast.error('Error al actualizar gasto: ' + error.message)
+        return
+      }
       toast.success('Gasto actualizado')
     } else {
-      const { data: newGasto, error } = await supabase.from('gastos').insert(payload).select().single()
-      if (error) { toast.error('Error al registrar gasto: ' + error.message); return }
+      let { error } = await supabase
+        .from('gastos')
+        .insert(payload)
+        .select()
+        .single()
+
+      if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
+        delete payload.estado_pago
+        const res = await supabase.from('gastos').insert(payload).select().single()
+        error = res.error
+      }
+
+      if (error) {
+        toast.error('Error al registrar gasto: ' + error.message)
+        return
+      }
 
       // Si es pagado en efectivo al instante, registrar egreso en caja
       if (form.estado_pago === 'pagado') {
