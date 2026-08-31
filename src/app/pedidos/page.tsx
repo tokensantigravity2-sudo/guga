@@ -69,7 +69,7 @@ export default function PedidosPage() {
   const [showPdfModal, setShowPdfModal] = useState(false)
   const [pdfData, setPdfData] = useState<Pedido | null>(null)
 
-  // History filters
+  // History filterss
   const [historialFilter, setHistorialFilter] = useState('todos')
   const [historialSearch, setHistorialSearch] = useState('')
   const [historialFechaInicio, setHistorialFechaInicio] = useState('')
