@@ -35,6 +35,7 @@ export interface PedidoItem {
   medida?: string
   material?: string
   acabado?: string
+  imagen_url?: string
   no_afectar_stock?: boolean
 }
 

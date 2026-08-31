@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import TicketImpresion from '@/components/TicketImpresion'
+import PresupuestoPDFModal from '@/components/PresupuestoPDFModal'
 
 export default function PedidosPage() {
   const [servicios, setServicios] = useState<Servicio[]>([])
@@ -63,6 +64,10 @@ export default function PedidosPage() {
   // Ticket state
   const [showTicket, setShowTicket] = useState(false)
   const [ticketData, setTicketData] = useState<Pedido | null>(null)
+
+  // PDF Presupuesto state
+  const [showPdfModal, setShowPdfModal] = useState(false)
+  const [pdfData, setPdfData] = useState<Pedido | null>(null)
 
   // History filters
   const [historialFilter, setHistorialFilter] = useState('todos')
@@ -183,6 +188,7 @@ export default function PedidosPage() {
       medida: itemMedida || undefined,
       material: itemMaterial || undefined,
       acabado: itemAcabado || undefined,
+      imagen_url: selectedServicio?.imagen_url || undefined,
       no_afectar_stock: itemNoAfectarStock,
     }
 
@@ -287,6 +293,7 @@ export default function PedidosPage() {
 
     toast.success('¡Pedido/Presupuesto registrado con éxito!')
     setTicketData(data)
+    setPdfData(data)
     setShowTicket(true)
 
     // Reset form
@@ -555,6 +562,16 @@ export default function PedidosPage() {
                       position: 'relative'
                     }}
                   >
+                    {srv.imagen_url && (
+                      <div style={{ width: '100%', height: 100, borderRadius: 8, overflow: 'hidden', marginBottom: 8, background: 'var(--bg-hover)' }}>
+                        <img
+                          src={srv.imagen_url}
+                          alt={srv.nombre}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          onError={e => { (e.target as HTMLElement).style.display = 'none' }}
+                        />
+                      </div>
+                    )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
                         {srv.categoria}
@@ -990,6 +1007,18 @@ export default function PedidosPage() {
                         <div style={{ display: 'flex', gap: 4 }}>
                           <button
                             className="btn btn-sm btn-ghost"
+                            style={{ color: '#be185d', fontWeight: 600 }}
+                            onClick={() => {
+                              const matchClt = clientes.find(c => c.id === p.cliente_id)
+                              setPdfData(p)
+                              setShowPdfModal(true)
+                            }}
+                            title="Ver / Descargar Presupuesto PDF"
+                          >
+                            <FileText size={13} /> PDF
+                          </button>
+                          <button
+                            className="btn btn-sm btn-ghost"
                             style={{ color: 'var(--accent)' }}
                             onClick={() => handleRepetirPedidoDirecto(p)}
                             title="Repetir este pedido"
@@ -1261,6 +1290,15 @@ export default function PedidosPage() {
               notas: ticketData.notas,
             }}
             onClose={() => setShowTicket(false)}
+          />
+        )}
+
+        {/* Presupuesto PDF Modal */}
+        {showPdfModal && pdfData && (
+          <PresupuestoPDFModal
+            pedido={pdfData}
+            cliente={clientes.find(c => c.id === pdfData.cliente_id)}
+            onClose={() => setShowPdfModal(false)}
           />
         )}
       </main>

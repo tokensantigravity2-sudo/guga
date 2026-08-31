@@ -9,6 +9,7 @@ import { formatCurrency, formatDate, formatDateTime, getInitials } from '@/lib/h
 import { Search, Plus, Phone, Mail, MapPin, Edit2, Trash2, Users, FileText, ShoppingBag, Printer, X, RotateCcw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import TicketImpresion from '@/components/TicketImpresion'
+import PresupuestoPDFModal from '@/components/PresupuestoPDFModal'
 
 export default function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -26,6 +27,10 @@ export default function ClientesPage() {
   // Ticket state
   const [showTicket, setShowTicket] = useState(false)
   const [ticketData, setTicketData] = useState<Pedido | null>(null)
+
+  // PDF modal state
+  const [showPdfModal, setShowPdfModal] = useState(false)
+  const [pdfData, setPdfData] = useState<Pedido | null>(null)
 
   const router = useRouter()
 
@@ -332,6 +337,14 @@ export default function ClientesPage() {
                           <span style={{ fontWeight: 800, fontSize: 15 }}>TOTAL: {formatCurrency(p.total)}</span>
                           <div style={{ display: 'flex', gap: 6 }}>
                             <button
+                              className="btn btn-sm btn-ghost"
+                              style={{ color: '#be185d', fontWeight: 600 }}
+                              onClick={() => { setPdfData(p); setShowPdfModal(true) }}
+                              title="Ver / Descargar Presupuesto PDF"
+                            >
+                              <FileText size={13} /> PDF
+                            </button>
+                            <button
                               className="btn btn-sm btn-primary"
                               onClick={() => handleRepetirPedido(p)}
                               title="Cargar ítems y cliente en un nuevo pedido"
@@ -476,6 +489,15 @@ export default function ClientesPage() {
               notas: ticketData.notas,
             }}
             onClose={() => setShowTicket(false)}
+          />
+        )}
+
+        {/* PDF Presupuesto Modal */}
+        {showPdfModal && pdfData && (
+          <PresupuestoPDFModal
+            pedido={pdfData}
+            cliente={selectedClienteHistory}
+            onClose={() => setShowPdfModal(false)}
           />
         )}
       </main>

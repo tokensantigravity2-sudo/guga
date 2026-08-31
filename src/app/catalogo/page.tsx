@@ -26,6 +26,7 @@ export default function CatalogoPage() {
     unidad: 'unidad',
     tiempo_estimado: '2-3 días',
     disponible: true,
+    imagen_url: '',
     es_tercerizado: false,
     proveedor_tercerizado_id: '',
     costo_tercerizado: 0,
@@ -128,6 +129,7 @@ export default function CatalogoPage() {
       unidad: form.unidad || 'unidad',
       tiempo_estimado: form.tiempo_estimado.trim() || null,
       disponible: form.disponible !== false,
+      imagen_url: form.imagen_url?.trim() || null,
       es_tercerizado: form.es_tercerizado,
       proveedor_tercerizado_id: form.es_tercerizado ? (form.proveedor_tercerizado_id || null) : null,
       costo_tercerizado: form.es_tercerizado ? (Number(form.costo_tercerizado) || 0) : 0,
@@ -212,6 +214,7 @@ export default function CatalogoPage() {
       unidad: 'unidad',
       tiempo_estimado: '2-3 días',
       disponible: true,
+      imagen_url: '',
       es_tercerizado: false,
       proveedor_tercerizado_id: '',
       costo_tercerizado: 0,
@@ -232,6 +235,7 @@ export default function CatalogoPage() {
       unidad: srv.unidad || 'unidad',
       tiempo_estimado: srv.tiempo_estimado || '2-3 días',
       disponible: srv.disponible !== false,
+      imagen_url: srv.imagen_url || '',
       es_tercerizado: esTerc,
       proveedor_tercerizado_id: provId,
       costo_tercerizado: costo,
@@ -311,13 +315,30 @@ export default function CatalogoPage() {
                 return (
                   <tr key={srv.id} style={{ opacity: srv.disponible ? 1 : 0.5 }}>
                     <td>
-                      <div>
-                        <strong style={{ fontSize: 14 }}>{srv.nombre}</strong>
-                        {descLimpia && (
-                          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                            {descLimpia}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        {srv.imagen_url ? (
+                          <img
+                            src={srv.imagen_url}
+                            alt={srv.nombre}
+                            style={{ width: 42, height: 42, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', flexShrink: 0 }}
+                            onError={e => { (e.target as HTMLElement).style.display = 'none' }}
+                          />
+                        ) : (
+                          <div style={{
+                            width: 42, height: 42, borderRadius: 8, background: 'var(--bg-hover)', border: '1px solid var(--border)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', flexShrink: 0, fontSize: 18
+                          }}>
+                            🖼️
                           </div>
                         )}
+                        <div>
+                          <strong style={{ fontSize: 14 }}>{srv.nombre}</strong>
+                          {descLimpia && (
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                              {descLimpia}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td>
@@ -518,6 +539,27 @@ export default function CatalogoPage() {
                       value={form.tiempo_estimado}
                       onChange={e => setForm({ ...form, tiempo_estimado: e.target.value })}
                     />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 12 }}>
+                    <label>URL de Imagen del Servicio (opcional)</label>
+                    <input
+                      className="input"
+                      placeholder="https://ejemplo.com/imagen.jpg"
+                      value={form.imagen_url}
+                      onChange={e => setForm({ ...form, imagen_url: e.target.value })}
+                    />
+                    {form.imagen_url && (
+                      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <img
+                          src={form.imagen_url}
+                          alt="Vista previa"
+                          style={{ width: 50, height: 50, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }}
+                          onError={e => { (e.target as HTMLElement).style.display = 'none' }}
+                        />
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Vista previa de la imagen</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="modal-footer">
