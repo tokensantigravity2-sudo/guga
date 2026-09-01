@@ -21,6 +21,7 @@ export default function PedidosPage() {
   const [stockItems, setStockItems] = useState<StockItem[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'nuevo' | 'historial'>('nuevo')
+  const [editingPedido, setEditingPedido] = useState<Pedido | null>(null)
 
   // New order state
   const [cart, setCart] = useState<PedidoItem[]>([])
@@ -130,6 +131,34 @@ export default function PedidosPage() {
     setActiveTab('nuevo')
     window.scrollTo({ top: 0, behavior: 'smooth' })
     toast.success(`¡Ítems del Pedido #${p.numero} cargados en el carrito!`)
+  }
+
+  const openEditPedidoModal = (p: Pedido) => {
+    setEditingPedido(p)
+    setCart(Array.isArray(p.items) ? p.items : [])
+    const matchClient = clientes.find(c => c.id === p.cliente_id || c.nombre === p.cliente_nombre)
+    setSelectedCliente(matchClient || null)
+    setClienteSearch(p.cliente_nombre || '')
+    setMetodoPago(p.metodo_pago || 'efectivo')
+    setEstadoPedido(p.estado || 'presupuesto')
+    setFechaEntrega(p.fecha_entrega ? p.fecha_entrega.split('T')[0] : '')
+
+    const descMatch = (p.notas || '').match(/\[Desc:\s*(\d+)%\]/)
+    setDescuentoPorcentaje(p.descuento_porcentaje || (descMatch ? Number(descMatch[1]) : 0))
+
+    const adicMatch = (p.notas || '').match(/\[Adicional:\s*(\d+)%\]/)
+    setAdicionalPorcentaje(adicMatch ? Number(adicMatch[1]) : 0)
+
+    setIncluirIva((p.notas || '').includes('[+IVA 22%]'))
+
+    const cleanNotas = (p.notas || '')
+      .replace(/\[Desc:.*?\]/g, '')
+      .replace(/\[Adicional:.*?\]/g, '')
+      .replace(/\[\+IVA.*?\]/g, '')
+      .trim()
+    setNotas(cleanNotas)
+    setActiveTab('nuevo')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const openAddItemModal = (servicio: Servicio) => {

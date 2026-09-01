@@ -13,6 +13,7 @@ export default function GastosPage() {
   const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [mesFilter, setMesFilter] = useState<string>(new Date().toISOString().substring(0, 7))
   const [showModal, setShowModal] = useState(false)
   const [editingGasto, setEditingGasto] = useState<Gasto | null>(null)
 
@@ -82,11 +83,7 @@ export default function GastosPage() {
         toast.error('Error al registrar gasto: ' + error.message)
         return
       }
-          referencia_id: newGasto.id,
-        })
-      }
-
-      toast.success(form.estado_pago === 'fiado' ? 'Gasto registrado a crédito (Fiado)' : 'Gasto pagado registrado')
+      toast.success('Gasto registrado correctamente')
     }
 
     closeModal()
