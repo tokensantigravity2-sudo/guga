@@ -459,6 +459,80 @@ export default function PedidosPage() {
     loadData()
   }
 
+  const handleToggleCobrado = async (pedido: Pedido) => {
+    const isCurrentlyCobrado = pedido.cobrado === true || (pedido.notas || '').includes('[COBRADO:true]')
+    const newCobrado = !isCurrentlyCobrado
+
+    let newNotas = pedido.notas || ''
+    if (newCobrado) {
+      if (!newNotas.includes('[COBRADO:true]')) {
+        newNotas = `${newNotas} [COBRADO:true]`.trim()
+      }
+    } else {
+      newNotas = newNotas.replace(/\[COBRADO:true\]/g, '').trim()
+    }
+
+    let payload: any = {
+      cobrado: newCobrado,
+      notas: newNotas || null
+    }
+
+    let { error } = await supabase.from('pedidos').update(payload).eq('id', pedido.id)
+    if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
+      delete payload.cobrado
+      const res = await supabase.from('pedidos').update(payload).eq('id', pedido.id)
+      error = res.error
+    }
+
+    if (error) {
+      toast.error('Error al actualizar cobro: ' + error.message)
+      return
+    }
+
+    // SI SE MARCA COMO COBRADO (ON): Registrar el 100% de la plata (o saldo) en la Caja Diaria
+    if (newCobrado && pedido.metodo_pago !== 'cuenta_corriente') {
+      const { data: movs } = await supabase.from('caja_movimientos').select('*').eq('referencia_id', pedido.id)
+      const yaCobradoTotal = movs?.some(m => m.concepto && (m.concepto.includes('Cobro 100%') || m.concepto.includes('Entrega Pedido')))
+
+      if (!yaCobradoTotal) {
+        const totalYaIngresado = movs?.reduce((acc, m) => acc + Number(m.monto), 0) || 0
+        const saldoPendiente = Math.max(0, Number(pedido.total) - totalYaIngresado)
+
+        if (saldoPendiente > 0) {
+          const nowIso = new Date().toISOString()
+          let movData: any = {
+            tipo: 'ingreso',
+            monto: saldoPendiente,
+            concepto: `[Pago: ${pedido.metodo_pago || 'efectivo'}] Cobro 100% Pedido #${pedido.numero} - ${pedido.cliente_nombre || 'Consumidor Final'}`,
+            referencia_id: pedido.id,
+            fecha: nowIso,
+            cliente_id: pedido.cliente_id || null,
+            cliente_nombre: pedido.cliente_nombre || 'Consumidor Final',
+            metodo_pago: pedido.metodo_pago || 'efectivo',
+            facturado: false,
+          }
+          let { error: movErr } = await supabase.from('caja_movimientos').insert(movData)
+          if (movErr && (movErr.message.includes('column') || movErr.message.includes('schema') || movErr.code === 'PGRST204')) {
+            delete movData.cliente_id
+            delete movData.cliente_nombre
+            delete movData.metodo_pago
+            delete movData.facturado
+            await supabase.from('caja_movimientos').insert(movData)
+          }
+          toast.success(`💵 ¡100% COBRADO! Se ingresaron ${formatCurrency(saldoPendiente)} a la Caja Diaria`)
+        } else {
+          toast.success(`🟢 Pedido #${pedido.numero} marcado como COBRADO`)
+        }
+      } else {
+        toast.success(`🟢 Pedido #${pedido.numero} marcado como COBRADO`)
+      }
+    } else if (!newCobrado) {
+      toast.success(`⚪ Pedido #${pedido.numero} desmarcado como cobrado`)
+    }
+
+    loadData()
+  }
+
   const handleDeletePedido = async (id: string, numero: string) => {
     if (!confirm(`¿Estás seguro de eliminar el pedido #${numero}?`)) return
     const { error } = await supabase.from('pedidos').delete().eq('id', id)
@@ -1109,34 +1183,68 @@ export default function PedidosPage() {
                     <th>N° Pedido</th>
                     <th>Fecha</th>
                     <th>Cliente</th>
-                    <th>Estado</th>
+                    <th>Estado Producción</th>
                     <th>Entrega Est.</th>
                     <th>Pago</th>
+                    <th>¿Cobrado? (ON/OFF)</th>
                     <th>Total</th>
                     <th>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredPedidos.map(p => (
-                    <tr key={p.id}>
-                      <td><strong style={{ color: 'var(--accent)' }}>{p.numero}</strong></td>
-                      <td>{formatDateTime(p.created_at || '')}</td>
-                      <td>{p.cliente_nombre || 'Consumidor Final'}</td>
-                      <td>
-                        <select
-                          className="input"
-                          style={{ padding: '3px 8px', fontSize: 12, height: 'auto', width: 'auto' }}
-                          value={p.estado}
-                          onChange={e => handleCambiarEstado(p.id, e.target.value, p)}
-                        >
-                          {ESTADOS_PEDIDO.map(est => (
-                            <option key={est.value} value={est.value}>{est.label}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>{p.fecha_entrega ? formatDateTime(p.fecha_entrega) : '—'}</td>
-                      <td><span className="badge badge-neutral">{p.metodo_pago}</span></td>
-                      <td><strong>{formatCurrency(p.total)}</strong></td>
+                  {filteredPedidos.map(p => {
+                    const isCobrado = p.cobrado === true || (p.notas || '').includes('[COBRADO:true]')
+                    return (
+                      <tr key={p.id}>
+                        <td><strong style={{ color: 'var(--accent)' }}>{p.numero}</strong></td>
+                        <td>{formatDateTime(p.created_at || '')}</td>
+                        <td>{p.cliente_nombre || 'Consumidor Final'}</td>
+                        <td>
+                          <select
+                            className="input"
+                            style={{ padding: '3px 8px', fontSize: 12, height: 'auto', width: 'auto' }}
+                            value={p.estado}
+                            onChange={e => handleCambiarEstado(p.id, e.target.value, p)}
+                          >
+                            {ESTADOS_PEDIDO.map(est => (
+                              <option key={est.value} value={est.value}>{est.label}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>{p.fecha_entrega ? formatDateTime(p.fecha_entrega) : '—'}</td>
+                        <td><span className="badge badge-neutral">{p.metodo_pago}</span></td>
+                        <td>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleCobrado(p)}
+                            style={{
+                              padding: '5px 12px',
+                              borderRadius: 20,
+                              border: 'none',
+                              fontWeight: 700,
+                              fontSize: 12,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              background: isCobrado ? '#16a34a' : '#f1f5f9',
+                              color: isCobrado ? '#ffffff' : '#64748b',
+                              boxShadow: isCobrado ? '0 2px 6px rgba(22, 163, 74, 0.3)' : 'inset 0 0 0 1px #cbd5e1',
+                              transition: 'all 0.2s ease'
+                            }}
+                            title={isCobrado ? 'Cobrado 100% (Ingresado a Caja Diaria). Clic para desmarcar.' : 'Sin cobrar. Clic para activar ON y registrar el 100% del dinero en la Caja Diaria.'}
+                          >
+                            <span style={{
+                              width: 9,
+                              height: 9,
+                              borderRadius: '50%',
+                              background: isCobrado ? '#ffffff' : '#94a3b8',
+                              display: 'inline-block'
+                            }} />
+                            {isCobrado ? '🟢 COBRADO' : '⚪ SIN COBRAR'}
+                          </button>
+                        </td>
+                        <td><strong>{formatCurrency(p.total)}</strong></td>
                       <td>
                         <div style={{ display: 'flex', gap: 4 }}>
                           <button
@@ -1187,7 +1295,8 @@ export default function PedidosPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  )
+                })}
                 </tbody>
               </table>
               {filteredPedidos.length === 0 && (

@@ -45,6 +45,17 @@ export default function GastosPage() {
     setLoading(false)
   }
 
+  const isGastoFiado = (g: Gasto) => {
+    return g.estado_pago === 'fiado' ||
+      (g.notas ? (g.notas.includes('[FIADO]') || g.notas.includes('[PENDIENTE]') || g.notas.toLowerCase().includes('fiado')) : false)
+  }
+
+  const getVencimientoFiado = (g: Gasto) => {
+    if (g.fecha_vencimiento) return g.fecha_vencimiento
+    const match = (g.notas || '').match(/\[Vence:\s*(.+?)\]/)
+    return match ? match[1] : null
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.concepto.trim() || form.monto <= 0) {
@@ -54,20 +65,35 @@ export default function GastosPage() {
 
     const catFinal = form.categoria === 'OTRO' ? (form.nuevaCategoria.trim() || 'Otros') : form.categoria
 
+    let cleanNotas = (form.notas || '')
+      .replace(/\[FIADO.*?\]/g, '')
+      .replace(/\[Vence:.*?\]/g, '')
+      .trim()
+
+    if (form.estado_pago === 'fiado') {
+      const venceTag = form.fecha_vencimiento ? `[Vence: ${form.fecha_vencimiento}]` : ''
+      cleanNotas = `[FIADO] ${venceTag} ${cleanNotas}`.trim()
+    }
+
     let payload: any = {
       concepto: form.concepto.trim(),
       monto: Number(form.monto),
       categoria: catFinal,
       fecha: form.fecha,
       proveedor_id: form.proveedor_id || null,
-      notas: form.notas.trim() || null,
+      notas: cleanNotas || null,
+      estado_pago: form.estado_pago,
+      fecha_vencimiento: form.estado_pago === 'fiado' ? (form.fecha_vencimiento || null) : null,
     }
 
     if (editingGasto) {
-      const { error } = await supabase
-        .from('gastos')
-        .update(payload)
-        .eq('id', editingGasto.id)
+      let { error } = await supabase.from('gastos').update(payload).eq('id', editingGasto.id)
+      if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
+        delete payload.estado_pago
+        delete payload.fecha_vencimiento
+        const res = await supabase.from('gastos').update(payload).eq('id', editingGasto.id)
+        error = res.error
+      }
 
       if (error) {
         toast.error('Error al actualizar gasto: ' + error.message)
@@ -75,15 +101,33 @@ export default function GastosPage() {
       }
       toast.success('Gasto actualizado correctamente')
     } else {
-      const { error } = await supabase
-        .from('gastos')
-        .insert(payload)
+      let { data: newGasto, error } = await supabase.from('gastos').insert(payload).select().single()
+      if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
+        delete payload.estado_pago
+        delete payload.fecha_vencimiento
+        const res = await supabase.from('gastos').insert(payload).select().single()
+        newGasto = res.data
+        error = res.error
+      }
 
       if (error) {
         toast.error('Error al registrar gasto: ' + error.message)
         return
       }
-      toast.success('Gasto registrado correctamente')
+
+      // Si es pagado al contado, registrar egreso en caja
+      if (form.estado_pago === 'pagado') {
+        let movEgreso: any = {
+          tipo: 'egreso',
+          monto: Number(form.monto),
+          concepto: `Gasto: ${form.concepto.trim()}`,
+          referencia_id: newGasto?.id || null,
+          fecha: new Date().toISOString(),
+        }
+        await supabase.from('caja_movimientos').insert(movEgreso)
+      }
+
+      toast.success(form.estado_pago === 'fiado' ? '⏳ Gasto registrado como FIADO / PENDIENTE' : '🟢 Gasto registrado y pagado')
     }
 
     closeModal()
@@ -102,20 +146,40 @@ export default function GastosPage() {
   }
 
   const toggleMarcarPagado = async (g: Gasto) => {
-    const { error } = await supabase.from('gastos').update({ estado_pago: 'pagado' }).eq('id', g.id)
+    let cleanNotas = (g.notas || '')
+      .replace(/\[FIADO.*?\]/g, '')
+      .replace(/\[Vence:.*?\]/g, '')
+      .trim()
+
+    let payload: any = {
+      estado_pago: 'pagado',
+      fecha_vencimiento: null,
+      notas: cleanNotas || null
+    }
+
+    let { error } = await supabase.from('gastos').update(payload).eq('id', g.id)
+    if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
+      delete payload.estado_pago
+      delete payload.fecha_vencimiento
+      const res = await supabase.from('gastos').update(payload).eq('id', g.id)
+      error = res.error
+    }
+
     if (error) {
       toast.error('Error al marcar pagado: ' + error.message)
       return
     }
+
     // Registrar egreso en caja al saldar la deuda
     await supabase.from('caja_movimientos').insert({
       tipo: 'egreso',
       monto: Number(g.monto),
-      concepto: `Saldado de Gasto Fiado: ${g.concepto}`,
+      concepto: `Saldado de Deuda / Fiado: ${g.concepto}`,
       referencia_id: g.id,
+      fecha: new Date().toISOString()
     })
 
-    toast.success('¡Gasto marcado como pagado!')
+    toast.success('💰 ¡Deuda saldada! Gasto marcado como PAGADO y registrado en Caja')
     await loadData()
   }
 
@@ -192,6 +256,14 @@ export default function GastosPage() {
   const openEdit = (g: Gasto) => {
     setEditingGasto(g)
     const isStandardCat = CATEGORIAS_GASTO.includes(g.categoria)
+    const fiado = isGastoFiado(g)
+    const venc = getVencimientoFiado(g)
+
+    let cleanNotas = (g.notas || '')
+      .replace(/\[FIADO.*?\]/g, '')
+      .replace(/\[Vence:.*?\]/g, '')
+      .trim()
+
     setForm({
       concepto: g.concepto,
       monto: Number(g.monto),
@@ -199,9 +271,9 @@ export default function GastosPage() {
       nuevaCategoria: isStandardCat ? '' : g.categoria,
       fecha: g.fecha || new Date().toISOString().split('T')[0],
       proveedor_id: g.proveedor_id || '',
-      notas: g.notas || '',
-      estado_pago: g.estado_pago || 'pagado',
-      fecha_vencimiento: g.fecha_vencimiento || '',
+      notas: cleanNotas,
+      estado_pago: fiado ? 'fiado' : 'pagado',
+      fecha_vencimiento: venc || '',
     })
     setShowModal(true)
   }
@@ -217,7 +289,8 @@ export default function GastosPage() {
   )
 
   const totalMes = gastos.reduce((sum, g) => sum + Number(g.monto), 0)
-  const totalFiado = gastos.filter(g => g.estado_pago === 'fiado').reduce((sum, g) => sum + Number(g.monto), 0)
+  const totalFiado = gastos.filter(g => isGastoFiado(g)).reduce((sum, g) => sum + Number(g.monto), 0)
+  const countFiados = gastos.filter(g => isGastoFiado(g)).length
 
   if (loading) return <div className="spinner" style={{ margin: '50px auto' }} />
 
@@ -263,7 +336,7 @@ export default function GastosPage() {
               <div className="stat-label">Gastos Fiados / Deudas Pendientes</div>
               <div className="stat-value" style={{ color: 'var(--warning)' }}>{formatCurrency(totalFiado)}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                {gastos.filter(g => g.estado_pago === 'fiado').length} pendiente(s) de pago
+                {countFiados} pendiente(s) de pago
               </div>
             </div>
           </div>
@@ -283,52 +356,59 @@ export default function GastosPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(g => (
-                <tr key={g.id}>
-                  <td>
-                    <div>
-                      <strong style={{ fontSize: 14 }}>{g.concepto}</strong>
-                      {g.notas && (
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                          {g.notas}
-                        </div>
+              {filtered.map(g => {
+                const fiado = isGastoFiado(g)
+                const venc = getVencimientoFiado(g)
+                const notasLimpias = (g.notas || '').replace(/\[FIADO.*?\]/g, '').replace(/\[Vence:.*?\]/g, '').trim()
+                return (
+                  <tr key={g.id}>
+                    <td>
+                      <div>
+                        <strong style={{ fontSize: 14 }}>{g.concepto}</strong>
+                        {notasLimpias && (
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                            {notasLimpias}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td><span className="badge badge-neutral">{g.categoria}</span></td>
+                    <td>{proveedores.find(p => p.id === g.proveedor_id)?.nombre || '—'}</td>
+                    <td>{g.fecha ? formatDate(g.fecha) : '—'}</td>
+                    <td>
+                      {fiado ? (
+                        <span className="badge badge-warning" style={{ gap: 5, padding: '4px 9px', fontWeight: 700 }}>
+                          <Clock size={12} /> ⏳ Fiado / Pendiente {venc ? `(Vence: ${formatDate(venc)})` : ''}
+                        </span>
+                      ) : (
+                        <span className="badge badge-success" style={{ gap: 4, padding: '4px 9px', fontWeight: 700 }}>
+                          ✓ Pagado
+                        </span>
                       )}
-                    </div>
-                  </td>
-                  <td><span className="badge badge-neutral">{g.categoria}</span></td>
-                  <td>{proveedores.find(p => p.id === g.proveedor_id)?.nombre || '—'}</td>
-                  <td>{g.fecha ? formatDate(g.fecha) : '—'}</td>
-                  <td>
-                    {g.estado_pago === 'fiado' ? (
-                      <span className="badge badge-warning" style={{ gap: 4 }}>
-                        <Clock size={10} /> Fiado {g.fecha_vencimiento ? `(Vence: ${formatDate(g.fecha_vencimiento)})` : ''}
-                      </span>
-                    ) : (
-                      <span className="badge badge-success">✓ Pagado</span>
-                    )}
-                  </td>
-                  <td><strong style={{ color: 'var(--danger)', fontSize: 15 }}>{formatCurrency(g.monto)}</strong></td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      {g.estado_pago === 'fiado' && (
-                        <button
-                          className="btn btn-sm btn-success"
-                          onClick={() => toggleMarcarPagado(g)}
-                          title="Marcar como saldado/pagado"
-                        >
-                          <CheckCircle2 size={13} />
+                    </td>
+                    <td><strong style={{ color: 'var(--danger)', fontSize: 15 }}>{formatCurrency(g.monto)}</strong></td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {fiado && (
+                          <button
+                            className="btn btn-sm btn-success"
+                            onClick={() => toggleMarcarPagado(g)}
+                            title="Marcar como saldado/pagado"
+                          >
+                            <CheckCircle2 size={13} />
+                          </button>
+                        )}
+                        <button className="btn btn-sm btn-secondary" onClick={() => openEdit(g)} title="Editar">
+                          <Edit2 size={13} />
                         </button>
-                      )}
-                      <button className="btn btn-sm btn-secondary" onClick={() => openEdit(g)} title="Editar">
-                        <Edit2 size={13} />
-                      </button>
-                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(g.id, g.concepto)} title="Eliminar">
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(g.id, g.concepto)} title="Eliminar">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
           {filtered.length === 0 && (

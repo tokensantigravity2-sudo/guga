@@ -35,23 +35,32 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
         <html>
           <head>
             <title>Presupuesto GUGA - ${pedido.numero}</title>
-            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
             <style>
               @page {
                 size: A4 portrait;
-                margin: 10mm;
+                margin: 8mm;
+              }
+              * {
+                box-sizing: border-box;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                color-adjust: exact !important;
               }
               body {
-                font-family: 'Inter', system-ui, sans-serif;
+                font-family: 'Inter', system-ui, -apple-system, sans-serif;
                 margin: 0;
                 padding: 0;
                 color: #0f172a;
                 background: #ffffff;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
+                -webkit-font-smoothing: antialiased;
               }
-              * {
-                box-sizing: border-box;
+              table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+              }
+              img {
+                display: block;
               }
             </style>
           </head>
@@ -68,7 +77,7 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
         setTimeout(() => {
           document.body.removeChild(iframe);
         }, 800);
-      }, 300);
+      }, 350);
     }
   };
 
@@ -283,25 +292,23 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
               </div>
             </div>
 
-            {/* Items Table */}
+            {/* Items Table - PRECIO UNITARIO ELIMINADO COMPLETAMENTE Y ESPECIFICACIONES DESTACADAS */}
             <div style={{ marginBottom: 24 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: '#0f172a', color: '#ffffff', textAlign: 'left' }}>
-                    <th style={{ padding: '10px 12px', borderRadius: '8px 0 0 0', width: 60 }}></th>
-                    <th style={{ padding: '10px 12px' }}>DESCRIPCIÓN Y ESPECIFICACIONES</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', width: 70 }}>CANT.</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'right', width: 100 }}>P. UNIT.</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'right', borderRadius: '0 8px 0 0', width: 110 }}>TOTAL</th>
+                    <th style={{ padding: '10px 12px', borderRadius: '8px 0 0 0', width: 50 }}></th>
+                    <th style={{ padding: '10px 12px' }}>DESCRIPCIÓN Y ESPECIFICACIONES DE DISEÑO</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', width: 80 }}>CANT.</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right', borderRadius: '0 8px 0 0', width: 120 }}>SUBTOTAL</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((it: any, index: number) => {
-                    const specs = [it.medida, it.material, it.acabado].filter(Boolean).join(' • ');
                     const isEven = index % 2 === 0;
                     return (
                       <tr key={index} style={{ background: isEven ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                        <td style={{ padding: '10px 12px', verticalAlign: 'top' }}>
+                        <td style={{ padding: '12px 10px', verticalAlign: 'top' }}>
                           {it.imagen_url ? (
                             <img
                               src={it.imagen_url}
@@ -310,28 +317,64 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
                             />
                           ) : (
                             <div style={{
-                              width: 44, height: 44, borderRadius: 8, background: '#f1f5f9', border: '1px solid #cbd5e1',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 18
+                              width: 40, height: 40, borderRadius: 8, background: '#f1f5f9', border: '1px solid #e2e8f0',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 16
                             }}>
-                              🖼️
+                              🖨️
                             </div>
                           )}
                         </td>
-                        <td style={{ padding: '10px 12px', verticalAlign: 'top' }}>
-                          <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 14 }}>{it.nombre}</div>
-                          {specs && (
-                            <div style={{ fontSize: 12, color: '#475569', marginTop: 2, fontWeight: 500 }}>
-                              {specs}
+                        <td style={{ padding: '12px 10px', verticalAlign: 'top' }}>
+                          <div style={{ fontWeight: 800, color: '#0f172a', fontSize: 14.5 }}>{it.nombre}</div>
+                          {it.descripcion && (
+                            <div style={{ fontSize: 12, color: '#475569', marginTop: 3 }}>
+                              {it.descripcion}
                             </div>
                           )}
+                          {/* Especificaciones de diseño destacadas */}
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                            {it.medida && (
+                              <span style={{
+                                background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '2px 8px',
+                                borderRadius: 6, fontSize: 11.5, color: '#334155', fontWeight: 600,
+                                WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'
+                              }}>
+                                📐 Medidas: {it.medida}
+                              </span>
+                            )}
+                            {it.material && (
+                              <span style={{
+                                background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '2px 8px',
+                                borderRadius: 6, fontSize: 11.5, color: '#334155', fontWeight: 600,
+                                WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'
+                              }}>
+                                📄 Material: {it.material}
+                              </span>
+                            )}
+                            {it.acabado && (
+                              <span style={{
+                                background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '2px 8px',
+                                borderRadius: 6, fontSize: 11.5, color: '#334155', fontWeight: 600,
+                                WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'
+                              }}>
+                                ✨ Acabado: {it.acabado}
+                              </span>
+                            )}
+                            {it.notas && (
+                              <span style={{
+                                background: '#fdf2f8', border: '1px solid #fbcfe8', padding: '2px 8px',
+                                borderRadius: 6, fontSize: 11.5, color: '#be185d', fontWeight: 600,
+                                WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'
+                              }}>
+                                🎨 Nota: {it.notas}
+                              </span>
+                            )}
+                          </div>
                         </td>
-                        <td style={{ padding: '10px 12px', textAlign: 'center', verticalAlign: 'top', fontWeight: 600 }}>
+                        <td style={{ padding: '12px 10px', textAlign: 'center', verticalAlign: 'top', fontWeight: 700, fontSize: 14 }}>
                           {it.cantidad}
                         </td>
-                        <td style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top', color: '#475569' }}>
-                          {it.precio_unitario && it.precio_unitario > 0 ? formatCurrency(it.precio_unitario) : 'Total Lote'}
-                        </td>
-                        <td style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top', fontWeight: 700, color: '#0f172a' }}>
+                        <td style={{ padding: '12px 10px', textAlign: 'right', verticalAlign: 'top', fontWeight: 800, color: '#0f172a', fontSize: 14.5 }}>
                           {formatCurrency(it.subtotal || (it.cantidad * (it.precio_unitario || it.precio || 0)))}
                         </td>
                       </tr>

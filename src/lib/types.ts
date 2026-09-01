@@ -52,6 +52,7 @@ export interface Pedido {
   metodo_pago?: string
   estado?: 'presupuesto' | 'aprobado' | 'en_produccion' | 'terminado' | 'entregado' | 'cancelado'
   fecha_entrega?: string
+  cobrado?: boolean
   notas?: string
   archivo_url?: string
   created_at?: string
