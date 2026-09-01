@@ -29,6 +29,7 @@ export default function PedidosPage() {
   const [clienteSearch, setClienteSearch] = useState('')
   const [showClienteDropdown, setShowClienteDropdown] = useState(false)
   const [descuentoPorcentaje, setDescuentoPorcentaje] = useState(0)
+  const [montoSena, setMontoSena] = useState<number>(0)
   const [metodoPago, setMetodoPago] = useState('efectivo')
   const [estadoPedido, setEstadoPedido] = useState('presupuesto')
   const [fechaEntrega, setFechaEntrega] = useState('')
@@ -320,13 +321,13 @@ export default function PedidosPage() {
       await descontarStockDePedido(cart)
     }
 
-    // Movimiento de caja si el pago no es cta corriente
-    if (metodoPago !== 'cuenta_corriente' && estadoPedido !== 'presupuesto') {
+    // 1. REGISTRAR SEÑA EN CAJA DIARIA (Si ingresó una seña > 0 y no es cta corriente)
+    if (montoSena > 0 && metodoPago !== 'cuenta_corriente') {
       const nowIso = new Date().toISOString()
-      let movData: any = {
+      let movSena: any = {
         tipo: 'ingreso',
-        monto: total,
-        concepto: `Pedido #${numero} - ${selectedCliente?.nombre || 'Consumidor Final'}`,
+        monto: montoSena,
+        concepto: `[Pago: ${metodoPago}] Seña Pedido #${numero} - ${selectedCliente?.nombre || 'Consumidor Final'}`,
         referencia_id: data.id,
         fecha: nowIso,
         cliente_id: selectedCliente?.id || null,
@@ -334,13 +335,42 @@ export default function PedidosPage() {
         metodo_pago: metodoPago || 'efectivo',
         facturado: false,
       }
-      let { error: movErr } = await supabase.from('caja_movimientos').insert(movData)
+      let { error: movErr } = await supabase.from('caja_movimientos').insert(movSena)
       if (movErr && (movErr.message.includes('column') || movErr.message.includes('schema') || movErr.code === 'PGRST204')) {
-        delete movData.cliente_id
-        delete movData.cliente_nombre
-        delete movData.metodo_pago
-        delete movData.facturado
-        await supabase.from('caja_movimientos').insert(movData)
+        delete movSena.cliente_id
+        delete movSena.cliente_nombre
+        delete movSena.metodo_pago
+        delete movSena.facturado
+        await supabase.from('caja_movimientos').insert(movSena)
+      }
+      toast.success(`💵 Seña de ${formatCurrency(montoSena)} registrada en la Caja Diaria`)
+    }
+
+    // 2. REGISTRAR EN CAJA DIARIA SOLO SI EL ESTADO ES 'ENTREGADO'
+    if (estadoPedido === 'entregado' && metodoPago !== 'cuenta_corriente') {
+      const saldoFinal = Math.max(0, total - montoSena)
+      if (saldoFinal > 0) {
+        const nowIso = new Date().toISOString()
+        let movData: any = {
+          tipo: 'ingreso',
+          monto: saldoFinal,
+          concepto: `[Pago: ${metodoPago}] Entrega Pedido #${numero} - ${selectedCliente?.nombre || 'Consumidor Final'}`,
+          referencia_id: data.id,
+          fecha: nowIso,
+          cliente_id: selectedCliente?.id || null,
+          cliente_nombre: selectedCliente?.nombre || 'Consumidor Final',
+          metodo_pago: metodoPago || 'efectivo',
+          facturado: false,
+        }
+        let { error: movErr } = await supabase.from('caja_movimientos').insert(movData)
+        if (movErr && (movErr.message.includes('column') || movErr.message.includes('schema') || movErr.code === 'PGRST204')) {
+          delete movData.cliente_id
+          delete movData.cliente_nombre
+          delete movData.metodo_pago
+          delete movData.facturado
+          await supabase.from('caja_movimientos').insert(movData)
+        }
+        toast.success(`💰 Ingreso por Entrega (${formatCurrency(saldoFinal)}) registrado en la Caja Diaria`)
       }
     }
 
@@ -353,6 +383,7 @@ export default function PedidosPage() {
     setCart([])
     setSelectedCliente(null)
     setDescuentoPorcentaje(0)
+    setMontoSena(0)
     setAdicionalPorcentaje(0)
     setIncluirIva(false)
     setNotas('')
@@ -362,7 +393,7 @@ export default function PedidosPage() {
 
   const descontarStockDePedido = async (items: PedidoItem[]) => {
     for (const item of items) {
-      if (item.no_afectar_stock) continue // Si está marcado "no afectar stock", omitir
+      if (item.no_afectar_stock) continue
 
       const targetMaterialName = item.material || item.nombre
       const match = stockItems.find(s =>
@@ -384,9 +415,44 @@ export default function PedidosPage() {
       return
     }
 
-    // Descontar stock si pasa de presupuesto a producción/aprobado
+    // Descontar stock si pasa a produccion/aprobado/entregado
     if (nuevoEstado !== 'presupuesto' && nuevoEstado !== 'cancelado') {
       await descontarStockDePedido(pedido.items || [])
+    }
+
+    // SOLO CUANDO PASA A 'ENTREGADO': Registrar ingreso en caja diaria si aún no existe
+    if (nuevoEstado === 'entregado' && pedido.metodo_pago !== 'cuenta_corriente') {
+      const { data: movs } = await supabase.from('caja_movimientos').select('*').eq('referencia_id', id)
+      const yaRegistradoEntrega = movs?.some(m => m.concepto && m.concepto.includes('Entrega Pedido'))
+
+      if (!yaRegistradoEntrega) {
+        const totalSenas = movs?.reduce((acc, m) => acc + Number(m.monto), 0) || 0
+        const saldoPendiente = Math.max(0, Number(pedido.total) - totalSenas)
+
+        if (saldoPendiente > 0) {
+          const nowIso = new Date().toISOString()
+          let movData: any = {
+            tipo: 'ingreso',
+            monto: saldoPendiente,
+            concepto: `[Pago: ${pedido.metodo_pago || 'efectivo'}] Entrega Pedido #${pedido.numero} - ${pedido.cliente_nombre || 'Consumidor Final'}`,
+            referencia_id: id,
+            fecha: nowIso,
+            cliente_id: pedido.cliente_id || null,
+            cliente_nombre: pedido.cliente_nombre || 'Consumidor Final',
+            metodo_pago: pedido.metodo_pago || 'efectivo',
+            facturado: false,
+          }
+          let { error: movErr } = await supabase.from('caja_movimientos').insert(movData)
+          if (movErr && (movErr.message.includes('column') || movErr.message.includes('schema') || movErr.code === 'PGRST204')) {
+            delete movData.cliente_id
+            delete movData.cliente_nombre
+            delete movData.metodo_pago
+            delete movData.facturado
+            await supabase.from('caja_movimientos').insert(movData)
+          }
+          toast.success(`💰 Ingreso por Entrega (${formatCurrency(saldoPendiente)}) registrado en la Caja Diaria`)
+        }
+      }
     }
 
     toast.success(`Estado actualizado a ${nuevoEstado}`)
@@ -840,6 +906,21 @@ export default function PedidosPage() {
                   <option value="transferencia">Transferencia</option>
                   <option value="cuenta_corriente">Cta. Corriente</option>
                 </select>
+              </div>
+
+              {/* Seña / Adelanto ($) */}
+              <div className="form-group" style={{ marginBottom: 12 }}>
+                <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>💵 Seña / Adelanto Recibido ($)</span>
+                  {montoSena > 0 && <span style={{ color: '#16a34a', fontWeight: 600, fontSize: 12 }}>Entra a Caja Diaria</span>}
+                </label>
+                <input
+                  className="input"
+                  type="number"
+                  placeholder="0 (ej. $500)"
+                  value={montoSena === 0 ? '' : montoSena}
+                  onChange={e => setMontoSena(e.target.value === '' ? 0 : Number(e.target.value))}
+                />
               </div>
 
               {/* Checkbox: Agregar IVA (22%) */}
