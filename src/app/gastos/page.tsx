@@ -53,58 +53,35 @@ export default function GastosPage() {
 
     const catFinal = form.categoria === 'OTRO' ? (form.nuevaCategoria.trim() || 'Otros') : form.categoria
 
-    const payload = {
+    let payload: any = {
       concepto: form.concepto.trim(),
       monto: Number(form.monto),
       categoria: catFinal,
       fecha: form.fecha,
       proveedor_id: form.proveedor_id || null,
       notas: form.notas.trim() || null,
-      estado_pago: form.estado_pago,
-      fecha_vencimiento: form.estado_pago === 'fiado' ? (form.fecha_vencimiento || null) : null,
     }
 
     if (editingGasto) {
-      let { error } = await supabase
+      const { error } = await supabase
         .from('gastos')
         .update(payload)
         .eq('id', editingGasto.id)
-
-      if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
-        delete payload.estado_pago
-        const res = await supabase.from('gastos').update(payload).eq('id', editingGasto.id)
-        error = res.error
-      }
 
       if (error) {
         toast.error('Error al actualizar gasto: ' + error.message)
         return
       }
-      toast.success('Gasto actualizado')
+      toast.success('Gasto actualizado correctamente')
     } else {
-      let { error } = await supabase
+      const { error } = await supabase
         .from('gastos')
         .insert(payload)
-        .select()
-        .single()
-
-      if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
-        delete payload.estado_pago
-        const res = await supabase.from('gastos').insert(payload).select().single()
-        error = res.error
-      }
 
       if (error) {
         toast.error('Error al registrar gasto: ' + error.message)
         return
       }
-
-      // Si es pagado en efectivo al instante, registrar egreso en caja
-      if (form.estado_pago === 'pagado') {
-        await supabase.from('caja_movimientos').insert({
-          tipo: 'egreso',
-          monto: Number(form.monto),
-          concepto: `Gasto: ${form.concepto}`,
           referencia_id: newGasto.id,
         })
       }
@@ -142,6 +119,60 @@ export default function GastosPage() {
     })
 
     toast.success('¡Gasto marcado como pagado!')
+    await loadData()
+  }
+
+  const generarGastosFijosRecurrentes = async () => {
+    if (!mesFilter) {
+      toast.error('Seleccioná un mes en el filtro para generar los gastos fijos')
+      return
+    }
+
+    const [year, month] = mesFilter.split('-')
+    const prevDate = new Date(Number(year), Number(month) - 2, 1)
+    const prevMesStr = prevDate.toISOString().substring(0, 7)
+
+    const { data: prevGastos, error: pErr } = await supabase
+      .from('gastos')
+      .select('*')
+      .gte('fecha', `${prevMesStr}-01`)
+      .lte('fecha', `${prevMesStr}-31`)
+
+    if (pErr || !prevGastos || prevGastos.length === 0) {
+      toast.error(`No hay gastos registrados en el mes anterior (${prevMesStr}) para copiar`)
+      return
+    }
+
+    const fijos = prevGastos.filter(g =>
+      ['Alquiler', 'Servicios', 'Personal', 'Impuestos', 'Mantenimiento Máquinas'].includes(g.categoria) ||
+      (g.notas && g.notas.toLowerCase().includes('fijo'))
+    )
+
+    if (fijos.length === 0) {
+      toast.error('No se encontraron gastos fijos en el mes anterior')
+      return
+    }
+
+    if (!confirm(`¿Deseas copiar ${fijos.length} gastos fijos del mes ${prevMesStr} al mes ${mesFilter}?`)) {
+      return
+    }
+
+    const nuevosGastos = fijos.map(g => ({
+      concepto: g.concepto,
+      monto: Number(g.monto),
+      categoria: g.categoria,
+      proveedor_id: g.proveedor_id || null,
+      fecha: `${mesFilter}-05`,
+      notas: g.notas || 'Gasto fijo mensual recurrente'
+    }))
+
+    const { error: insErr } = await supabase.from('gastos').insert(nuevosGastos)
+    if (insErr) {
+      toast.error('Error al generar gastos fijos: ' + insErr.message)
+      return
+    }
+
+    toast.success(`Se generaron ${nuevosGastos.length} gastos fijos para ${mesFilter}`)
     await loadData()
   }
 
@@ -199,20 +230,20 @@ export default function GastosPage() {
       <main style={{ padding: '28px', flex: 1 }}>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <div style={{ position: 'relative', width: 300 }}>
-            <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input
-              className="input"
-              placeholder="Buscar gasto o categoría..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{ paddingLeft: 34 }}
-            />
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700 }}>Gastos Fijos y Operativos</h2>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Total filtrado: <strong>{formatCurrency(totalMes)}</strong></p>
           </div>
-
-          <button className="btn btn-primary" onClick={openNewModal}>
-            <Plus size={16} /> Registrar Gasto
-          </button>
+          <div style={{ display: 'flex', gap: 10 }}>
+            {mesFilter && (
+              <button className="btn btn-secondary" onClick={generarGastosFijosRecurrentes} title="Copiar gastos fijos del mes anterior a este mes">
+                🔄 Copiar Gastos Fijos del Mes
+              </button>
+            )}
+            <button className="btn btn-primary" onClick={openNewModal}>
+              <Plus size={16} /> Registrar Gasto
+            </button>
+          </div>
         </div>
 
         {/* Stats Grid */}

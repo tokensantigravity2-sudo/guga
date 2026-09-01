@@ -248,18 +248,42 @@ export default function PedidosPage() {
       notas: notasFinal,
     }
 
-    let { data, error } = await supabase.from('pedidos').insert(pedidoData).select().single()
+    let data: any = null
+    let error: any = null
 
-    if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
-      delete pedidoData.descuento_porcentaje
+    if (editingPedido) {
+      delete pedidoData.numero
+      const res = await supabase.from('pedidos').update(pedidoData).eq('id', editingPedido.id).select().single()
+      data = res.data
+      error = res.error
+
+      if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
+        delete pedidoData.descuento_porcentaje
+        const res2 = await supabase.from('pedidos').update(pedidoData).eq('id', editingPedido.id).select().single()
+        data = res2.data
+        error = res2.error
+      }
+
+      if (error) {
+        toast.error('Error al actualizar pedido: ' + error.message)
+        return
+      }
+    } else {
       const res = await supabase.from('pedidos').insert(pedidoData).select().single()
       data = res.data
       error = res.error
-    }
 
-    if (error) {
-      toast.error('Error al registrar pedido: ' + error.message)
-      return
+      if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
+        delete pedidoData.descuento_porcentaje
+        const res2 = await supabase.from('pedidos').insert(pedidoData).select().single()
+        data = res2.data
+        error = res2.error
+      }
+
+      if (error) {
+        toast.error('Error al registrar pedido: ' + error.message)
+        return
+      }
     }
 
     // Afectar stock automáticamente si el estado es aprobado/en_produccion/terminado/entregado
@@ -1005,6 +1029,17 @@ export default function PedidosPage() {
                       <td><strong>{formatCurrency(p.total)}</strong></td>
                       <td>
                         <div style={{ display: 'flex', gap: 4 }}>
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            style={{ color: '#0284c7', fontWeight: 600 }}
+                            onClick={() => {
+                              openEditPedidoModal(p)
+                              setActiveTab('nuevo')
+                            }}
+                            title="Editar este presupuesto/pedido para modificar productos, precios u observaciones"
+                          >
+                            ✏️ Editar
+                          </button>
                           <button
                             className="btn btn-sm btn-ghost"
                             style={{ color: '#be185d', fontWeight: 600 }}

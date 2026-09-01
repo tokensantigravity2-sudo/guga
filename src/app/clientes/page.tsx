@@ -109,7 +109,20 @@ export default function ClientesPage() {
       return
     }
 
-    const payload = {
+    const existe = clientes.some(
+      c => (!editingCliente || c.id !== editingCliente.id) &&
+      (c.nombre.trim().toLowerCase() === form.nombre.trim().toLowerCase() ||
+       (form.rut.trim() && c.rut && c.rut.trim().toLowerCase() === form.rut.trim().toLowerCase()))
+    )
+
+    if (existe) {
+      toast.error('⚠️ Ya existe un cliente registrado con este nombre o RUT')
+      if (!confirm('Ya existe un cliente con este nombre o RUT. ¿Deseas guardarlo de todos modos?')) {
+        return
+      }
+    }
+
+    let payload: any = {
       nombre: form.nombre.trim(),
       telefono: form.telefono.trim() || null,
       email: form.email.trim() || null,

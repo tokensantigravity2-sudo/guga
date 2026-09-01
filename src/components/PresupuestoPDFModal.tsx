@@ -175,17 +175,19 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #e2e8f0', paddingBottom: 20, marginBottom: 24 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                 <div style={{
-                  width: 64,
-                  height: 64,
+                  width: 68,
+                  height: 68,
                   borderRadius: 16,
                   background: 'linear-gradient(135deg, #d946ef 0%, #e6007e 40%, #0284c7 100%)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   color: '#ffffff',
-                  fontSize: 32,
+                  fontSize: 34,
                   boxShadow: '0 6px 16px rgba(230, 0, 126, 0.25)',
-                  flexShrink: 0
+                  flexShrink: 0,
+                  WebkitPrintColorAdjust: 'exact',
+                  printColorAdjust: 'exact'
                 }}>
                   🖨️
                 </div>
@@ -215,7 +217,9 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
                   display: 'inline-block', padding: '6px 14px', borderRadius: 8,
                   background: isPresupuesto ? '#fdf2f8' : '#f0fdf4',
                   color: isPresupuesto ? '#be185d' : '#15803d',
-                  fontWeight: 800, fontSize: 13, textTransform: 'uppercase', marginBottom: 6
+                  fontWeight: 800, fontSize: 13, textTransform: 'uppercase', marginBottom: 6,
+                  WebkitPrintColorAdjust: 'exact',
+                  printColorAdjust: 'exact'
                 }}>
                   {isPresupuesto ? 'PRESUPUESTO' : 'COMPROBANTE'}
                 </div>
@@ -325,7 +329,7 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
                           {it.cantidad}
                         </td>
                         <td style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top', color: '#475569' }}>
-                          {formatCurrency(it.precio_unitario || it.precio || 0)}
+                          {it.precio_unitario && it.precio_unitario > 0 ? formatCurrency(it.precio_unitario) : 'Total Lote'}
                         </td>
                         <td style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'top', fontWeight: 700, color: '#0f172a' }}>
                           {formatCurrency(it.subtotal || (it.cantidad * (it.precio_unitario || it.precio || 0)))}
