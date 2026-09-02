@@ -11,7 +11,8 @@ import {
   Search, Filter, Plus, Edit2, Trash2, ExternalLink, Printer,
   Phone, DollarSign, Package, Check, RefreshCw,
   Eye, ArrowUpRight, ShieldAlert, Sparkles, MapPin, Layers,
-  Globe, Share2, FileText, ToggleLeft, ToggleRight, Image as ImageIcon
+  Globe, Share2, FileText, ToggleLeft, ToggleRight, Image as ImageIcon,
+  Ban, Palette
 } from 'lucide-react'
 import WhatsAppIcon from '@/components/WhatsAppIcon'
 import toast from 'react-hot-toast'
@@ -40,6 +41,11 @@ export default function EcommerceAdminPage() {
   const [catalogSearch, setCatalogSearch] = useState<string>('')
   const [catalogCategoria, setCatalogCategoria] = useState<string>('Todas')
   const [catalogSoloPublicados, setCatalogSoloPublicados] = useState<boolean>(false)
+
+  // Visual Category Icon Picker state
+  const [selectedCategoryForIcon, setSelectedCategoryForIcon] = useState<string | null>(null)
+  const [iconSearchTerm, setIconSearchTerm] = useState<string>('')
+  const [newCategoryName, setNewCategoryName] = useState<string>('')
 
   // Selected Order for details modal or Ticket
   const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null)
@@ -358,6 +364,73 @@ export default function EcommerceAdminPage() {
     }
     return true
   })
+
+  // All categories present in database + defaults
+  const allSystemCategories = Array.from(
+    new Set([
+      'Todas',
+      ...servicios.map(s => s.categoria).filter(Boolean),
+      ...Object.keys(DEFAULT_CATEGORY_VECTOR_MAP).filter(c => c !== 'default'),
+      ...Object.keys(categoryVectorIcons).filter(c => c !== 'default')
+    ])
+  ).sort((a, b) => {
+    if (a === 'Todas') return -1
+    if (b === 'Todas') return 1
+    return a.localeCompare(b)
+  })
+
+  // Select an icon for a category
+  const handleSelectIconForCategory = (cat: string, iconId: string) => {
+    setCategoryVectorIcons(prev => {
+      const updated = { ...prev, [cat]: iconId }
+      localStorage.setItem('guga_category_vector_icons', JSON.stringify(updated))
+      return updated
+    })
+    setSelectedCategoryForIcon(null)
+    setIconSearchTerm('')
+    if (iconId === 'none') {
+      toast.success(`Categoría "${cat}" configurada sin ícono (solo texto)`)
+    } else {
+      toast.success(`Ícono asignado correctamente a "${cat}"`)
+    }
+  }
+
+  // Fast toggle / remove icon
+  const handleSetNoIconForCategory = (cat: string) => {
+    setCategoryVectorIcons(prev => {
+      const updated = { ...prev, [cat]: 'none' }
+      localStorage.setItem('guga_category_vector_icons', JSON.stringify(updated))
+      return updated
+    })
+    toast.success(`"${cat}" configurada sin ícono`)
+  }
+
+  // Add custom category mapping
+  const handleAddNewCategoryMapping = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newCategoryName.trim()) return
+    const catName = newCategoryName.trim()
+    setCategoryVectorIcons(prev => {
+      const updated = { ...prev, [catName]: prev[catName] || 'layout-grid' }
+      localStorage.setItem('guga_category_vector_icons', JSON.stringify(updated))
+      return updated
+    })
+    const added = catName
+    setNewCategoryName('')
+    setSelectedCategoryForIcon(added)
+    toast.success(`Categoría "${added}" agregada. Elige su ícono:`)
+  }
+
+  // Remove category icon custom mapping
+  const handleRemoveCategoryMapping = (cat: string) => {
+    setCategoryVectorIcons(prev => {
+      const copy = { ...prev }
+      delete copy[cat]
+      localStorage.setItem('guga_category_vector_icons', JSON.stringify(copy))
+      return copy
+    })
+    toast(`Mapeo de "${cat}" restablecido`)
+  }
 
   // Catalog item edit / add
   const handleOpenCatalogModal = (srv?: Servicio) => {
@@ -1384,93 +1457,173 @@ export default function EcommerceAdminPage() {
 
           {/* Category Vector Icons Editor Card */}
           <div className="card" style={{ gridColumn: '1 / -1' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
               <div>
                 <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-                  🖋️ Gestor de Íconos Vectoriales de Categorías
+                  🖋️ Gestor y Asignador de Íconos de Categorías
                 </h3>
                 <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-                  Selecciona el ícono vectorial lineal (estilo trazo/outline) que representa a cada categoría en la tienda online.
+                  Haz clic en cualquier categoría para elegir su ícono vectorial visual, o presiona &quot;Sin ícono&quot; para que aparezca solo como texto limpio en la tienda.
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={handleSaveCategoryVectorIcons}
-                className="btn btn-primary"
-                style={{ padding: '8px 18px', fontSize: '13px' }}
-              >
-                Guardar Íconos de Categorías
-              </button>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={handleSaveCategoryVectorIcons}
+                  className="btn btn-primary"
+                  style={{ padding: '8px 18px', fontSize: '13px', fontWeight: 700 }}
+                >
+                  Guardar Íconos de Categorías
+                </button>
+              </div>
             </div>
 
+            {/* Quick Add Custom Category Bar */}
+            <form
+              onSubmit={handleAddNewCategoryMapping}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                marginBottom: '18px',
+                padding: '12px 16px',
+                backgroundColor: 'var(--bg-input)',
+                borderRadius: '10px',
+                border: '1px solid var(--border)'
+              }}
+            >
+              <div style={{ flex: 1, minWidth: '220px' }}>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Escribe el nombre de otra categoría (ej. Remeras, Tazas, Cuadernos, Acrílicos...)..."
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  style={{ fontSize: '13px' }}
+                />
+              </div>
+              <button
+                type="submit"
+                className="btn btn-secondary"
+                style={{ fontSize: '13px', fontWeight: 700, padding: '8px 16px', whiteSpace: 'nowrap' }}
+              >
+                + Asignar Ícono a esta Categoría
+              </button>
+            </form>
+
+            {/* Responsive Cards Grid for Each Category */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-              gap: '12px',
-              backgroundColor: 'var(--bg-input)',
-              padding: '16px',
-              borderRadius: '12px'
+              gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))',
+              gap: '12px'
             }}>
-              {Object.keys(DEFAULT_CATEGORY_VECTOR_MAP).filter(cat => cat !== 'default').map((cat) => {
-                const currentIconId = categoryVectorIcons[cat] || DEFAULT_CATEGORY_VECTOR_MAP[cat] || 'printer'
+              {allSystemCategories.map((cat) => {
+                const currentIconId = categoryVectorIcons[cat] || (cat === 'Todas' ? 'layout-grid' : DEFAULT_CATEGORY_VECTOR_MAP[cat] || 'printer')
+                const isNoIcon = currentIconId === 'none' || currentIconId === 'sin-icono'
+                const prodsInCat = cat === 'Todas' ? servicios.length : servicios.filter(s => s.categoria === cat).length
+
                 return (
                   <div
                     key={cat}
                     style={{
                       backgroundColor: 'var(--bg-card)',
-                      padding: '12px 14px',
-                      borderRadius: '10px',
-                      border: '1px solid var(--border)',
+                      padding: '14px',
+                      borderRadius: '12px',
+                      border: isNoIcon ? '1px dashed var(--border)' : '1px solid var(--border)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      gap: '12px'
+                      gap: '12px',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
-                      <div style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '8px',
-                        backgroundColor: 'var(--bg-input)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'var(--text-primary)',
-                        flexShrink: 0
-                      }}>
-                        <CategoryIcon iconId={currentIconId} size={20} strokeWidth={1.9} />
+                    {/* Left: Current Icon Badge & Category Name */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
+                      <div
+                        onClick={() => setSelectedCategoryForIcon(cat)}
+                        title="Haz clic para cambiar este ícono"
+                        style={{
+                          width: '42px',
+                          height: '42px',
+                          borderRadius: '10px',
+                          backgroundColor: isNoIcon ? 'rgba(220, 38, 38, 0.08)' : 'rgba(20, 155, 142, 0.1)',
+                          border: isNoIcon ? '1px dashed #f87171' : '1px solid rgba(20, 155, 142, 0.2)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: isNoIcon ? '#dc2626' : '#149b8e',
+                          flexShrink: 0,
+                          cursor: 'pointer',
+                          transition: 'transform 0.15s ease'
+                        }}
+                      >
+                        {isNoIcon ? (
+                          <Ban size={20} color="#dc2626" />
+                        ) : (
+                          <CategoryIcon iconId={currentIconId} size={22} color="#149b8e" strokeWidth={2} />
+                        )}
                       </div>
-                      <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                        {cat}
-                      </span>
+
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                          {cat}
+                        </div>
+                        <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {isNoIcon ? (
+                            <span style={{ color: '#dc2626', fontWeight: 700 }}>Sin ícono (Solo texto)</span>
+                          ) : (
+                            <span>Ícono: <strong>{currentIconId}</strong></span>
+                          )}
+                          <span>· {prodsInCat} u.</span>
+                        </div>
+                      </div>
                     </div>
 
-                    <select
-                      value={currentIconId}
-                      onChange={(e) => {
-                        const val = e.target.value
-                        setCategoryVectorIcons(prev => ({ ...prev, [cat]: val }))
-                      }}
-                      style={{
-                        padding: '6px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border)',
-                        backgroundColor: 'var(--bg-input)',
-                        fontSize: '12.5px',
-                        fontWeight: 600,
-                        color: 'var(--text-primary)',
-                        outline: 'none',
-                        maxWidth: '130px'
-                      }}
-                    >
-                      {AVAILABLE_VECTOR_ICONS.map((opt) => (
-                        <option key={opt.id} value={opt.id}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
+                    {/* Right: Actions (Choose Icon / Set No Icon) */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCategoryForIcon(cat)}
+                        style={{
+                          backgroundColor: 'var(--bg-input)',
+                          border: '1px solid var(--border)',
+                          padding: '6px 10px',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          color: 'var(--text-primary)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                        title="Abrir catálogo de íconos"
+                      >
+                        <Palette size={13} />
+                        <span>Elegir</span>
+                      </button>
+
+                      {!isNoIcon ? (
+                        <button
+                          type="button"
+                          onClick={() => handleSetNoIconForCategory(cat)}
+                          style={{
+                            backgroundColor: 'transparent',
+                            border: '1px solid var(--border)',
+                            padding: '6px 8px',
+                            borderRadius: '8px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            color: '#dc2626',
+                            cursor: 'pointer'
+                          }}
+                          title="Quitar ícono (mostrar solo texto)"
+                        >
+                          <Ban size={13} />
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 )
               })}
@@ -1901,6 +2054,155 @@ export default function EcommerceAdminPage() {
           pedido={pdfPedido}
           onClose={() => setShowPdfModal(false)}
         />
+      )}
+
+      {/* MODAL: VISUAL ICON SELECTOR FOR CATEGORIES */}
+      {selectedCategoryForIcon !== null && (
+        <div
+          className="modal-backdrop"
+          onClick={() => { setSelectedCategoryForIcon(null); setIconSearchTerm(''); }}
+          style={{ zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div
+            className="modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '720px', width: '95%', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
+          >
+            <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <h2 style={{ fontSize: '17px', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
+                  Elegir Ícono para: <span style={{ color: 'var(--accent)' }}>{selectedCategoryForIcon}</span>
+                </h2>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+                  Selecciona un ícono visual o elige la opción &quot;Sin ícono&quot; para mostrar solo texto.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setSelectedCategoryForIcon(null); setIconSearchTerm(''); }}
+                className="btn-ghost"
+                style={{ fontSize: '18px', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Search Bar */}
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', backgroundColor: 'var(--bg-input)' }}>
+              <div style={{ position: 'relative' }}>
+                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Buscar ícono (ej. tarjeta, remera, taza, bolsa, factura, tijera, caja, sticker...)..."
+                  value={iconSearchTerm}
+                  onChange={(e) => setIconSearchTerm(e.target.value)}
+                  autoFocus
+                  style={{ paddingLeft: '36px', fontSize: '13px' }}
+                />
+              </div>
+            </div>
+
+            {/* Icons Grid */}
+            <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Option 1: No Icon (Prominent Button) */}
+              {(!iconSearchTerm || 'sin icono texto ninguno none'.includes(iconSearchTerm.toLowerCase())) && (
+                <button
+                  type="button"
+                  onClick={() => handleSelectIconForCategory(selectedCategoryForIcon, 'none')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '12px 16px',
+                    borderRadius: '10px',
+                    border: categoryVectorIcons[selectedCategoryForIcon] === 'none' ? '2px solid #dc2626' : '1px dashed var(--border)',
+                    backgroundColor: categoryVectorIcons[selectedCategoryForIcon] === 'none' ? 'rgba(220, 38, 38, 0.08)' : 'var(--bg-card)',
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <div style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '8px',
+                    backgroundColor: 'rgba(220, 38, 38, 0.12)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#dc2626'
+                  }}>
+                    <Ban size={20} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '13.5px', color: '#dc2626' }}>
+                      🚫 Sin Ícono (Mostrar Solo Texto)
+                    </div>
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
+                      La categoría se mostrará limpiamente sin ningún ícono gráfico en la tienda.
+                    </div>
+                  </div>
+                </button>
+              )}
+
+              {/* Vector Icons Tiles */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+                gap: '10px'
+              }}>
+                {AVAILABLE_VECTOR_ICONS.filter(opt => {
+                  if (opt.id === 'none') return false
+                  if (!iconSearchTerm.trim()) return true
+                  const q = iconSearchTerm.toLowerCase().trim()
+                  return opt.label.toLowerCase().includes(q) || opt.id.toLowerCase().includes(q)
+                }).map((opt) => {
+                  const IconComponent = opt.component
+                  const isSelected = categoryVectorIcons[selectedCategoryForIcon] === opt.id
+
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => handleSelectIconForCategory(selectedCategoryForIcon, opt.id)}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        padding: '14px 8px',
+                        borderRadius: '10px',
+                        border: isSelected ? '2px solid var(--accent)' : '1px solid var(--border)',
+                        backgroundColor: isSelected ? 'rgba(20, 155, 142, 0.12)' : 'var(--bg-card)',
+                        color: isSelected ? 'var(--accent)' : 'var(--text-primary)',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <IconComponent size={24} strokeWidth={isSelected ? 2.2 : 1.8} />
+                      <span style={{ fontSize: '11px', fontWeight: isSelected ? 800 : 600, textAlign: 'center', lineHeight: 1.2 }}>
+                        {opt.label.split('/')[0].trim()}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ padding: '12px 20px', borderTop: '1px solid var(--border)' }}>
+              <button
+                type="button"
+                onClick={() => { setSelectedCategoryForIcon(null); setIconSearchTerm(''); }}
+                className="btn btn-secondary"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

@@ -1,9 +1,44 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Pedido, Cliente } from '@/lib/types';
 import { formatCurrency, formatDate } from '@/lib/helpers';
 import { Download, X } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+
+// High resolution fallback product images for graphic/printing categories
+const CATEGORY_IMAGES_FALLBACK: Record<string, string> = {
+  'tarjetas': 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=400&auto=format&fit=crop&q=80',
+  'folletos': 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400&auto=format&fit=crop&q=80',
+  'volantes': 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400&auto=format&fit=crop&q=80',
+  'facturas': 'https://images.unsplash.com/photo-1450133064473-71024230f91b?w=400&auto=format&fit=crop&q=80',
+  'talonarios': 'https://images.unsplash.com/photo-1450133064473-71024230f91b?w=400&auto=format&fit=crop&q=80',
+  'recibos': 'https://images.unsplash.com/photo-1450133064473-71024230f91b?w=400&auto=format&fit=crop&q=80',
+  'stickers': 'https://images.unsplash.com/photo-1572375992501-4b0892d50c69?w=400&auto=format&fit=crop&q=80',
+  'etiquetas': 'https://images.unsplash.com/photo-1572375992501-4b0892d50c69?w=400&auto=format&fit=crop&q=80',
+  'vinilos': 'https://images.unsplash.com/photo-1572375992501-4b0892d50c69?w=400&auto=format&fit=crop&q=80',
+  'imanes': 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400&auto=format&fit=crop&q=80',
+  'afiches': 'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=400&auto=format&fit=crop&q=80',
+  'posters': 'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=400&auto=format&fit=crop&q=80',
+  'banderas': 'https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?w=400&auto=format&fit=crop&q=80',
+  'banners': 'https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?w=400&auto=format&fit=crop&q=80',
+  'roll up': 'https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?w=400&auto=format&fit=crop&q=80',
+  'block': 'https://images.unsplash.com/photo-1517842645767-c639042777db?w=400&auto=format&fit=crop&q=80',
+  'cuadernos': 'https://images.unsplash.com/photo-1517842645767-c639042777db?w=400&auto=format&fit=crop&q=80',
+  'sobres': 'https://images.unsplash.com/photo-1596526131083-e8c633c948d2?w=400&auto=format&fit=crop&q=80',
+  'hojas': 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400&auto=format&fit=crop&q=80',
+  'llaveros': 'https://images.unsplash.com/photo-1614312134515-585973e44502?w=400&auto=format&fit=crop&q=80',
+  'cajas': 'https://images.unsplash.com/photo-1530587191325-3db32d826c18?w=400&auto=format&fit=crop&q=80',
+  'packaging': 'https://images.unsplash.com/photo-1530587191325-3db32d826c18?w=400&auto=format&fit=crop&q=80',
+  'remeras': 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=400&auto=format&fit=crop&q=80',
+  'tazas': 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400&auto=format&fit=crop&q=80',
+  'carpetas': 'https://images.unsplash.com/photo-1586075010923-2dd4570fb338?w=400&auto=format&fit=crop&q=80',
+  'almanaques': 'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?w=400&auto=format&fit=crop&q=80',
+  'calendarios': 'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?w=400&auto=format&fit=crop&q=80',
+  'bolsas': 'https://images.unsplash.com/photo-1544816155-12df9643f363?w=400&auto=format&fit=crop&q=80',
+  'sellos': 'https://images.unsplash.com/photo-1586075010923-2dd4570fb338?w=400&auto=format&fit=crop&q=80',
+  'default': 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=400&auto=format&fit=crop&q=80'
+};
 
 interface PresupuestoPDFModalProps {
   pedido: Pedido;
@@ -13,6 +48,61 @@ interface PresupuestoPDFModalProps {
 
 export default function PresupuestoPDFModal({ pedido, cliente, onClose }: PresupuestoPDFModalProps) {
   const items = Array.isArray(pedido.items) ? pedido.items : [];
+  const [serviciosMap, setServiciosMap] = useState<Record<string, any>>({});
+
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('servicios')
+          .select('id, nombre, categoria, imagen_url')
+          .limit(300);
+
+        if (!error && data) {
+          const map: Record<string, any> = {};
+          data.forEach((srv: any) => {
+            map[srv.id] = srv;
+            if (srv.nombre) {
+              map[srv.nombre.toLowerCase().trim()] = srv;
+            }
+          });
+          setServiciosMap(map);
+        }
+      } catch (e) {
+        console.error('Error cargando imágenes de servicios para PDF:', e);
+      }
+    };
+    fetchServices();
+  }, []);
+
+  // Helper to dynamically resolve product photo
+  const getItemProductImage = (it: any): string => {
+    // 1. Direct item imagen_url
+    if (it.imagen_url && typeof it.imagen_url === 'string' && it.imagen_url.trim().length > 5) {
+      return it.imagen_url.trim();
+    }
+
+    // 2. Direct lookup by producto_id
+    const srvId = it.producto_id || it.servicio_id;
+    if (srvId && serviciosMap[srvId]?.imagen_url) {
+      return serviciosMap[srvId].imagen_url;
+    }
+
+    // 3. Match by name in loaded CRM services
+    const normalizedName = (it.nombre || '').toLowerCase().trim();
+    if (serviciosMap[normalizedName]?.imagen_url) {
+      return serviciosMap[normalizedName].imagen_url;
+    }
+
+    // 4. Match keywords against category fallback images
+    for (const [key, url] of Object.entries(CATEGORY_IMAGES_FALLBACK)) {
+      if (normalizedName.includes(key)) {
+        return url;
+      }
+    }
+
+    return CATEGORY_IMAGES_FALLBACK['default'];
+  };
 
   const handlePrintPDF = () => {
     const printElement = document.getElementById('presupuesto-pdf-container');
@@ -61,7 +151,8 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
                 border-collapse: collapse !important;
               }
               img {
-                display: block;
+                display: block !important;
+                max-width: 100% !important;
               }
             </style>
           </head>
@@ -72,13 +163,51 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
       `);
       doc.close();
 
-      setTimeout(() => {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
+      const iframeWindow = iframe.contentWindow;
+      if (!iframeWindow) return;
+
+      const imgs = Array.from(iframeWindow.document.images);
+      let isPrinted = false;
+
+      const executePrint = () => {
+        if (isPrinted) return;
+        isPrinted = true;
+        iframeWindow.focus();
+        iframeWindow.print();
         setTimeout(() => {
-          document.body.removeChild(iframe);
-        }, 800);
-      }, 350);
+          try {
+            document.body.removeChild(iframe);
+          } catch {}
+        }, 1000);
+      };
+
+      if (imgs.length === 0) {
+        setTimeout(executePrint, 200);
+      } else {
+        let loaded = 0;
+        const onImgLoad = () => {
+          loaded++;
+          if (loaded >= imgs.length) {
+            setTimeout(executePrint, 150);
+          }
+        };
+
+        imgs.forEach((img) => {
+          if (img.complete) {
+            loaded++;
+          } else {
+            img.onload = onImgLoad;
+            img.onerror = onImgLoad;
+          }
+        });
+
+        if (loaded >= imgs.length) {
+          setTimeout(executePrint, 250);
+        } else {
+          // Safety timeout in case remote images take a bit longer
+          setTimeout(executePrint, 2000);
+        }
+      }
     }
   };
 
@@ -336,23 +465,26 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
                       it.descripcion ? it.descripcion.replace(/\[TERCERIZADO:[^\]]*\]/gi, '').replace(/\[.*?\]/g, '').trim() : null
                     ].filter(Boolean);
 
+                    const productImg = getItemProductImage(it);
+
                     return (
                       <tr key={index} style={{ background: isEven ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                        <td style={{ padding: '10px 8px', verticalAlign: 'middle' }}>
-                          {it.imagen_url ? (
-                            <img
-                              src={it.imagen_url}
-                              alt={it.nombre}
-                              style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6, border: '1px solid #e2e8f0' }}
-                            />
-                          ) : (
-                            <div style={{
-                              width: 38, height: 38, borderRadius: 6, background: '#f1f5f9', border: '1px solid #e2e8f0',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 15
-                            }}>
-                              🖼️
-                            </div>
-                          )}
+                        <td style={{ padding: '8px', verticalAlign: 'middle', width: 48 }}>
+                          <img
+                            src={productImg}
+                            alt={it.nombre || 'Producto'}
+                            crossOrigin="anonymous"
+                            style={{
+                              width: 42,
+                              height: 42,
+                              minWidth: 42,
+                              minHeight: 42,
+                              objectFit: 'cover',
+                              borderRadius: 6,
+                              border: '1px solid #cbd5e1',
+                              display: 'block'
+                            }}
+                          />
                         </td>
                         <td style={{ padding: '10px 8px', verticalAlign: 'middle' }}>
                           <div style={{ fontWeight: 800, color: '#0f172a', fontSize: 13.5 }}>{it.nombre}</div>
