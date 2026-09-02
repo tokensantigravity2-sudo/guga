@@ -79,7 +79,7 @@ export default function TiendaPedidosPage() {
     }
   }
 
-  const getStatusInfo = (estado: string) => {
+  const getStatusInfo = (estado?: string) => {
     switch (estado) {
       case 'presupuesto':
         return { label: 'Recibido', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.10)', icon: '📋', step: 1 }
@@ -282,7 +282,7 @@ export default function TiendaPedidosPage() {
             </div>
 
             {trackedOrders.map((pd) => {
-              const status = getStatusInfo(pd.estado)
+              const status = getStatusInfo(pd.estado || '')
 
               return (
                 <div

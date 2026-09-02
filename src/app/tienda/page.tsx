@@ -21,31 +21,32 @@ interface CartItem {
   subtotal: number
 }
 
-// 3 Sample Banner Slides (Test banners) with Desktop and Mobile image sources
-const TEST_BANNERS = [
+export interface BannerSlideItem {
+  id: string | number
+  desktopUrl: string
+  mobileUrl?: string
+  activo?: boolean
+}
+
+// Banners de prueba por defecto (Solo imágenes sin texto superpuesto)
+const DEFAULT_BANNERS: BannerSlideItem[] = [
   {
     id: 1,
-    title: 'GUGA Imprenta · Impresión Digital & Offset',
     desktopUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=1600&auto=format&fit=crop&q=80',
     mobileUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=800&auto=format&fit=crop&q=80',
-    overlayTitle: 'IMPRESIÓN DIGITAL & OFFSET',
-    overlaySubtitle: 'Folletos, Talonarios, Stickers y Tarjetas de alta definición'
+    activo: true
   },
   {
     id: 2,
-    title: 'Stickers & Vinilos Troquelados',
     desktopUrl: 'https://images.unsplash.com/photo-1572375992501-4b0892d50c69?w=1600&auto=format&fit=crop&q=80',
     mobileUrl: 'https://images.unsplash.com/photo-1572375992501-4b0892d50c69?w=800&auto=format&fit=crop&q=80',
-    overlayTitle: 'STICKERS & VINILOS TROQUELADOS',
-    overlaySubtitle: 'Corte a medida, vinilo mate o brillante y máxima durabilidad'
+    activo: true
   },
   {
     id: 3,
-    title: 'Tarjetas Corporativas & Gran Formato',
     desktopUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=1600&auto=format&fit=crop&q=80',
     mobileUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=800&auto=format&fit=crop&q=80',
-    overlayTitle: 'TARJETAS, BANNERS & TALONARIOS',
-    overlaySubtitle: 'Precios mayoristas y entregas express en todo el país'
+    activo: true
   }
 ]
 
@@ -76,7 +77,22 @@ export default function TiendaPage() {
   const [sortBy, setSortBy] = useState<'relevancia' | 'precio_menor' | 'precio_mayor' | 'nombre'>('relevancia')
 
   // Carousel Banner state (Active slide index)
+  const [banners, setBanners] = useState<BannerSlideItem[]>(DEFAULT_BANNERS)
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0)
+
+  // Store Configuration
+  const [storeConfig, setStoreConfig] = useState({
+    nombreTienda: 'GUGA Imprenta & Gráfica',
+    telefonoWhatsApp: '59899724454',
+    direccionTaller: 'Av. Principal 1234, Taller GUGA',
+    costoEnvioFijo: 250,
+    envioGratisMinimo: 4000,
+    mensajeBienvenida: '¡Bienvenido a GUGA Imprenta Online! Tu trabajo en las mejores manos.',
+    instagramUrl: 'gugaprint.uy'
+  })
+
+  // WhatsApp store phone
+  const STORE_PHONE = storeConfig.telefonoWhatsApp || '59899724454'
 
   // Cart State
   const [cart, setCart] = useState<CartItem[]>([])
@@ -115,11 +131,32 @@ export default function TiendaPage() {
   // Category Vector Line Icons State
   const [categoryVectorIcons, setCategoryVectorIcons] = useState<Record<string, string>>(DEFAULT_CATEGORY_VECTOR_MAP)
 
-  // WhatsApp store phone
-  const STORE_PHONE = '59899123456' // GUGA Whatsapp
-
   useEffect(() => {
     loadCatalog()
+
+    // Load store admin config (banners & params)
+    const savedConfig = localStorage.getItem('guga_store_admin_config')
+    if (savedConfig) {
+      try {
+        const parsed = JSON.parse(savedConfig)
+        setStoreConfig(prev => ({ ...prev, ...parsed }))
+        if (parsed.banners && Array.isArray(parsed.banners) && parsed.banners.length > 0) {
+          const active = parsed.banners.filter((b: any) => b.activo !== false && (b.desktopUrl || b.mobileUrl))
+          if (active.length > 0) {
+            setBanners(active)
+          }
+        } else if (parsed.bannerDesktopUrl || parsed.bannerMobileUrl) {
+          setBanners([{
+            id: 1,
+            desktopUrl: parsed.bannerDesktopUrl || parsed.bannerMobileUrl,
+            mobileUrl: parsed.bannerMobileUrl || parsed.bannerDesktopUrl,
+            activo: true
+          }])
+        }
+      } catch (e) {
+        console.error('Error cargando configuración de tienda:', e)
+      }
+    }
     // Load customer info from localStorage
     const savedCustomer = localStorage.getItem('guga_store_customer')
     if (savedCustomer) {
@@ -196,20 +233,23 @@ export default function TiendaPage() {
     }
   }, [])
 
-  // Auto-rotate the 3 banners every 5 seconds
+  // Auto-rotate the banners every 5 seconds
   useEffect(() => {
+    if (banners.length <= 1) return
     const interval = setInterval(() => {
-      setCurrentBannerIndex(prev => (prev + 1) % TEST_BANNERS.length)
+      setCurrentBannerIndex(prev => (prev + 1) % banners.length)
     }, 5000)
     return () => clearInterval(interval)
-  }, [])
+  }, [banners.length])
 
   const nextBanner = () => {
-    setCurrentBannerIndex(prev => (prev + 1) % TEST_BANNERS.length)
+    if (banners.length <= 1) return
+    setCurrentBannerIndex(prev => (prev + 1) % banners.length)
   }
 
   const prevBanner = () => {
-    setCurrentBannerIndex(prev => (prev - 1 + TEST_BANNERS.length) % TEST_BANNERS.length)
+    if (banners.length <= 1) return
+    setCurrentBannerIndex(prev => (prev - 1 + banners.length) % banners.length)
   }
 
   const loadCatalog = async () => {
@@ -586,7 +626,8 @@ export default function TiendaPage() {
     return CATEGORY_IMAGES[srv.categoria] || CATEGORY_IMAGES['default']
   }
 
-  const currentBanner = TEST_BANNERS[currentBannerIndex]
+  const activeBannersList = banners.filter(b => b.activo !== false)
+  const currentBanner = activeBannersList[currentBannerIndex] || activeBannersList[0] || DEFAULT_BANNERS[0]
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', color: '#0f172a', fontFamily: 'var(--font-inter), sans-serif' }}>
@@ -1088,164 +1129,136 @@ export default function TiendaPage() {
           {/* RIGHT COLUMN: SLEEK HERO BANNER CAROUSEL & PRODUCT GRID */}
           <div id="catalogo-section">
 
-            {/* COMPACT & SLEEK IMAGE BANNER CAROUSEL (3 Test Banners, Height reduced to ~180-200px) */}
-            <div style={{
-              position: 'relative',
-              borderRadius: '16px',
-              overflow: 'hidden',
-              marginBottom: '24px',
-              boxShadow: '0 3px 14px rgba(0,0,0,0.06)',
-              backgroundColor: '#0f172a',
-              width: '100%',
-              height: '200px', // Sleek, compact height
-              lineHeight: 0
-            }}>
-              {/* Picture Banner with Desktop & Mobile sources */}
-              <picture style={{ width: '100%', height: '100%', display: 'block' }}>
-                <source
-                  media="(max-width: 767px)"
-                  srcSet={currentBanner.mobileUrl}
-                />
-                <source
-                  media="(min-width: 768px)"
-                  srcSet={currentBanner.desktopUrl}
-                />
-                <img
-                  src={currentBanner.desktopUrl}
-                  alt={currentBanner.title}
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                    display: 'block',
-                    filter: 'brightness(0.85)'
-                  }}
-                />
-              </picture>
-
-              {/* Sleek Gradient Overlay with Title */}
+            {/* COMPACT & SLEEK IMAGE BANNER CAROUSEL (100% Solo Imágenes sin texto) */}
+            {activeBannersList && activeBannersList.length > 0 && (
               <div style={{
-                position: 'absolute',
-                inset: 0,
-                background: 'linear-gradient(90deg, rgba(15,23,42,0.85) 0%, rgba(15,23,42,0.4) 50%, rgba(15,23,42,0.15) 100%)',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                padding: '0 32px',
-                color: '#ffffff'
+                position: 'relative',
+                borderRadius: '16px',
+                overflow: 'hidden',
+                marginBottom: '24px',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+                backgroundColor: '#f1f5f9',
+                width: '100%',
+                height: '210px',
+                lineHeight: 0
               }}>
-                <span style={{
-                  fontSize: '11px',
-                  fontWeight: 800,
-                  letterSpacing: '0.08em',
-                  color: '#5eead4',
-                  marginBottom: '4px',
-                  textTransform: 'uppercase'
-                }}>
-                  GUGA IMPRENTA & GRÁFICA
-                </span>
-
-                <h3 style={{
-                  fontSize: '22px',
-                  fontWeight: 900,
-                  margin: '0 0 4px 0',
-                  lineHeight: '1.2',
-                  letterSpacing: '-0.01em',
-                  color: '#ffffff',
-                  textShadow: '0 2px 4px rgba(0,0,0,0.3)'
-                }}>
-                  {currentBanner.overlayTitle}
-                </h3>
-
-                <p style={{
-                  fontSize: '13px',
-                  color: 'rgba(255,255,255,0.9)',
-                  margin: 0,
-                  maxWidth: '480px',
-                  lineHeight: '1.3'
-                }}>
-                  {currentBanner.overlaySubtitle}
-                </p>
-              </div>
-
-              {/* Prev / Next Arrows */}
-              <button
-                onClick={prevBanner}
-                style={{
-                  position: 'absolute',
-                  left: '12px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  backgroundColor: 'rgba(255,255,255,0.85)',
-                  border: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  color: '#0f172a',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                  zIndex: 2,
-                  transition: 'background 0.2s'
-                }}
-              >
-                <ChevronLeft size={18} />
-              </button>
-
-              <button
-                onClick={nextBanner}
-                style={{
-                  position: 'absolute',
-                  right: '12px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  backgroundColor: 'rgba(255,255,255,0.85)',
-                  border: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  color: '#0f172a',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                  zIndex: 2,
-                  transition: 'background 0.2s'
-                }}
-              >
-                <ChevronRight size={18} />
-              </button>
-
-              {/* Carousel Dots */}
-              <div style={{
-                position: 'absolute',
-                bottom: '12px',
-                right: '24px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                zIndex: 2
-              }}>
-                {TEST_BANNERS.map((_, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setCurrentBannerIndex(idx)}
+                {/* Picture Banner with Desktop & Mobile sources */}
+                <picture style={{ width: '100%', height: '100%', display: 'block' }}>
+                  {currentBanner.mobileUrl && (
+                    <source
+                      media="(max-width: 767px)"
+                      srcSet={currentBanner.mobileUrl}
+                    />
+                  )}
+                  {currentBanner.desktopUrl && (
+                    <source
+                      media="(min-width: 768px)"
+                      srcSet={currentBanner.desktopUrl}
+                    />
+                  )}
+                  <img
+                    src={currentBanner.desktopUrl || currentBanner.mobileUrl}
+                    alt="Banner GUGA Imprenta"
                     style={{
-                      width: currentBannerIndex === idx ? '20px' : '7px',
-                      height: '7px',
-                      borderRadius: '999px',
-                      backgroundColor: currentBannerIndex === idx ? '#ffffff' : 'rgba(255,255,255,0.45)',
-                      border: 'none',
-                      cursor: 'pointer',
-                      transition: 'all 0.25s ease'
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      display: 'block'
                     }}
                   />
-                ))}
+                </picture>
+
+                {/* Prev / Next Arrows */}
+                {activeBannersList.length > 1 && (
+                  <>
+                    <button
+                      onClick={prevBanner}
+                      style={{
+                        position: 'absolute',
+                        left: '12px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: '34px',
+                        height: '34px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(255,255,255,0.92)',
+                        border: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        color: '#0f172a',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
+                        zIndex: 3,
+                        transition: 'background 0.2s, transform 0.15s'
+                      }}
+                      title="Banner anterior"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+
+                    <button
+                      onClick={nextBanner}
+                      style={{
+                        position: 'absolute',
+                        right: '12px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: '34px',
+                        height: '34px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(255,255,255,0.92)',
+                        border: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        color: '#0f172a',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
+                        zIndex: 3,
+                        transition: 'background 0.2s, transform 0.15s'
+                      }}
+                      title="Siguiente banner"
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+
+                    {/* Carousel Dots */}
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '10px',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      zIndex: 3,
+                      background: 'rgba(0,0,0,0.3)',
+                      padding: '4px 8px',
+                      borderRadius: '12px'
+                    }}>
+                      {activeBannersList.map((_, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setCurrentBannerIndex(idx)}
+                          style={{
+                            width: currentBannerIndex === idx ? '20px' : '6px',
+                            height: '6px',
+                            borderRadius: '3px',
+                            backgroundColor: currentBannerIndex === idx ? '#ffffff' : 'rgba(255,255,255,0.5)',
+                            border: 'none',
+                            padding: 0,
+                            cursor: 'pointer',
+                            transition: 'all 0.25s ease'
+                          }}
+                          aria-label={`Ir al banner ${idx + 1}`}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
-            </div>
+            )}
 
             {/* ACTIVE FILTERS CHIPS */}
             {(selectedCategoria !== 'Todas' || selectedLinea !== 'Todas' || searchTerm) && (

@@ -65,9 +65,20 @@ export const cleanProductDescription = (desc?: string): string => {
     .trim();
 };
 
-export const formatProductUnit = (srv: { nombre?: string; unidad?: string }): string => {
-  const nombre = srv.nombre || '';
-  const unidad = srv.unidad || '';
+export const formatProductUnit = (
+  srvOrNombre?: { nombre?: string; unidad?: string } | string,
+  maybeUnidad?: string
+): string => {
+  let nombre = '';
+  let unidad = '';
+
+  if (typeof srvOrNombre === 'string') {
+    nombre = srvOrNombre || '';
+    unidad = maybeUnidad || '';
+  } else if (srvOrNombre && typeof srvOrNombre === 'object') {
+    nombre = srvOrNombre.nombre || '';
+    unidad = srvOrNombre.unidad || maybeUnidad || '';
+  }
 
   // If unit is explicitly configured and not generic, use it
   if (unidad && !['unidad', 'u', 'u.', 'unidades', ''].includes(unidad.toLowerCase().trim())) {

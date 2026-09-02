@@ -4,19 +4,27 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { Pedido, Servicio, Cliente } from '@/lib/types'
-import { formatCurrency, formatDateTime, formatDate, ESTADOS_PEDIDO, CATEGORIAS_TIENDA } from '@/lib/helpers'
+import { formatCurrency, formatDateTime, formatDate, ESTADOS_PEDIDO, CATEGORIAS_TIENDA, formatProductUnit, cleanProductDescription } from '@/lib/helpers'
 import CategoryIcon, { AVAILABLE_VECTOR_ICONS, DEFAULT_CATEGORY_VECTOR_MAP } from '@/components/CategoryIcon'
 import {
   Store, ShoppingBag, Truck, CheckCircle2, Clock, AlertCircle,
   Search, Filter, Plus, Edit2, Trash2, ExternalLink, Printer,
   Phone, DollarSign, Package, Check, RefreshCw,
   Eye, ArrowUpRight, ShieldAlert, Sparkles, MapPin, Layers,
-  Globe, Share2, FileText
+  Globe, Share2, FileText, ToggleLeft, ToggleRight, Image as ImageIcon
 } from 'lucide-react'
 import WhatsAppIcon from '@/components/WhatsAppIcon'
 import toast from 'react-hot-toast'
 import TicketImpresion from '@/components/TicketImpresion'
 import PresupuestoPDFModal from '@/components/PresupuestoPDFModal'
+import Link from 'next/link'
+
+export interface AdminBannerSlide {
+  id: string
+  desktopUrl: string
+  mobileUrl: string
+  activo: boolean
+}
 
 export default function EcommerceAdminPage() {
   const [activeTab, setActiveTab] = useState<'pedidos' | 'catalogo' | 'config'>('pedidos')
@@ -24,9 +32,14 @@ export default function EcommerceAdminPage() {
   const [servicios, setServicios] = useState<Servicio[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Filter & Search states
+  // Filter & Search states for Orders
   const [filtroEstado, setFiltroEstado] = useState<string>('todos')
   const [searchTerm, setSearchTerm] = useState<string>('')
+
+  // Filter & Search states for Catalog
+  const [catalogSearch, setCatalogSearch] = useState<string>('')
+  const [catalogCategoria, setCatalogCategoria] = useState<string>('Todas')
+  const [catalogSoloPublicados, setCatalogSoloPublicados] = useState<boolean>(false)
 
   // Selected Order for details modal or Ticket
   const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null)
@@ -49,16 +62,35 @@ export default function EcommerceAdminPage() {
     imagen_url: ''
   })
 
-  // Store Config State
+  // Store Config State (Editable store parameters + Pure Image Banners)
   const [storeConfig, setStoreConfig] = useState({
     nombreTienda: 'GUGA Imprenta & Gráfica',
-    telefonoWhatsApp: '59899123456',
+    telefonoWhatsApp: '59899724454',
     direccionTaller: 'Av. Principal 1234, Taller GUGA',
     costoEnvioFijo: 250,
     envioGratisMinimo: 4000,
     mensajeBienvenida: '¡Bienvenido a GUGA Imprenta Online! Tu trabajo en las mejores manos.',
-    bannerDesktopUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=1600&auto=format&fit=crop&q=80',
-    bannerMobileUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=800&auto=format&fit=crop&q=80'
+    instagramUrl: 'gugaprint.uy',
+    banners: [
+      {
+        id: '1',
+        desktopUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=1600&auto=format&fit=crop&q=80',
+        mobileUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=800&auto=format&fit=crop&q=80',
+        activo: true
+      },
+      {
+        id: '2',
+        desktopUrl: 'https://images.unsplash.com/photo-1572375992501-4b0892d50c69?w=1600&auto=format&fit=crop&q=80',
+        mobileUrl: 'https://images.unsplash.com/photo-1572375992501-4b0892d50c69?w=800&auto=format&fit=crop&q=80',
+        activo: true
+      },
+      {
+        id: '3',
+        desktopUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=1600&auto=format&fit=crop&q=80',
+        mobileUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=800&auto=format&fit=crop&q=80',
+        activo: true
+      }
+    ] as AdminBannerSlide[]
   })
 
   // Category Vector Line Icons State
@@ -237,8 +269,95 @@ export default function EcommerceAdminPage() {
   const handleSaveConfig = (e: React.FormEvent) => {
     e.preventDefault()
     localStorage.setItem('guga_store_admin_config', JSON.stringify(storeConfig))
-    toast.success('Configuración de tienda guardada exitosamente')
+    toast.success('¡Configuración de tienda y banners guardados con éxito!')
   }
+
+  // Toggle individual product publication in Web Store
+  const handleToggleProductAvailability = async (srv: Servicio) => {
+    const nuevoEstado = srv.disponible === false ? true : false
+    try {
+      const { error } = await supabase
+        .from('servicios')
+        .update({ disponible: nuevoEstado })
+        .eq('id', srv.id)
+
+      if (error) throw error
+
+      setServicios(prev => prev.map(s => s.id === srv.id ? { ...s, disponible: nuevoEstado } : s))
+      toast.success(nuevoEstado ? `"${srv.nombre}" publicado en la Tienda` : `"${srv.nombre}" ocultado de la Tienda`)
+    } catch (err: any) {
+      toast.error('Error al actualizar disponibilidad: ' + err.message)
+    }
+  }
+
+  // Bulk publish / unpublish
+  const handleBulkPublish = async (publicar: boolean) => {
+    const targetIds = filteredCatalog.map(s => s.id)
+    if (targetIds.length === 0) {
+      toast.error('No hay productos que coincidan con el filtro')
+      return
+    }
+    try {
+      const { error } = await supabase
+        .from('servicios')
+        .update({ disponible: publicar })
+        .in('id', targetIds)
+
+      if (error) throw error
+
+      setServicios(prev => prev.map(s => targetIds.includes(s.id) ? { ...s, disponible: publicar } : s))
+      toast.success(publicar ? `Se publicaron ${targetIds.length} productos en la tienda` : `Se ocultaron ${targetIds.length} productos de la tienda`)
+    } catch (err: any) {
+      toast.error('Error en acción masiva: ' + err.message)
+    }
+  }
+
+  // Banner Slides Management
+  const handleAddBanner = () => {
+    const newSlide: AdminBannerSlide = {
+      id: Date.now().toString(),
+      desktopUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=1600&auto=format&fit=crop&q=80',
+      mobileUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=800&auto=format&fit=crop&q=80',
+      activo: true
+    }
+    setStoreConfig(prev => ({
+      ...prev,
+      banners: [...(prev.banners || []), newSlide]
+    }))
+    toast.success('Nuevo slide de banner agregado. Configura las URLs y haz clic en Guardar.')
+  }
+
+  const handleRemoveBanner = (index: number) => {
+    setStoreConfig(prev => {
+      const copy = (prev.banners || []).filter((_, i) => i !== index)
+      return { ...prev, banners: copy }
+    })
+    toast('Banner eliminado')
+  }
+
+  const handleUpdateBanner = (index: number, field: keyof AdminBannerSlide, val: any) => {
+    setStoreConfig(prev => {
+      const copy = [...(prev.banners || [])]
+      if (copy[index]) {
+        copy[index] = { ...copy[index], [field]: val }
+      }
+      return { ...prev, banners: copy }
+    })
+  }
+
+  // Filtered Catalog for publication tab
+  const filteredCatalog = servicios.filter(srv => {
+    if (catalogCategoria !== 'Todas' && srv.categoria !== catalogCategoria) return false
+    if (catalogSoloPublicados && srv.disponible === false) return false
+    if (catalogSearch.trim()) {
+      const q = catalogSearch.toLowerCase().trim()
+      const matchName = srv.nombre.toLowerCase().includes(q)
+      const matchDesc = (srv.descripcion || '').toLowerCase().includes(q)
+      const matchCat = srv.categoria.toLowerCase().includes(q)
+      return matchName || matchDesc || matchCat
+    }
+    return true
+  })
 
   // Catalog item edit / add
   const handleOpenCatalogModal = (srv?: Servicio) => {
@@ -298,22 +417,6 @@ export default function EcommerceAdminPage() {
       setShowCatalogModal(false)
     } catch (err: any) {
       toast.error('Error al guardar producto: ' + err.message)
-    }
-  }
-
-  const handleToggleProductAvailability = async (srv: Servicio) => {
-    const newStatus = !srv.disponible
-    try {
-      const { error } = await supabase
-        .from('servicios')
-        .update({ disponible: newStatus })
-        .eq('id', srv.id)
-
-      if (error) throw error
-      setServicios(prev => prev.map(s => s.id === srv.id ? { ...s, disponible: newStatus } : s))
-      toast.success(newStatus ? 'Producto activado en la tienda' : 'Producto pausado en la tienda')
-    } catch (err: any) {
-      toast.error('Error al cambiar disponibilidad: ' + err.message)
     }
   }
 
@@ -858,133 +961,207 @@ export default function EcommerceAdminPage() {
         </div>
       )}
 
-      {/* TAB 2: CATÁLOGO & PRODUCTOS */}
+      {/* TAB 2: CATÁLOGO & PUBLICACIÓN WEB */}
       {activeTab === 'catalogo' && (
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Header Bar & Metrics */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '14px'
+          }}>
+            <div>
+              <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
+                Publicación de Productos en Tienda Online
+              </h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>
+                Todos los precios, descripciones y tirajes se sincronizan automáticamente desde el CRM. Activa o desactiva qué productos deseas mostrar en la web.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <Link
+                href="/servicios"
+                className="btn btn-secondary"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  textDecoration: 'none'
+                }}
+              >
+                <span>Administrar Precios en CRM</span>
+                <ArrowUpRight size={14} />
+              </Link>
+            </div>
+          </div>
+
+          {/* Info Notice Box */}
+          <div style={{
+            backgroundColor: 'rgba(20, 155, 142, 0.08)',
+            border: '1px solid rgba(20, 155, 142, 0.25)',
+            borderRadius: '12px',
+            padding: '12px 18px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '12px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '18px' }}>💡</span>
+              <span style={{ fontSize: '13px', color: '#0f766e', fontWeight: 600 }}>
+                Los precios, fotos y medidas provienen en tiempo real del CRM de GUGA. Aquí solo debes encender el switch para publicar o apagar para ocultar.
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => handleBulkPublish(true)}
+                className="btn btn-sm btn-success"
+                style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '6px' }}
+              >
+                ✓ Publicar todos los filtrados
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBulkPublish(false)}
+                className="btn btn-sm btn-ghost"
+                style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '6px', color: '#dc2626' }}
+              >
+                ✕ Ocultar todos los filtrados
+              </button>
+            </div>
+          </div>
+
+          {/* Filters Bar */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             flexWrap: 'wrap',
             gap: '12px',
-            marginBottom: '18px'
+            backgroundColor: 'var(--bg-card)',
+            padding: '12px 16px',
+            borderRadius: '12px',
+            border: '1px solid var(--border)'
           }}>
-            <div>
-              <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-                Catálogo de Productos y Servicios
-              </h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
-                Todos los productos activos se muestran automáticamente en el frontend de la tienda.
-              </p>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flex: 1, minWidth: '260px' }}>
+              <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
+                <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Buscar producto por nombre o categoría..."
+                  value={catalogSearch}
+                  onChange={(e) => setCatalogSearch(e.target.value)}
+                  style={{ paddingLeft: '34px', fontSize: '13px' }}
+                />
+              </div>
+
+              <select
+                className="input"
+                value={catalogCategoria}
+                onChange={(e) => setCatalogCategoria(e.target.value)}
+                style={{ width: '180px', fontSize: '13px' }}
+              >
+                <option value="Todas">Todas las Categorías</option>
+                {Array.from(new Set(servicios.map(s => s.categoria))).filter(Boolean).map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
             </div>
 
-            <button
-              onClick={() => handleOpenCatalogModal()}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                backgroundColor: '#dc2626',
-                color: 'white',
-                border: 'none',
-                padding: '9px 16px',
-                borderRadius: '8px',
-                fontSize: '13.5px',
-                fontWeight: 700,
-                cursor: 'pointer'
-              }}
-            >
-              <Plus size={16} />
-              <span>Nuevo Producto para Tienda</span>
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                Total: <strong>{filteredCatalog.length}</strong> ({servicios.filter(s => s.disponible !== false).length} publicados / {servicios.filter(s => s.disponible === false).length} ocultos)
+              </span>
+            </div>
           </div>
 
           {/* Catalog Table */}
-          <div className="table-wrapper card" style={{ padding: 0 }}>
+          <div className="table-wrapper card" style={{ padding: 0, overflow: 'hidden' }}>
             <table>
               <thead>
-                <tr>
-                  <th>Producto</th>
-                  <th>Categoría</th>
-                  <th>Precio Tienda</th>
-                  <th>Unidad / Medida</th>
-                  <th>Tiempo Entrega</th>
-                  <th>Estado Tienda</th>
-                  <th style={{ textAlign: 'right' }}>Acciones</th>
+                <tr style={{ background: '#0f172a', color: '#ffffff' }}>
+                  <th style={{ color: '#ffffff', width: '48px' }}></th>
+                  <th style={{ color: '#ffffff' }}>PRODUCTO</th>
+                  <th style={{ color: '#ffffff' }}>CATEGORÍA</th>
+                  <th style={{ color: '#ffffff' }}>PRECIO CRM</th>
+                  <th style={{ color: '#ffffff' }}>UNIDAD / TIRAJE</th>
+                  <th style={{ color: '#ffffff' }}>TIEMPO ENTREGA</th>
+                  <th style={{ color: '#ffffff', textAlign: 'center', width: '180px' }}>ESTADO EN TIENDA</th>
                 </tr>
               </thead>
               <tbody>
-                {servicios.map((srv) => (
-                  <tr key={srv.id}>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {filteredCatalog.map((srv) => {
+                  const isPublicado = srv.disponible !== false
+                  return (
+                    <tr key={srv.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '10px 8px', verticalAlign: 'middle' }}>
                         {srv.imagen_url ? (
                           <img
                             src={srv.imagen_url}
                             alt={srv.nombre}
-                            style={{ width: '36px', height: '36px', borderRadius: '6px', objectFit: 'cover' }}
+                            style={{ width: '38px', height: '38px', borderRadius: '6px', objectFit: 'cover', border: '1px solid var(--border)' }}
                           />
                         ) : (
-                          <div style={{ width: '36px', height: '36px', borderRadius: '6px', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Package size={16} color="#94a3b8" />
+                          <div style={{ width: '38px', height: '38px', borderRadius: '6px', backgroundColor: 'var(--bg-input)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Package size={16} color="var(--text-muted)" />
                           </div>
                         )}
-                        <div>
-                          <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{srv.nombre}</div>
-                          {srv.descripcion && (
-                            <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', maxWidth: '280px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                              {srv.descripcion}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="badge badge-neutral">{srv.categoria}</span>
-                    </td>
-                    <td style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
-                      {formatCurrency(srv.precio_base)}
-                    </td>
-                    <td style={{ color: 'var(--text-secondary)' }}>
-                      {srv.unidad || 'u.'}
-                    </td>
-                    <td style={{ color: 'var(--text-muted)', fontSize: '12.5px' }}>
-                      {srv.tiempo_estimado || '-'}
-                    </td>
-                    <td>
-                      <button
-                        onClick={() => handleToggleProductAvailability(srv)}
-                        style={{
-                          padding: '4px 10px',
-                          borderRadius: '999px',
-                          border: 'none',
-                          backgroundColor: srv.disponible !== false ? 'rgba(22, 163, 74, 0.1)' : 'rgba(220, 38, 38, 0.1)',
-                          color: srv.disponible !== false ? '#16a34a' : '#dc2626',
-                          fontSize: '11.5px',
-                          fontWeight: 700,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        {srv.disponible !== false ? '✓ Visible' : '✕ Oculto'}
-                      </button>
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button
-                        onClick={() => handleOpenCatalogModal(srv)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--accent)',
-                          padding: '6px',
-                          cursor: 'pointer'
-                        }}
-                        title="Editar producto"
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td style={{ padding: '10px 8px', verticalAlign: 'middle' }}>
+                        <div style={{ fontWeight: 800, color: 'var(--text-primary)', fontSize: '13.5px' }}>{srv.nombre}</div>
+                        {srv.descripcion && (
+                          <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', maxWidth: '320px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', marginTop: '2px' }}>
+                            {cleanProductDescription(srv.descripcion)}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '10px 8px', verticalAlign: 'middle' }}>
+                        <span className="badge badge-neutral" style={{ fontWeight: 700 }}>{srv.categoria}</span>
+                      </td>
+                      <td style={{ padding: '10px 8px', verticalAlign: 'middle', fontWeight: 900, color: 'var(--accent)', fontSize: '14px' }}>
+                        {formatCurrency(srv.precio_base)}
+                      </td>
+                      <td style={{ padding: '10px 8px', verticalAlign: 'middle', color: 'var(--text-secondary)', fontWeight: 600, fontSize: '12.5px' }}>
+                        {formatProductUnit(srv.nombre, srv.unidad)}
+                      </td>
+                      <td style={{ padding: '10px 8px', verticalAlign: 'middle', color: 'var(--text-muted)', fontSize: '12.5px' }}>
+                        {srv.tiempo_estimado || '2-3 días'}
+                      </td>
+                      <td style={{ padding: '10px 8px', verticalAlign: 'middle', textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleProductAvailability(srv)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 14px',
+                            borderRadius: '20px',
+                            border: isPublicado ? '1px solid #16a34a' : '1px solid var(--border)',
+                            backgroundColor: isPublicado ? 'rgba(22, 163, 74, 0.12)' : 'var(--bg-input)',
+                            color: isPublicado ? '#16a34a' : 'var(--text-muted)',
+                            fontSize: '12px',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          {isPublicado ? <ToggleRight size={18} color="#16a34a" /> : <ToggleLeft size={18} color="var(--text-muted)" />}
+                          <span>{isPublicado ? 'Publicado' : 'Oculto'}</span>
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -993,11 +1170,11 @@ export default function EcommerceAdminPage() {
 
       {/* TAB 3: CONFIGURACIÓN & BANNERS */}
       {activeTab === 'config' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '24px' }}>
           {/* Store Settings Form */}
           <div className="card">
             <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '16px' }}>
-              ⚙️ Parámetros de la Tienda Online
+              ⚙️ Parámetros Generales de la Tienda
             </h3>
 
             <form onSubmit={handleSaveConfig} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -1012,11 +1189,11 @@ export default function EcommerceAdminPage() {
               </div>
 
               <div>
-                <label>Teléfono de WhatsApp para recibir pedidos (con código de país)</label>
+                <label>Teléfono de WhatsApp para recibir pedidos (con código de país ej. 59899724454)</label>
                 <input
                   type="text"
                   className="input"
-                  placeholder="59899123456"
+                  placeholder="59899724454"
                   value={storeConfig.telefonoWhatsApp}
                   onChange={(e) => setStoreConfig(prev => ({ ...prev, telefonoWhatsApp: e.target.value }))}
                 />
@@ -1055,33 +1232,18 @@ export default function EcommerceAdminPage() {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                  🖼️ Banner para Laptop / Desktop (Resolución recomendada: 1200 x 360 px)
-                </label>
+                <label>Usuario / Link de Instagram</label>
                 <input
                   type="text"
                   className="input"
-                  placeholder="https://... o /banner-desktop.jpg"
-                  value={storeConfig.bannerDesktopUrl || ''}
-                  onChange={(e) => setStoreConfig(prev => ({ ...prev, bannerDesktopUrl: e.target.value }))}
+                  placeholder="gugaprint.uy"
+                  value={storeConfig.instagramUrl || ''}
+                  onChange={(e) => setStoreConfig(prev => ({ ...prev, instagramUrl: e.target.value }))}
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                  📱 Banner para Celulares / Mobile (Resolución recomendada: 750 x 420 px)
-                </label>
-                <input
-                  type="text"
-                  className="input"
-                  placeholder="https://... o /banner-mobile.jpg"
-                  value={storeConfig.bannerMobileUrl || ''}
-                  onChange={(e) => setStoreConfig(prev => ({ ...prev, bannerMobileUrl: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <label>Mensaje de Bienvenida</label>
+                <label>Mensaje de Anuncio Superior</label>
                 <textarea
                   className="input"
                   rows={2}
@@ -1090,70 +1252,134 @@ export default function EcommerceAdminPage() {
                 />
               </div>
 
-              <button type="submit" className="btn btn-primary" style={{ marginTop: '8px' }}>
-                Guardar Configuración y Banners
+              <button type="submit" className="btn btn-primary" style={{ marginTop: '8px', padding: '11px', fontWeight: 800 }}>
+                Guardar Configuración de la Tienda
               </button>
             </form>
           </div>
 
-          {/* Banners Live Preview */}
-          <div className="card">
-            <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '16px' }}>
-              🎨 Vista Previa de Imágenes de Banner
-            </h3>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-              {/* Desktop Preview */}
+          {/* Banners Manager (Pure Images) */}
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    💻 Vista Laptop / Desktop
-                  </span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', backgroundColor: 'var(--bg-input)', padding: '2px 8px', borderRadius: '4px' }}>
-                    1200 × 360 px (~3.3:1)
-                  </span>
-                </div>
-                <div style={{
-                  borderRadius: '12px',
-                  overflow: 'hidden',
-                  border: '1px solid var(--border)',
-                  backgroundColor: '#0f172a',
-                  lineHeight: 0
-                }}>
-                  <img
-                    src={storeConfig.bannerDesktopUrl || 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=1600&auto=format&fit=crop&q=80'}
-                    alt="Vista Previa Banner Desktop"
-                    style={{ width: '100%', maxHeight: '180px', objectFit: 'cover' }}
-                  />
-                </div>
+                <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
+                  🖼️ Banners de la Tienda (Solo Imágenes)
+                </h3>
+                <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+                  Banners 100% visuales sin texto superpuesto para lucir tus diseños gráficos.
+                </p>
               </div>
 
-              {/* Mobile Preview */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    📱 Vista Celular / Mobile
-                  </span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', backgroundColor: 'var(--bg-input)', padding: '2px 8px', borderRadius: '4px' }}>
-                    750 × 420 px (~16:9)
-                  </span>
-                </div>
-                <div style={{
-                  width: '240px',
-                  borderRadius: '12px',
-                  overflow: 'hidden',
-                  border: '1px solid var(--border)',
-                  backgroundColor: '#0f172a',
-                  lineHeight: 0
-                }}>
-                  <img
-                    src={storeConfig.bannerMobileUrl || 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=800&auto=format&fit=crop&q=80'}
-                    alt="Vista Previa Banner Mobile"
-                    style={{ width: '100%', maxHeight: '140px', objectFit: 'cover' }}
-                  />
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={handleAddBanner}
+                className="btn btn-sm btn-secondary"
+                style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}
+              >
+                <Plus size={14} /> + Agregar Banner
+              </button>
             </div>
+
+            {/* Banner list */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {(storeConfig.banners || []).map((b, idx) => (
+                <div
+                  key={b.id || idx}
+                  style={{
+                    backgroundColor: 'var(--bg-input)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '12px',
+                    padding: '14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontWeight: 800, fontSize: '13px', color: 'var(--text-primary)' }}>
+                      Banner #{idx + 1}
+                    </span>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={b.activo !== false}
+                          onChange={(e) => handleUpdateBanner(idx, 'activo', e.target.checked)}
+                        />
+                        <span>{b.activo !== false ? 'Activo' : 'Pausado'}</span>
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveBanner(idx)}
+                        style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#dc2626', padding: '4px' }}
+                        title="Eliminar este banner"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Desktop URL */}
+                  <div>
+                    <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '3px' }}>
+                      💻 URL Desktop (1200 × 360 px)
+                    </label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="https://... o /banner-desktop.jpg"
+                      value={b.desktopUrl || ''}
+                      onChange={(e) => handleUpdateBanner(idx, 'desktopUrl', e.target.value)}
+                      style={{ fontSize: '12.5px' }}
+                    />
+                  </div>
+
+                  {/* Mobile URL */}
+                  <div>
+                    <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '3px' }}>
+                      📱 URL Mobile (750 × 420 px - opcional)
+                    </label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="https://... o /banner-mobile.jpg"
+                      value={b.mobileUrl || ''}
+                      onChange={(e) => handleUpdateBanner(idx, 'mobileUrl', e.target.value)}
+                      style={{ fontSize: '12.5px' }}
+                    />
+                  </div>
+
+                  {/* Live Preview of image */}
+                  {(b.desktopUrl || b.mobileUrl) && (
+                    <div style={{
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      height: '110px',
+                      backgroundColor: '#0f172a',
+                      lineHeight: 0,
+                      border: '1px solid var(--border)'
+                    }}>
+                      <img
+                        src={b.desktopUrl || b.mobileUrl}
+                        alt={`Vista previa Banner ${idx + 1}`}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSaveConfig}
+              className="btn btn-primary"
+              style={{ marginTop: '4px', padding: '11px', fontWeight: 800 }}
+            >
+              Guardar Banners
+            </button>
           </div>
 
           {/* Category Vector Icons Editor Card */}

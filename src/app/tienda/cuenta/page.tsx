@@ -122,7 +122,7 @@ export default function TiendaCuentaPage() {
     }
   }
 
-  const getStatusBadge = (estado: string) => {
+  const getStatusBadge = (estado?: string) => {
     switch (estado) {
       case 'presupuesto':
         return { label: 'Recibido', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' }
@@ -458,7 +458,7 @@ export default function TiendaCuentaPage() {
               ) : savedOrders.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {savedOrders.slice(0, 4).map((pd) => {
-                    const badge = getStatusBadge(pd.estado)
+                    const badge = getStatusBadge(pd.estado || '')
                     return (
                       <div
                         key={pd.id}
