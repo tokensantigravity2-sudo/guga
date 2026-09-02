@@ -6,7 +6,7 @@ import { formatCurrency, getTodayStr, formatDate } from '@/lib/helpers'
 import { Pedido, StockItem, Tarea } from '@/lib/types'
 import {
   ShoppingCart, TrendingUp, TrendingDown, Wallet,
-  AlertTriangle, ArrowRight, Clock, Printer, Calendar as CalendarIcon, CheckSquare
+  AlertTriangle, ArrowRight, Clock, Printer, Calendar as CalendarIcon, CheckSquare, Truck
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -20,30 +20,72 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // 1. Instant Cache Hydration: Render in <10ms
+    try {
+      const cachedVentas = sessionStorage.getItem('guga_cache_dashboard_ventas')
+      const cachedGastos = sessionStorage.getItem('guga_cache_dashboard_gastos')
+      const cachedActivos = sessionStorage.getItem('guga_cache_dashboard_activos')
+      const cachedEntregas = sessionStorage.getItem('guga_cache_dashboard_entregas')
+      const cachedTareas = sessionStorage.getItem('guga_cache_dashboard_tareas')
+      const cachedStock = sessionStorage.getItem('guga_cache_dashboard_stock')
+
+      if (cachedVentas) setVentas(JSON.parse(cachedVentas))
+      if (cachedGastos) setGastos(JSON.parse(cachedGastos))
+      if (cachedActivos) setPedidosActivos(Number(cachedActivos))
+      if (cachedEntregas) setProximasEntregas(JSON.parse(cachedEntregas))
+      if (cachedTareas) setTareasPendientes(JSON.parse(cachedTareas))
+      if (cachedStock) setStockBajo(JSON.parse(cachedStock))
+
+      if (cachedVentas || cachedGastos) {
+        setLoading(false)
+      }
+    } catch (e) {
+      console.error('Cache hydration error', e)
+    }
+
+    // 2. Fetch fresh data in the background
     const fetchData = async () => {
       const today = getTodayStr()
       const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
 
-      const [ventasRes, gastosRes, stockRes, activosRes, entregasRes, tareasRes] = await Promise.all([
-        supabase.from('pedidos').select('*').gte('created_at', today + 'T00:00:00').not('estado', 'eq', 'cancelado').order('created_at', { ascending: false }),
-        supabase.from('gastos').select('monto').gte('fecha', startOfMonth),
-        supabase.from('stock').select('*').eq('activo', true),
-        supabase.from('pedidos').select('id', { count: 'exact', head: true }).in('estado', ['presupuesto', 'aprobado', 'en_produccion']),
-        supabase.from('pedidos').select('*').not('fecha_entrega', 'is', null).not('estado', 'in', '("entregado","cancelado")').order('fecha_entrega', { ascending: true }).limit(5),
-        supabase.from('tareas').select('*').eq('completada', false).order('created_at', { ascending: false }).limit(4),
-      ])
+      try {
+        const [ventasRes, gastosRes, stockRes, activosRes, entregasRes, tareasRes] = await Promise.all([
+          supabase.from('pedidos').select('*').gte('created_at', today + 'T00:00:00').not('estado', 'eq', 'cancelado').order('created_at', { ascending: false }),
+          supabase.from('gastos').select('monto').gte('fecha', startOfMonth),
+          supabase.from('stock').select('*').eq('activo', true),
+          supabase.from('pedidos').select('id', { count: 'exact', head: true }).in('estado', ['presupuesto', 'aprobado', 'en_produccion']),
+          supabase.from('pedidos').select('*').not('fecha_entrega', 'is', null).not('estado', 'in', '("entregado","cancelado")').order('fecha_entrega', { ascending: true }).limit(5),
+          supabase.from('tareas').select('*').eq('completada', false).order('created_at', { ascending: false }).limit(4),
+        ])
 
-      setVentas(ventasRes.data || [])
-      setGastos(gastosRes.data || [])
-      setPedidosActivos(activosRes.count || 0)
-      setProximasEntregas(entregasRes.data || [])
-      setTareasPendientes(tareasRes.data || [])
+        const newVentas = ventasRes.data || []
+        const newGastos = gastosRes.data || []
+        const newActivos = activosRes.count || 0
+        const newEntregas = entregasRes.data || []
+        const newTareas = tareasRes.data || []
+        const allStock = stockRes.data || []
+        const newStockBajo = allStock.filter((s: StockItem) => Number(s.cantidad) <= Number(s.minimo))
 
-      // Filter low stock in JS
-      const allStock = stockRes.data || []
-      setStockBajo(allStock.filter((s: StockItem) => Number(s.cantidad) <= Number(s.minimo)))
+        setVentas(newVentas)
+        setGastos(newGastos)
+        setPedidosActivos(newActivos)
+        setProximasEntregas(newEntregas)
+        setTareasPendientes(newTareas)
+        setStockBajo(newStockBajo)
 
-      setLoading(false)
+        try {
+          sessionStorage.setItem('guga_cache_dashboard_ventas', JSON.stringify(newVentas))
+          sessionStorage.setItem('guga_cache_dashboard_gastos', JSON.stringify(newGastos))
+          sessionStorage.setItem('guga_cache_dashboard_activos', String(newActivos))
+          sessionStorage.setItem('guga_cache_dashboard_entregas', JSON.stringify(newEntregas))
+          sessionStorage.setItem('guga_cache_dashboard_tareas', JSON.stringify(newTareas))
+          sessionStorage.setItem('guga_cache_dashboard_stock', JSON.stringify(newStockBajo))
+        } catch {}
+      } catch (err) {
+        console.error('Error fetching dashboard data:', err)
+      } finally {
+        setLoading(false)
+      }
     }
     fetchData()
   }, [])
@@ -90,7 +132,62 @@ export default function DashboardPage() {
   return (
     <>
       <Header title="Dashboard" subtitle="Resumen del día en tiempo real" />
-      <main style={{ padding: '28px', flex: 1 }}>
+      <main style={{ padding: '28px', flex: 1, maxWidth: '1440px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+
+        {/* Top Actions & Quick Access Bar */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22, flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>
+              Panel de Control
+            </h2>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '3px 0 0' }}>
+              Métricas clave, producción y accesos directos
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <Link
+              href="/pedidos?tab=historial"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '9px 18px',
+                borderRadius: 10,
+                fontWeight: 700,
+                fontSize: 13.5,
+                background: 'linear-gradient(135deg, #0f766e 0%, #149b8e 100%)',
+                color: '#ffffff',
+                boxShadow: '0 3px 10px rgba(15, 118, 110, 0.25)',
+                textDecoration: 'none',
+                transition: 'transform 0.15s, opacity 0.15s'
+              }}
+            >
+              <Truck size={17} />
+              <span>Historial y Seguimiento de Pedidos</span>
+            </Link>
+
+            <Link
+              href="/pedidos?tab=nuevo"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '9px 16px',
+                borderRadius: 10,
+                fontWeight: 700,
+                fontSize: 13.5,
+                background: 'var(--bg-card)',
+                border: '1.5px solid var(--border)',
+                color: 'var(--text-primary)',
+                textDecoration: 'none'
+              }}
+            >
+              <ShoppingCart size={16} />
+              <span>+ Nuevo Pedido</span>
+            </Link>
+          </div>
+        </div>
 
         {/* Stats */}
         <div className="grid-stats" style={{ marginBottom: 28 }}>

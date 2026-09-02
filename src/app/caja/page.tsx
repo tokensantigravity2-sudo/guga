@@ -64,12 +64,14 @@ export default function CajaPage() {
       supabase
         .from('caja_movimientos')
         .select('*')
-        .order('created_at', { ascending: false }),
+        .order('created_at', { ascending: false })
+        .limit(300),
       supabase
         .from('pedidos')
-        .select('*')
-        .order('created_at', { ascending: false }),
-      supabase.from('clientes').select('*').order('nombre'),
+        .select('id, numero, cliente_id, cliente_nombre, total, subtotal, descuento, metodo_pago, estado, notas, created_at')
+        .order('created_at', { ascending: false })
+        .limit(300),
+      supabase.from('clientes').select('id, nombre, rut, telefono, email').order('nombre'),
     ])
 
     if (mErr) toast.error('Error al cargar caja: ' + mErr.message)

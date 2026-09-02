@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { Servicio, Cliente, PedidoItem, Pedido, StockItem } from '@/lib/types'
-import { formatCurrency, formatDateTime, generateNumeroPedido, ESTADOS_PEDIDO, CATEGORIAS_SERVICIO } from '@/lib/helpers'
+import { formatCurrency, formatDateTime, generateNumeroPedido, ESTADOS_PEDIDO, CATEGORIAS_SERVICIO, cleanProductDescription, formatProductUnit } from '@/lib/helpers'
 import {
   Plus, Minus, ShoppingCart, Search, X, Trash2,
   CreditCard, Banknote, ArrowLeftRight, Printer,
@@ -71,8 +71,9 @@ export default function PedidosPage() {
   const [showPdfModal, setShowPdfModal] = useState(false)
   const [pdfData, setPdfData] = useState<Pedido | null>(null)
 
-  // History filterss
+  // History filters
   const [historialFilter, setHistorialFilter] = useState('todos')
+  const [historialOrigen, setHistorialOrigen] = useState<'todos' | 'ecommerce' | 'mostrador'>('todos')
   const [historialSearch, setHistorialSearch] = useState('')
   const [historialFechaInicio, setHistorialFechaInicio] = useState('')
   const [historialFechaFin, setHistorialFechaFin] = useState('')
@@ -80,43 +81,84 @@ export default function PedidosPage() {
   const [historialMetodoPago, setHistorialMetodoPago] = useState('')
 
   useEffect(() => {
+    // 1. Hidratación instantánea de caché: carga inmediata en <10ms sin esperar la red
+    try {
+      const cachedSrvs = sessionStorage.getItem('guga_cache_srvs')
+      const cachedClts = sessionStorage.getItem('guga_cache_clts')
+      const cachedPds = sessionStorage.getItem('guga_cache_pds')
+      const cachedStks = sessionStorage.getItem('guga_cache_stks')
+      if (cachedSrvs) setServicios(JSON.parse(cachedSrvs))
+      if (cachedClts) setClientes(JSON.parse(cachedClts))
+      if (cachedPds) setPedidos(JSON.parse(cachedPds))
+      if (cachedStks) setStockItems(JSON.parse(cachedStks))
+      if (cachedSrvs || cachedPds) {
+        setLoading(false)
+      }
+    } catch (e) {
+      console.error('Cache hydration error', e)
+    }
+
+    // 2. Cargar datos frescos en segundo plano y actualizar silenciosamente
     loadData()
+
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('tab') === 'historial') {
+        setActiveTab('historial')
+      }
+    }
   }, [])
 
   const loadData = async () => {
-    const [{ data: srvs }, { data: clts }, { data: pds }, { data: stks }] = await Promise.all([
-      supabase.from('servicios').select('*').eq('disponible', true).order('categoria'),
-      supabase.from('clientes').select('*').order('nombre'),
-      supabase.from('pedidos').select('*').order('created_at', { ascending: false }).limit(50),
-      supabase.from('stock').select('*').order('nombre'),
-    ])
+    try {
+      const [{ data: srvs }, { data: clts }, { data: pds }, { data: stks }] = await Promise.all([
+        supabase.from('servicios').select('*').eq('disponible', true).order('categoria'),
+        supabase.from('clientes').select('*').order('nombre'),
+        supabase.from('pedidos').select('*').order('created_at', { ascending: false }).limit(50),
+        supabase.from('stock').select('*').order('nombre'),
+      ])
 
-    if (srvs) setServicios(srvs)
-    if (clts) setClientes(clts)
-    if (pds) setPedidos(pds)
-    if (stks) setStockItems(stks)
-
-    // Verificar si viene un pedido para repetir desde Clientes o Historial
-    const repeatStr = sessionStorage.getItem('guga_repeat_pedido')
-    if (repeatStr) {
-      try {
-        const data = JSON.parse(repeatStr)
-        sessionStorage.removeItem('guga_repeat_pedido')
-        if (data.cliente) {
-          const matchClt = (clts || []).find(c => c.id === data.cliente.id) || data.cliente
-          setSelectedCliente(matchClt)
-        }
-        if (data.items && Array.isArray(data.items)) setCart(data.items)
-        if (data.descuentoPorcentaje) setDescuentoPorcentaje(data.descuentoPorcentaje)
-        if (data.notas) setNotas(data.notas)
-        setActiveTab('nuevo')
-        toast.success(`¡Pedido repetido cargado para ${data.cliente?.nombre || 'el cliente'}!`)
-      } catch (e) {
-        console.error('Error al repetir pedido', e)
+      if (srvs) {
+        setServicios(srvs)
+        try { sessionStorage.setItem('guga_cache_srvs', JSON.stringify(srvs)) } catch {}
       }
-    }
+      if (clts) {
+        setClientes(clts)
+        try { sessionStorage.setItem('guga_cache_clts', JSON.stringify(clts)) } catch {}
+      }
+      if (pds) {
+        setPedidos(pds)
+        try { sessionStorage.setItem('guga_cache_pds', JSON.stringify(pds)) } catch {}
+      }
+      if (stks) {
+        setStockItems(stks)
+        try { sessionStorage.setItem('guga_cache_stks', JSON.stringify(stks)) } catch {}
+      }
 
-    setLoading(false)
+      // Verificar si viene un pedido para repetir desde Clientes o Historial
+      const repeatStr = sessionStorage.getItem('guga_repeat_pedido')
+      if (repeatStr) {
+        try {
+          const data = JSON.parse(repeatStr)
+          sessionStorage.removeItem('guga_repeat_pedido')
+          if (data.cliente) {
+            const matchClt = (clts || []).find(c => c.id === data.cliente.id) || data.cliente
+            setSelectedCliente(matchClt)
+          }
+          if (data.items && Array.isArray(data.items)) setCart(data.items)
+          if (data.descuentoPorcentaje) setDescuentoPorcentaje(data.descuentoPorcentaje)
+          if (data.notas) setNotas(data.notas)
+          setActiveTab('nuevo')
+          toast.success(`¡Pedido repetido cargado para ${data.cliente?.nombre || 'el cliente'}!`)
+        } catch (e) {
+          console.error('Error al repetir pedido', e)
+        }
+      }
+    } catch (err) {
+      console.error('Error cargando datos de pedidos:', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleRepetirPedidoDirecto = (p: Pedido) => {
@@ -252,6 +294,21 @@ export default function PedidosPage() {
   const montoIva = incluirIva ? Math.round(subtotalNeto * 0.22 * 100) / 100 : 0
   const total = subtotalNeto + montoIva
 
+  const resetForm = () => {
+    setEditingPedido(null)
+    setCart([])
+    setSelectedCliente(null)
+    setClienteSearch('')
+    setMetodoPago('efectivo')
+    setEstadoPedido('presupuesto')
+    setDescuentoPorcentaje(0)
+    setMontoSena(0)
+    setAdicionalPorcentaje(0)
+    setIncluirIva(false)
+    setNotas('')
+    setFechaEntrega('')
+  }
+
   const handleCrearPedido = async () => {
     if (cart.length === 0) {
       toast.error('Agregá servicios o trabajos personalizados al pedido')
@@ -321,32 +378,26 @@ export default function PedidosPage() {
       await descontarStockDePedido(cart)
     }
 
-    // 1. REGISTRAR SEÑA EN CAJA DIARIA (Si ingresó una seña > 0 y no es cta corriente)
+    // 1. REGISTRAR PAGO / SEÑA EN CAJA DIARIA (Si ingresó dinero > 0 y no es cta corriente)
     if (montoSena > 0 && metodoPago !== 'cuenta_corriente') {
       const nowIso = new Date().toISOString()
+      const isTotalPaid = montoSena >= total
       let movSena: any = {
         tipo: 'ingreso',
         monto: montoSena,
-        concepto: `[Pago: ${metodoPago}] Seña Pedido #${numero} - ${selectedCliente?.nombre || 'Consumidor Final'}`,
+        concepto: `[Pago: ${metodoPago}] ${isTotalPaid ? 'Pago 100%' : 'Seña'} Pedido #${numero} - ${selectedCliente?.nombre || 'Consumidor Final'}`,
         referencia_id: data.id,
         fecha: nowIso,
-        cliente_id: selectedCliente?.id || null,
-        cliente_nombre: selectedCliente?.nombre || 'Consumidor Final',
-        metodo_pago: metodoPago || 'efectivo',
-        facturado: false,
       }
       let { error: movErr } = await supabase.from('caja_movimientos').insert(movSena)
-      if (movErr && (movErr.message.includes('column') || movErr.message.includes('schema') || movErr.code === 'PGRST204')) {
-        delete movSena.cliente_id
-        delete movSena.cliente_nombre
-        delete movSena.metodo_pago
-        delete movSena.facturado
-        await supabase.from('caja_movimientos').insert(movSena)
+      if (movErr) {
+        console.error('Error al insertar en caja_movimientos:', movErr)
+      } else {
+        toast.success(isTotalPaid ? `💵 Pago total (${formatCurrency(montoSena)}) registrado en la Caja Diaria` : `💵 Seña de ${formatCurrency(montoSena)} registrada en la Caja Diaria`)
       }
-      toast.success(`💵 Seña de ${formatCurrency(montoSena)} registrada en la Caja Diaria`)
     }
 
-    // 2. REGISTRAR EN CAJA DIARIA SOLO SI EL ESTADO ES 'ENTREGADO'
+    // 2. REGISTRAR EN CAJA DIARIA SI EL ESTADO ES 'ENTREGADO'
     if (estadoPedido === 'entregado' && metodoPago !== 'cuenta_corriente') {
       const saldoFinal = Math.max(0, total - montoSena)
       if (saldoFinal > 0) {
@@ -357,20 +408,13 @@ export default function PedidosPage() {
           concepto: `[Pago: ${metodoPago}] Entrega Pedido #${numero} - ${selectedCliente?.nombre || 'Consumidor Final'}`,
           referencia_id: data.id,
           fecha: nowIso,
-          cliente_id: selectedCliente?.id || null,
-          cliente_nombre: selectedCliente?.nombre || 'Consumidor Final',
-          metodo_pago: metodoPago || 'efectivo',
-          facturado: false,
         }
         let { error: movErr } = await supabase.from('caja_movimientos').insert(movData)
-        if (movErr && (movErr.message.includes('column') || movErr.message.includes('schema') || movErr.code === 'PGRST204')) {
-          delete movData.cliente_id
-          delete movData.cliente_nombre
-          delete movData.metodo_pago
-          delete movData.facturado
-          await supabase.from('caja_movimientos').insert(movData)
+        if (movErr) {
+          console.error('Error al registrar entrega en caja:', movErr)
+        } else {
+          toast.success(`💰 Saldo por Entrega (${formatCurrency(saldoFinal)}) registrado en la Caja Diaria`)
         }
-        toast.success(`💰 Ingreso por Entrega (${formatCurrency(saldoFinal)}) registrado en la Caja Diaria`)
       }
     }
 
@@ -378,16 +422,7 @@ export default function PedidosPage() {
     setTicketData(data)
     setPdfData(data)
     setShowTicket(true)
-
-    // Reset form
-    setCart([])
-    setSelectedCliente(null)
-    setDescuentoPorcentaje(0)
-    setMontoSena(0)
-    setAdicionalPorcentaje(0)
-    setIncluirIva(false)
-    setNotas('')
-    setFechaEntrega('')
+    resetForm()
     loadData()
   }
 
@@ -420,36 +455,25 @@ export default function PedidosPage() {
       await descontarStockDePedido(pedido.items || [])
     }
 
-    // SOLO CUANDO PASA A 'ENTREGADO': Registrar ingreso en caja diaria si aún no existe
+    // CUANDO PASA A 'ENTREGADO': Registrar saldo pendiente en caja diaria si aún no existe
     if (nuevoEstado === 'entregado' && pedido.metodo_pago !== 'cuenta_corriente') {
       const { data: movs } = await supabase.from('caja_movimientos').select('*').eq('referencia_id', id)
-      const yaRegistradoEntrega = movs?.some(m => m.concepto && m.concepto.includes('Entrega Pedido'))
+      const totalYaIngresado = movs?.reduce((acc, m) => acc + Number(m.monto), 0) || 0
+      const saldoPendiente = Math.max(0, Number(pedido.total) - totalYaIngresado)
 
-      if (!yaRegistradoEntrega) {
-        const totalSenas = movs?.reduce((acc, m) => acc + Number(m.monto), 0) || 0
-        const saldoPendiente = Math.max(0, Number(pedido.total) - totalSenas)
-
-        if (saldoPendiente > 0) {
-          const nowIso = new Date().toISOString()
-          let movData: any = {
-            tipo: 'ingreso',
-            monto: saldoPendiente,
-            concepto: `[Pago: ${pedido.metodo_pago || 'efectivo'}] Entrega Pedido #${pedido.numero} - ${pedido.cliente_nombre || 'Consumidor Final'}`,
-            referencia_id: id,
-            fecha: nowIso,
-            cliente_id: pedido.cliente_id || null,
-            cliente_nombre: pedido.cliente_nombre || 'Consumidor Final',
-            metodo_pago: pedido.metodo_pago || 'efectivo',
-            facturado: false,
-          }
-          let { error: movErr } = await supabase.from('caja_movimientos').insert(movData)
-          if (movErr && (movErr.message.includes('column') || movErr.message.includes('schema') || movErr.code === 'PGRST204')) {
-            delete movData.cliente_id
-            delete movData.cliente_nombre
-            delete movData.metodo_pago
-            delete movData.facturado
-            await supabase.from('caja_movimientos').insert(movData)
-          }
+      if (saldoPendiente > 0) {
+        const nowIso = new Date().toISOString()
+        let movData: any = {
+          tipo: 'ingreso',
+          monto: saldoPendiente,
+          concepto: `[Pago: ${pedido.metodo_pago || 'efectivo'}] Entrega Pedido #${pedido.numero} - ${pedido.cliente_nombre || 'Consumidor Final'}`,
+          referencia_id: id,
+          fecha: nowIso,
+        }
+        const { error: movErr } = await supabase.from('caja_movimientos').insert(movData)
+        if (movErr) {
+          console.error('Error al insertar entrega en caja:', movErr)
+        } else {
           toast.success(`💰 Ingreso por Entrega (${formatCurrency(saldoPendiente)}) registrado en la Caja Diaria`)
         }
       }
@@ -489,42 +513,28 @@ export default function PedidosPage() {
       return
     }
 
-    // SI SE MARCA COMO COBRADO (ON): Registrar el 100% de la plata (o saldo) en la Caja Diaria
+    // SI SE MARCA COMO COBRADO (ON): Registrar saldo pendiente en la Caja Diaria
     if (newCobrado && pedido.metodo_pago !== 'cuenta_corriente') {
       const { data: movs } = await supabase.from('caja_movimientos').select('*').eq('referencia_id', pedido.id)
-      const yaCobradoTotal = movs?.some(m => m.concepto && (m.concepto.includes('Cobro 100%') || m.concepto.includes('Entrega Pedido')))
+      const totalYaIngresado = movs?.reduce((acc, m) => acc + Number(m.monto), 0) || 0
+      const saldoPendiente = Math.max(0, Number(pedido.total) - totalYaIngresado)
 
-      if (!yaCobradoTotal) {
-        const totalYaIngresado = movs?.reduce((acc, m) => acc + Number(m.monto), 0) || 0
-        const saldoPendiente = Math.max(0, Number(pedido.total) - totalYaIngresado)
-
-        if (saldoPendiente > 0) {
-          const nowIso = new Date().toISOString()
-          let movData: any = {
-            tipo: 'ingreso',
-            monto: saldoPendiente,
-            concepto: `[Pago: ${pedido.metodo_pago || 'efectivo'}] Cobro 100% Pedido #${pedido.numero} - ${pedido.cliente_nombre || 'Consumidor Final'}`,
-            referencia_id: pedido.id,
-            fecha: nowIso,
-            cliente_id: pedido.cliente_id || null,
-            cliente_nombre: pedido.cliente_nombre || 'Consumidor Final',
-            metodo_pago: pedido.metodo_pago || 'efectivo',
-            facturado: false,
-          }
-          let { error: movErr } = await supabase.from('caja_movimientos').insert(movData)
-          if (movErr && (movErr.message.includes('column') || movErr.message.includes('schema') || movErr.code === 'PGRST204')) {
-            delete movData.cliente_id
-            delete movData.cliente_nombre
-            delete movData.metodo_pago
-            delete movData.facturado
-            await supabase.from('caja_movimientos').insert(movData)
-          }
-          toast.success(`💵 ¡100% COBRADO! Se ingresaron ${formatCurrency(saldoPendiente)} a la Caja Diaria`)
-        } else {
-          toast.success(`🟢 Pedido #${pedido.numero} marcado como COBRADO`)
+      if (saldoPendiente > 0) {
+        const nowIso = new Date().toISOString()
+        let movData: any = {
+          tipo: 'ingreso',
+          monto: saldoPendiente,
+          concepto: `[Pago: ${pedido.metodo_pago || 'efectivo'}] Cobro 100% Pedido #${pedido.numero} - ${pedido.cliente_nombre || 'Consumidor Final'}`,
+          referencia_id: pedido.id,
+          fecha: nowIso,
         }
+        const { error: movErr } = await supabase.from('caja_movimientos').insert(movData)
+        if (movErr) {
+          console.error('Error registrando cobro en caja:', movErr)
+        }
+        toast.success(`💵 ¡100% COBRADO! Se ingresaron ${formatCurrency(saldoPendiente)} a la Caja Diaria`)
       } else {
-        toast.success(`🟢 Pedido #${pedido.numero} marcado como COBRADO`)
+        toast.success(`🟢 Pedido #${pedido.numero} marcado como COBRADO (Total ya registrado en caja)`)
       }
     } else if (!newCobrado) {
       toast.success(`⚪ Pedido #${pedido.numero} desmarcado como cobrado`)
@@ -585,6 +595,15 @@ export default function PedidosPage() {
   })
 
   const filteredPedidos = pedidos.filter(p => {
+    // 0. Origen (Online vs Mostrador)
+    if (historialOrigen === 'ecommerce') {
+      const isOnline = p.origen === 'ecommerce' || p.numero?.startsWith('ECO-') || (p.notas && p.notas.includes('[TIENDA ONLINE]'))
+      if (!isOnline) return false
+    } else if (historialOrigen === 'mostrador') {
+      const isOnline = p.origen === 'ecommerce' || p.numero?.startsWith('ECO-') || (p.notas && p.notas.includes('[TIENDA ONLINE]'))
+      if (isOnline) return false
+    }
+
     // 1. Estado
     if (historialFilter !== 'todos' && p.estado !== historialFilter) return false
 
@@ -776,17 +795,17 @@ export default function PedidosPage() {
                     <div style={{ fontWeight: 700, fontSize: 14, marginTop: 2, marginBottom: 4 }}>
                       {srv.nombre}
                     </div>
-                    {srv.descripcion && (
+                    {cleanProductDescription(srv.descripcion) && (
                       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, lineClamp: 2, display: '-webkit-box', WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                        {srv.descripcion}
+                        {cleanProductDescription(srv.descripcion)}
                       </div>
                     )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: 6, borderTop: '1px dashed var(--border)' }}>
                       <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        {srv.tiempo_estimado ? `⏱ ${srv.tiempo_estimado}` : srv.unidad}
+                        {srv.tiempo_estimado ? `⏱ ${srv.tiempo_estimado}` : formatProductUnit(srv)}
                       </span>
                       <span style={{ fontWeight: 800, color: 'var(--accent)', fontSize: 14 }}>
-                        {formatCurrency(srv.precio_base)} <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 400 }}>/{srv.unidad || 'u'}</span>
+                        {formatCurrency(srv.precio_base)} <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 400 }}>/{formatProductUnit(srv)}</span>
                       </span>
                     </div>
                   </div>
@@ -982,16 +1001,80 @@ export default function PedidosPage() {
                 </select>
               </div>
 
-              {/* Seña / Adelanto ($) */}
+              {/* Seña / Adelanto / Pago Total ($) */}
               <div className="form-group" style={{ marginBottom: 12 }}>
-                <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>💵 Seña / Adelanto Recibido ($)</span>
-                  {montoSena > 0 && <span style={{ color: '#16a34a', fontWeight: 600, fontSize: 12 }}>Entra a Caja Diaria</span>}
-                </label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label style={{ margin: 0, fontWeight: 700, fontSize: 13 }}>💵 Pago / Seña Recibida ($)</label>
+                  {montoSena > 0 && (
+                    <span style={{ color: '#16a34a', fontWeight: 700, fontSize: 11, background: 'rgba(22, 163, 74, 0.1)', padding: '2px 8px', borderRadius: 6 }}>
+                      {montoSena >= total && total > 0 ? '✓ Pago 100% (Entra a Caja)' : '✓ Seña (Entra a Caja)'}
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => setMontoSena(total)}
+                    style={{
+                      flex: 1,
+                      padding: '6px 8px',
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      borderRadius: 6,
+                      border: montoSena >= total && total > 0 ? '1.5px solid #16a34a' : '1px solid var(--border)',
+                      background: montoSena >= total && total > 0 ? 'rgba(22, 163, 74, 0.12)' : 'var(--bg-hover)',
+                      color: montoSena >= total && total > 0 ? '#16a34a' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    ✓ 100% Pagado
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMontoSena(Math.round(total / 2))}
+                    style={{
+                      flex: 1,
+                      padding: '6px 8px',
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      borderRadius: 6,
+                      border: montoSena === Math.round(total / 2) && montoSena > 0 && montoSena < total ? '1.5px solid var(--accent)' : '1px solid var(--border)',
+                      background: montoSena === Math.round(total / 2) && montoSena > 0 && montoSena < total ? 'var(--accent-muted)' : 'var(--bg-hover)',
+                      color: montoSena === Math.round(total / 2) && montoSena > 0 && montoSena < total ? 'var(--accent)' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    50% Seña
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMontoSena(0)}
+                    style={{
+                      flex: 1,
+                      padding: '6px 8px',
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      borderRadius: 6,
+                      border: montoSena === 0 ? '1.5px solid #cbd5e1' : '1px solid var(--border)',
+                      background: montoSena === 0 ? 'var(--bg-card)' : 'var(--bg-hover)',
+                      color: montoSena === 0 ? '#64748b' : 'var(--text-muted)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    A Cobrar
+                  </button>
+                </div>
+
                 <input
                   className="input"
                   type="number"
-                  placeholder="0 (ej. $500)"
+                  placeholder="0 (o ingresá monto personalizado)"
                   value={montoSena === 0 ? '' : montoSena}
                   onChange={e => setMontoSena(e.target.value === '' ? 0 : Number(e.target.value))}
                 />
@@ -1152,27 +1235,60 @@ export default function PedidosPage() {
                 )}
               </div>
 
-              {/* Row 2: Status Badges */}
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, marginRight: 4 }}>Estado:</span>
-                <button
-                  className={`btn btn-sm ${historialFilter === 'todos' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setHistorialFilter('todos')}
-                >
-                  Todos ({pedidos.length})
-                </button>
-                {ESTADOS_PEDIDO.map(e => {
-                  const count = pedidos.filter(p => p.estado === e.value).length
-                  return (
-                    <button
-                      key={e.value}
-                      className={`btn btn-sm ${historialFilter === e.value ? 'btn-primary' : 'btn-secondary'}`}
-                      onClick={() => setHistorialFilter(e.value)}
-                    >
-                      {e.label} ({count})
-                    </button>
-                  )
-                })}
+              {/* Row 2: Origin & Status Badges */}
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                {/* Canal / Origen */}
+                <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, marginRight: 2 }}>Canal:</span>
+                  <button
+                    className={`btn btn-sm ${historialOrigen === 'todos' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setHistorialOrigen('todos')}
+                    style={{ fontSize: 11.5, padding: '4px 10px' }}
+                  >
+                    Todos
+                  </button>
+                  <button
+                    className={`btn btn-sm ${historialOrigen === 'mostrador' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setHistorialOrigen('mostrador')}
+                    style={{ fontSize: 11.5, padding: '4px 10px' }}
+                  >
+                    🏢 Mostrador / Taller
+                  </button>
+                  <button
+                    className={`btn btn-sm ${historialOrigen === 'ecommerce' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setHistorialOrigen('ecommerce')}
+                    style={{ fontSize: 11.5, padding: '4px 10px' }}
+                  >
+                    🌐 Tienda Online ({pedidos.filter(p => p.origen === 'ecommerce' || p.numero?.startsWith('ECO-') || (p.notas && p.notas.includes('[TIENDA ONLINE]'))).length})
+                  </button>
+                </div>
+
+                <div style={{ width: 1, height: 18, background: 'var(--border)' }} />
+
+                {/* Status */}
+                <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, marginRight: 2 }}>Estado:</span>
+                  <button
+                    className={`btn btn-sm ${historialFilter === 'todos' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setHistorialFilter('todos')}
+                    style={{ fontSize: 11.5, padding: '4px 8px' }}
+                  >
+                    Todos ({pedidos.length})
+                  </button>
+                  {ESTADOS_PEDIDO.map(e => {
+                    const count = pedidos.filter(p => p.estado === e.value).length
+                    return (
+                      <button
+                        key={e.value}
+                        className={`btn btn-sm ${historialFilter === e.value ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => setHistorialFilter(e.value)}
+                        style={{ fontSize: 11.5, padding: '4px 8px' }}
+                      >
+                        {e.label} ({count})
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
             </div>
 
@@ -1196,7 +1312,24 @@ export default function PedidosPage() {
                     const isCobrado = p.cobrado === true || (p.notas || '').includes('[COBRADO:true]')
                     return (
                       <tr key={p.id}>
-                        <td><strong style={{ color: 'var(--accent)' }}>{p.numero}</strong></td>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <strong style={{ color: 'var(--accent)' }}>{p.numero}</strong>
+                            {(p.origen === 'ecommerce' || (p.numero && p.numero.startsWith('ECO-'))) && (
+                              <span style={{
+                                backgroundColor: 'rgba(220, 38, 38, 0.1)',
+                                color: '#dc2626',
+                                fontSize: '10.5px',
+                                fontWeight: 800,
+                                padding: '1px 6px',
+                                borderRadius: 4,
+                                textTransform: 'uppercase'
+                              }}>
+                                Online
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td>{formatDateTime(p.created_at || '')}</td>
                         <td>{p.cliente_nombre || 'Consumidor Final'}</td>
                         <td>

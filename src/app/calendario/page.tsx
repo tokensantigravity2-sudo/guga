@@ -85,17 +85,45 @@ export default function CalendarioPage() {
     }
   })
 
+  // Format clean concept for events
+  const formatCleanCajaTitulo = (c: CajaMovimiento) => {
+    const raw = c.concepto || ''
+    const sign = c.tipo === 'ingreso' ? '+' : '-'
+    const montoFormatted = formatCurrency(c.monto)
+
+    // Check if it's a known order action
+    const senaMatch = raw.match(/Seña Pedido #([^\s-]+)/i)
+    if (senaMatch) return `${sign}${montoFormatted} Seña #${senaMatch[1]}`
+
+    const entregaMatch = raw.match(/Entrega Pedido #([^\s-]+)/i)
+    if (entregaMatch) return `${sign}${montoFormatted} Entrega #${entregaMatch[1]}`
+
+    const cobroMatch = raw.match(/Cobro (?:100% )?Pedido #([^\s-]+)/i)
+    if (cobroMatch) return `${sign}${montoFormatted} Cobro #${cobroMatch[1]}`
+
+    const pedMatch = raw.match(/Pedido #([^\s-]+)/i)
+    if (pedMatch) return `${sign}${montoFormatted} Pedido #${pedMatch[1]}`
+
+    const gastoMatch = raw.match(/Gasto:\s*([^\[]+)/i)
+    if (gastoMatch) return `${sign}${montoFormatted} ${gastoMatch[1].trim()}`
+
+    // Clean brackets
+    const clean = raw.replace(/\[.*?\]/g, '').trim() || 'Movimiento'
+    return `${sign}${montoFormatted} ${clean.slice(0, 22)}`
+  }
+
   // Add cash movements
   cajaMovs.forEach(c => {
     const fechaStr = c.fecha || c.created_at
     if (fechaStr) {
       const fechaClean = fechaStr.split('T')[0]
+      const cleanTitle = formatCleanCajaTitulo(c)
       eventos.push({
         id: `caj-${c.id}`,
-        titulo: `Caja (${c.tipo === 'ingreso' ? '+' : '-'}${formatCurrency(c.monto)}): ${c.concepto}`,
+        titulo: cleanTitle,
         fecha: fechaClean,
         tipo: c.tipo === 'ingreso' ? 'caja_ingreso' : 'caja_egreso',
-        subtitulo: c.cliente_nombre ? `Cliente: ${c.cliente_nombre}` : 'Caja Diaria',
+        subtitulo: c.concepto || (c.cliente_nombre ? `Cliente: ${c.cliente_nombre}` : 'Caja Diaria'),
         monto: c.monto,
       })
     }
@@ -155,7 +183,7 @@ export default function CalendarioPage() {
   return (
     <>
       <Header title="Calendario & Agenda" subtitle="Vista mensual de entregas, gastos y movimientos de caja" />
-      <main style={{ padding: '28px', flex: 1 }}>
+      <main style={{ padding: '28px', flex: 1, maxWidth: '1400px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
 
         {/* Top Controls */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
@@ -203,17 +231,17 @@ export default function CalendarioPage() {
         </div>
 
         {/* Grid Calendar */}
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', background: 'var(--bg-hover)', borderBottom: '1px solid var(--border)', textAlign: 'center', fontWeight: 700, fontSize: 12 }}>
+        <div className="card" style={{ padding: 0, overflow: 'hidden', width: '100%' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', background: 'var(--bg-hover)', borderBottom: '1px solid var(--border)', textAlign: 'center', fontWeight: 700, fontSize: 12 }}>
             {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => (
               <div key={d} style={{ padding: '10px 0', color: 'var(--text-secondary)' }}>{d}</div>
             ))}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridAutoRows: 'minmax(110px, auto)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gridAutoRows: 'minmax(115px, auto)', width: '100%' }}>
             {/* Empty days starting */}
             {Array.from({ length: startingDayOfWeek }).map((_, i) => (
-              <div key={`empty-${i}`} style={{ background: 'var(--bg-hover)', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)', opacity: 0.4 }} />
+              <div key={`empty-${i}`} style={{ background: 'var(--bg-hover)', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)', opacity: 0.4, minWidth: 0 }} />
             ))}
 
             {/* Days of current month */}
@@ -234,6 +262,10 @@ export default function CalendarioPage() {
                     background: isSelected ? 'var(--accent-muted)' : isToday(day) ? 'rgba(20,155,142,0.06)' : 'var(--bg-card)',
                     cursor: 'pointer',
                     transition: 'all 0.15s',
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column'
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
@@ -253,10 +285,11 @@ export default function CalendarioPage() {
                     )}
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 80, overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 85, overflowY: 'auto', minWidth: 0 }}>
                     {dayEvents.slice(0, 3).map(ev => (
                       <div
                         key={ev.id}
+                        title={`${ev.titulo} ${ev.subtitulo ? `(${ev.subtitulo})` : ''}`}
                         style={{
                           fontSize: 11,
                           padding: '2px 5px',
@@ -264,6 +297,8 @@ export default function CalendarioPage() {
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
+                          minWidth: 0,
+                          maxWidth: '100%',
                           background: ev.tipo === 'entrega' ? 'var(--info-muted)' :
                                       ev.tipo === 'caja_ingreso' ? 'var(--success-muted)' :
                                       ev.tipo === 'caja_egreso' || ev.tipo === 'gasto' ? 'var(--danger-muted)' : 'var(--bg-hover)',

@@ -34,12 +34,13 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
         <!DOCTYPE html>
         <html>
           <head>
+            <base href="${typeof window !== 'undefined' ? window.location.origin : ''}/">
             <title>Presupuesto GUGA - ${pedido.numero}</title>
             <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
             <style>
               @page {
                 size: A4 portrait;
-                margin: 8mm;
+                margin: 6mm;
               }
               * {
                 box-sizing: border-box;
@@ -81,7 +82,7 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
     }
   };
 
-  // Extract tags from notas if present
+  // 1. Extraer tags financieros
   const descMatch = (pedido.notas || '').match(/\[Desc:\s*(\d+)%\]/);
   const descPct = pedido.descuento_porcentaje || (descMatch ? Number(descMatch[1]) : 0);
 
@@ -93,14 +94,39 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
   const subtotalNeto = Math.max(0, pedido.subtotal - (pedido.descuento || 0) + montoAdicional);
   const montoIva = hasIva ? Math.round(subtotalNeto * 0.22 * 100) / 100 : 0;
 
-  // Clean notas from technical tags
-  const notasLimpias = (pedido.notas || '')
-    .replace(/\[Desc:.*?\]/g, '')
-    .replace(/\[Adicional:.*?\]/g, '')
-    .replace(/\[\+IVA.*?\]/g, '')
+  // 2. Extraer datos de contacto guardados en las notas (pedidos ecommerce o mostrador)
+  const telFromNotas = (pedido.notas || '').match(/Tel:\s*([^|]+)/)?.[1]?.trim() || '';
+  const dirFromNotas = (pedido.notas || '').match(/Dir(?:ección)?:\s*([^|]+)/)?.[1]?.trim() || '';
+  const emailFromNotas = (pedido.notas || '').match(/Email:\s*([^|]+)/)?.[1]?.trim() || '';
+  const rutFromNotas = (pedido.notas || '').match(/RUT:\s*([^|]+)/)?.[1]?.trim() || '';
+  const metodoPagoFromNotas = (pedido.notas || '').match(/Pago:\s*([^|]+)/)?.[1]?.trim() || '';
+
+  const clienteNombreFinal = pedido.cliente_nombre || cliente?.nombre || 'Consumidor Final';
+  const clienteRutFinal = cliente?.rut || rutFromNotas;
+  const clienteTelFinal = cliente?.telefono || telFromNotas;
+  const clienteEmailFinal = cliente?.email || emailFromNotas;
+  const clienteDirFinal = cliente?.direccion || dirFromNotas;
+  const formaPagoFinal = metodoPagoFromNotas || pedido.metodo_pago?.replace('_', ' ') || 'Transferencia';
+
+  // 3. Limpiar las notas de etiquetas técnicas para las observaciones
+  let notasLimpias = (pedido.notas || '')
+    .replace(/\[TIENDA ONLINE\]/gi, '')
+    .replace(/\[COBRADO:true\]/gi, '')
+    .replace(/\[Desc:.*?\]/gi, '')
+    .replace(/\[Adicional:.*?\]/gi, '')
+    .replace(/\[\+IVA.*?\]/gi, '')
+    .replace(/Tel:\s*[^|]+/gi, '')
+    .replace(/Dir(?:ección)?:\s*[^|]+/gi, '')
+    .replace(/Email:\s*[^|]+/gi, '')
+    .replace(/RUT:\s*[^|]+/gi, '')
+    .replace(/Entrega:\s*[^|]+/gi, '')
+    .replace(/Pago:\s*[^|]+/gi, '')
+    .replace(/Envío:\s*[^|]+/gi, '')
+    .replace(/\|/g, '')
+    .replace(/\s+/g, ' ')
     .trim();
 
-  const isPresupuesto = pedido.estado === 'presupuesto' || !pedido.estado;
+  const isPresupuesto = pedido.estado === 'presupuesto' || !pedido.estado || pedido.numero?.startsWith('P-');
 
   return (
     <div
@@ -181,200 +207,165 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
             }}
           >
             {/* Document Header Logo */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #e2e8f0', paddingBottom: 20, marginBottom: 24 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div style={{
-                  width: 68,
-                  height: 68,
-                  borderRadius: 16,
-                  background: 'linear-gradient(135deg, #d946ef 0%, #e6007e 40%, #0284c7 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#ffffff',
-                  fontSize: 34,
-                  boxShadow: '0 6px 16px rgba(230, 0, 126, 0.25)',
-                  flexShrink: 0,
-                  WebkitPrintColorAdjust: 'exact',
-                  printColorAdjust: 'exact'
-                }}>
-                  🖨️
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #e2e8f0', paddingBottom: 16, marginBottom: 20 }}>
+              {/* Logo & Slogan */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <img
+                  src="/logo-guga.png"
+                  alt="GUGA IMPRENTA & GRÁFICA"
+                  style={{ height: 54, maxWidth: 210, objectFit: 'contain' }}
+                  onError={(e) => {
+                    // Fallback visual if image fails
+                    (e.target as HTMLElement).style.display = 'none';
+                  }}
+                />
+              </div>
+
+              {/* Central Contact Info with teal icons */}
+              <div style={{ fontSize: 11, color: '#475569', display: 'flex', flexDirection: 'column', gap: 2.5, fontWeight: 500 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ color: '#0f766e', fontSize: 11.5 }}>📞</span>
+                  <span>+598 99 724 454</span>
                 </div>
-                <div>
-                  <h1 style={{ fontSize: 28, fontWeight: 900, margin: 0, letterSpacing: '-0.5px', color: '#0f172a', lineHeight: 1.1 }}>
-                    GUGA IMPRENTA
-                  </h1>
-                  <div style={{ fontSize: 13, color: '#e6007e', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginTop: 3 }}>
-                    IMPRENTA & DISEÑO GRÁFICO
-                  </div>
-                  <div style={{ fontSize: 11.5, color: '#475569', marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3, fontWeight: 500 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ fontSize: 12 }}>📲</span> WhatsApp: <strong style={{ color: '#0f172a' }}>+598 99 724 454</strong>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ fontSize: 12 }}>✉️</span> Email: <strong style={{ color: '#0f172a' }}>contacto@gugaprint.uy</strong>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ fontSize: 12 }}>🌐</span> Web: <strong style={{ color: '#0f172a' }}>www.gugaprint.uy</strong> <span style={{ color: '#cbd5e1', margin: '0 2px' }}>|</span> IG: <strong style={{ color: '#0f172a' }}>@gugaprint.uy</strong>
-                    </div>
-                  </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ color: '#0f766e', fontSize: 11.5 }}>📷</span>
+                  <span>gugaprint.uy</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ color: '#0f766e', fontSize: 11.5 }}>✉️</span>
+                  <span>contacto@gugaprint.uy</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ color: '#0f766e', fontSize: 11.5 }}>🌐</span>
+                  <span>www.gugaprint.uy</span>
                 </div>
               </div>
 
+              {/* Document Type & Number */}
               <div style={{ textAlign: 'right' }}>
                 <div style={{
-                  display: 'inline-block', padding: '6px 14px', borderRadius: 8,
+                  display: 'inline-block', padding: '4px 12px', borderRadius: 6,
                   background: isPresupuesto ? '#fdf2f8' : '#f0fdf4',
                   color: isPresupuesto ? '#be185d' : '#15803d',
-                  fontWeight: 800, fontSize: 13, textTransform: 'uppercase', marginBottom: 6,
+                  fontWeight: 800, fontSize: 11.5, textTransform: 'uppercase', marginBottom: 4,
                   WebkitPrintColorAdjust: 'exact',
                   printColorAdjust: 'exact'
                 }}>
-                  {isPresupuesto ? 'PRESUPUESTO' : 'COMPROBANTE'}
+                  {isPresupuesto ? 'PRESUPUESTO' : 'ORDEN DE TRABAJO'}
                 </div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a' }}>
+                <div style={{ fontSize: 16, fontWeight: 900, color: '#0f172a' }}>
                   #{pedido.numero}
                 </div>
-                <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>
                   Fecha: <strong>{formatDate(pedido.created_at || new Date())}</strong>
                 </div>
               </div>
             </div>
 
-            {/* Client & Metadata Box */}
+            {/* Client & Metadata Box (Two Columns) */}
             <div style={{
-              display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20,
+              display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 20,
               background: '#f8fafc', padding: '16px 20px', borderRadius: 10,
-              border: '1px solid #e2e8f0', marginBottom: 24, fontSize: 13
+              border: '1px solid #e2e8f0', marginBottom: 20, fontSize: 12.5
             }}>
+              {/* Left Column: Client Data */}
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', marginBottom: 4 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', color: '#64748b', marginBottom: 5, letterSpacing: '0.04em' }}>
                   DATOS DEL CLIENTE
                 </div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>
-                  {pedido.cliente_nombre || cliente?.nombre || 'Consumidor Final'}
+                <div style={{ fontSize: 14.5, fontWeight: 900, color: '#0f172a', marginBottom: 4 }}>
+                  {clienteNombreFinal}
                 </div>
-                {cliente?.rut && (
+                {clienteRutFinal && (
                   <div style={{ color: '#475569', marginTop: 2 }}>
-                    <strong>RUT:</strong> {cliente.rut}
+                    <strong style={{ color: '#0f172a' }}>RUT:</strong> {clienteRutFinal}
                   </div>
                 )}
-                {cliente?.telefono && (
+                {clienteTelFinal && (
                   <div style={{ color: '#475569', marginTop: 2 }}>
-                    <strong>Teléfono:</strong> {cliente.telefono}
+                    <strong style={{ color: '#0f172a' }}>Teléfono:</strong> {clienteTelFinal}
                   </div>
                 )}
-                {cliente?.email && (
+                {clienteEmailFinal && (
                   <div style={{ color: '#475569', marginTop: 2 }}>
-                    <strong>Email:</strong> {cliente.email}
+                    <strong style={{ color: '#0f172a' }}>Email:</strong> {clienteEmailFinal}
                   </div>
                 )}
-                {cliente?.direccion && (
+                {clienteDirFinal && (
                   <div style={{ color: '#475569', marginTop: 2 }}>
-                    <strong>Dirección:</strong> {cliente.direccion}
+                    <strong style={{ color: '#0f172a' }}>Dirección:</strong> {clienteDirFinal}
                   </div>
                 )}
               </div>
 
+              {/* Right Column: Proposal Details */}
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', marginBottom: 4 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', color: '#64748b', marginBottom: 5, letterSpacing: '0.04em' }}>
                   DETALLES DE LA PROPUESTA
                 </div>
-                <div style={{ color: '#475569' }}>
-                  <strong>Forma de Pago:</strong> <span style={{ textTransform: 'capitalize' }}>{pedido.metodo_pago?.replace('_', ' ') || 'Efectivo'}</span>
+                <div style={{ color: '#475569', marginTop: 3 }}>
+                  <strong style={{ color: '#0f172a' }}>Forma de Pago:</strong> <span style={{ textTransform: 'capitalize' }}>{formaPagoFinal}</span>
                 </div>
-                <div style={{ color: '#475569', marginTop: 2 }}>
-                  <strong>Validez de la oferta:</strong> 15 días corridos
+                <div style={{ color: '#475569', marginTop: 3 }}>
+                  <strong style={{ color: '#0f172a' }}>Validez de la oferta:</strong> 15 días corridos
                 </div>
-                <div style={{ color: '#475569', marginTop: 2 }}>
-                  <strong>Estado:</strong> {pedido.estado?.toUpperCase() || 'PRESUPUESTO'}
+                <div style={{ color: '#475569', marginTop: 3 }}>
+                  <strong style={{ color: '#0f172a' }}>Estado:</strong> <span style={{ textTransform: 'uppercase' }}>{pedido.estado || 'PRESUPUESTO'}</span>
                 </div>
               </div>
             </div>
 
-            {/* Items Table - PRECIO UNITARIO ELIMINADO COMPLETAMENTE Y ESPECIFICACIONES DESTACADAS */}
-            <div style={{ marginBottom: 24 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            {/* Items Table - Clean Black Header */}
+            <div style={{ marginBottom: 20 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
                 <thead>
-                  <tr style={{ background: '#0f172a', color: '#ffffff', textAlign: 'left' }}>
-                    <th style={{ padding: '10px 12px', borderRadius: '8px 0 0 0', width: 50 }}></th>
-                    <th style={{ padding: '10px 12px' }}>DESCRIPCIÓN Y ESPECIFICACIONES DE DISEÑO</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', width: 80 }}>CANT.</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'right', borderRadius: '0 8px 0 0', width: 120 }}>SUBTOTAL</th>
+                  <tr style={{ background: '#000000', color: '#ffffff', textAlign: 'left', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+                    <th style={{ padding: '8px 10px', borderRadius: '6px 0 0 0', width: 44 }}></th>
+                    <th style={{ padding: '8px 10px', fontWeight: 800, fontSize: 11.5, letterSpacing: '0.04em' }}>DESCRIPCIÓN Y ESPECIFICACIONES</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'center', width: 70, fontWeight: 800, fontSize: 11.5, letterSpacing: '0.04em' }}>CANT.</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right', borderRadius: '0 6px 0 0', width: 110, fontWeight: 800, fontSize: 11.5, letterSpacing: '0.04em' }}>TOTAL</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((it: any, index: number) => {
                     const isEven = index % 2 === 0;
+                    const specsList = [
+                      it.medida ? `${it.medida}` : null,
+                      it.material ? `${it.material}` : null,
+                      it.acabado ? `${it.acabado}` : null,
+                      it.descripcion ? it.descripcion.replace(/\[TERCERIZADO:[^\]]*\]/gi, '').replace(/\[.*?\]/g, '').trim() : null
+                    ].filter(Boolean);
+
                     return (
                       <tr key={index} style={{ background: isEven ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                        <td style={{ padding: '12px 10px', verticalAlign: 'top' }}>
+                        <td style={{ padding: '10px 8px', verticalAlign: 'middle' }}>
                           {it.imagen_url ? (
                             <img
                               src={it.imagen_url}
                               alt={it.nombre}
-                              style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 8, border: '1px solid #cbd5e1' }}
+                              style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6, border: '1px solid #e2e8f0' }}
                             />
                           ) : (
                             <div style={{
-                              width: 40, height: 40, borderRadius: 8, background: '#f1f5f9', border: '1px solid #e2e8f0',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 16
+                              width: 38, height: 38, borderRadius: 6, background: '#f1f5f9', border: '1px solid #e2e8f0',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 15
                             }}>
-                              🖨️
+                              🖼️
                             </div>
                           )}
                         </td>
-                        <td style={{ padding: '12px 10px', verticalAlign: 'top' }}>
-                          <div style={{ fontWeight: 800, color: '#0f172a', fontSize: 14.5 }}>{it.nombre}</div>
-                          {it.descripcion && (
-                            <div style={{ fontSize: 12, color: '#475569', marginTop: 3 }}>
-                              {it.descripcion}
+                        <td style={{ padding: '10px 8px', verticalAlign: 'middle' }}>
+                          <div style={{ fontWeight: 800, color: '#0f172a', fontSize: 13.5 }}>{it.nombre}</div>
+                          {specsList.length > 0 && (
+                            <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>
+                              {specsList.join(' • ')}
                             </div>
                           )}
-                          {/* Especificaciones de diseño destacadas */}
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
-                            {it.medida && (
-                              <span style={{
-                                background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '2px 8px',
-                                borderRadius: 6, fontSize: 11.5, color: '#334155', fontWeight: 600,
-                                WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'
-                              }}>
-                                📐 Medidas: {it.medida}
-                              </span>
-                            )}
-                            {it.material && (
-                              <span style={{
-                                background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '2px 8px',
-                                borderRadius: 6, fontSize: 11.5, color: '#334155', fontWeight: 600,
-                                WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'
-                              }}>
-                                📄 Material: {it.material}
-                              </span>
-                            )}
-                            {it.acabado && (
-                              <span style={{
-                                background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '2px 8px',
-                                borderRadius: 6, fontSize: 11.5, color: '#334155', fontWeight: 600,
-                                WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'
-                              }}>
-                                ✨ Acabado: {it.acabado}
-                              </span>
-                            )}
-                            {it.notas && (
-                              <span style={{
-                                background: '#fdf2f8', border: '1px solid #fbcfe8', padding: '2px 8px',
-                                borderRadius: 6, fontSize: 11.5, color: '#be185d', fontWeight: 600,
-                                WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'
-                              }}>
-                                🎨 Nota: {it.notas}
-                              </span>
-                            )}
-                          </div>
                         </td>
-                        <td style={{ padding: '12px 10px', textAlign: 'center', verticalAlign: 'top', fontWeight: 700, fontSize: 14 }}>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', verticalAlign: 'middle', fontWeight: 700, fontSize: 13, color: '#0f172a' }}>
                           {it.cantidad}
                         </td>
-                        <td style={{ padding: '12px 10px', textAlign: 'right', verticalAlign: 'top', fontWeight: 800, color: '#0f172a', fontSize: 14.5 }}>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'middle', fontWeight: 800, color: '#0f172a', fontSize: 13.5 }}>
                           {formatCurrency(it.subtotal || (it.cantidad * (it.precio_unitario || it.precio || 0)))}
                         </td>
                       </tr>
@@ -385,41 +376,43 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
             </div>
 
             {/* Totals & Notes Section */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24, marginBottom: 24 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 20, marginBottom: 20 }}>
               {/* Notes & Terms */}
-              <div style={{ background: '#f8fafc', padding: 16, borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 12.5 }}>
-                <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>📌 Observaciones y Términos:</div>
-                <p style={{ color: '#475569', margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+              <div style={{ background: '#ffffff', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 12 }}>
+                <div style={{ fontWeight: 800, color: '#0f172a', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span>📌</span> Observaciones y Términos:
+                </div>
+                <p style={{ color: '#475569', margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>
                   {notasLimpias || 'Los tiempos de entrega rigen a partir de la aprobación final del diseño y pago del seña/total.'}
                 </p>
-                <div style={{ marginTop: 12, fontSize: 11, color: '#94a3b8' }}>
-                  ✔ Precios sujetos a modificación transcurridos los 15 días de validez.
+                <div style={{ marginTop: 10, fontSize: 10.5, color: '#94a3b8' }}>
+                  ✓ Precios sujetos a modificación transcurridos los 15 días de validez.
                 </div>
               </div>
 
               {/* Totals Breakdown Box */}
-              <div style={{ background: '#f8fafc', padding: 16, borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 13 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, color: '#475569' }}>
+              <div style={{ background: '#f8fafc', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 12.5 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, color: '#64748b' }}>
                   <span>Subtotal:</span>
-                  <span>{formatCurrency(pedido.subtotal)}</span>
+                  <span style={{ fontWeight: 600, color: '#334155' }}>{formatCurrency(pedido.subtotal)}</span>
                 </div>
 
                 {(pedido.descuento || 0) > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, color: '#dc2626' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, color: '#dc2626' }}>
                     <span>Descuento {descPct ? `(${descPct}%)` : ''}:</span>
                     <span>-{formatCurrency(pedido.descuento || 0)}</span>
                   </div>
                 )}
 
                 {montoAdicional > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, color: '#d97706', fontWeight: 600 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, color: '#d97706', fontWeight: 600 }}>
                     <span>Adicional ({adicPct}%):</span>
                     <span>+{formatCurrency(montoAdicional)}</span>
                   </div>
                 )}
 
                 {hasIva && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, color: '#0891b2', fontWeight: 600 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, color: '#0d9488', fontWeight: 700 }}>
                     <span>IVA (22%):</span>
                     <span>+{formatCurrency(montoIva)}</span>
                   </div>
@@ -427,8 +420,8 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
 
                 <div style={{
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  borderTop: '2px solid #0f172a', paddingTop: 10, marginTop: 10,
-                  fontWeight: 800, fontSize: 17, color: '#e6007e'
+                  borderTop: '2px solid #000000', paddingTop: 8, marginTop: 8,
+                  fontWeight: 900, fontSize: 16, color: '#be185d'
                 }}>
                   <span>TOTAL:</span>
                   <span>{formatCurrency(pedido.total)}</span>
@@ -436,16 +429,18 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
               </div>
             </div>
 
-            {/* Document Footer Branding */}
-            <div style={{ borderTop: '2px solid #e2e8f0', paddingTop: 16, textAlign: 'center', fontSize: 12, color: '#475569' }}>
-              <p style={{ margin: 0, fontWeight: 700, color: '#0f172a', fontSize: 13 }}>¡Gracias por elegir a GUGA IMPRENTA!</p>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 16, flexWrap: 'wrap', marginTop: 8, fontSize: 11.5, color: '#64748b' }}>
-                <span>🟢 WhatsApp: <strong>+598 99 724 454</strong></span>
-                <span>✉️ <strong>contacto@gugaprint.uy</strong></span>
-                <span>📷 <strong>gugaprint.uy</strong></span>
-                <span>🌐 <strong>www.gugaprint.uy</strong></span>
-              </div>
-            </div>
+            {/* Bottom Multi-Color Gradient Bar */}
+            <div
+              style={{
+                height: 6,
+                borderRadius: 3,
+                background: 'linear-gradient(90deg, #dc2626 0%, #ea580c 25%, #eab308 50%, #14b8a6 75%, #0f766e 100%)',
+                width: '100%',
+                marginTop: 10,
+                WebkitPrintColorAdjust: 'exact',
+                printColorAdjust: 'exact'
+              }}
+            />
           </div>
         </div>
       </div>

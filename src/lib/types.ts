@@ -29,6 +29,7 @@ export interface Servicio {
 export interface PedidoItem {
   producto_id?: string
   nombre: string
+  marca?: string
   cantidad: number
   precio_unitario: number
   subtotal: number
@@ -36,6 +37,7 @@ export interface PedidoItem {
   material?: string
   acabado?: string
   imagen_url?: string
+  unidad?: string
   no_afectar_stock?: boolean
 }
 
@@ -44,18 +46,67 @@ export interface Pedido {
   numero: string
   cliente_id?: string
   cliente_nombre?: string
+  cliente_telefono?: string
+  cliente_direccion?: string
+  cliente_email?: string
   items: PedidoItem[]
   subtotal: number
   descuento?: number
   descuento_porcentaje?: number
+  costo_envio?: number
   total: number
   metodo_pago?: string
-  estado?: 'presupuesto' | 'aprobado' | 'en_produccion' | 'terminado' | 'entregado' | 'cancelado'
+  metodo_entrega?: 'retiro' | 'envio'
+  estado?: 'presupuesto' | 'aprobado' | 'en_produccion' | 'terminado' | 'entregado' | 'cancelado' | 'recibido' | 'preparando' | 'listo'
+  origen?: 'crm' | 'ecommerce'
   fecha_entrega?: string
   cobrado?: boolean
   notas?: string
   archivo_url?: string
   created_at?: string
+}
+
+export interface EcommerceProducto {
+  id: string
+  nombre: string
+  marca: string
+  categoria: string
+  descripcion?: string
+  precio: number
+  precio_anterior?: number
+  unidad?: string
+  imagen_url?: string
+  stock?: number
+  destacado?: boolean
+  activo: boolean
+  sin_tacc?: boolean
+  created_at?: string
+}
+
+export interface EcommerceBanner {
+  id: string
+  titulo: string
+  subtitulo?: string
+  tag?: string
+  imagen_url: string
+  link?: string
+  activo: boolean
+  orden: number
+  color_fondo?: string
+}
+
+export interface TiendaConfig {
+  nombre_tienda: string
+  logo_url?: string
+  subtitulo?: string
+  telefono_whatsapp: string
+  direccion_retiro: string
+  costo_envio_fijo: number
+  envio_gratis_minimo: number
+  horario_atencion: string
+  mensaje_bienvenida?: string
+  mensaje_pedido_recibido?: string
+  activo: boolean
 }
 
 export interface ItemListaPrecio {

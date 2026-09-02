@@ -15,7 +15,9 @@ import {
   Printer,
   Boxes,
   Calendar as CalendarIcon,
-  CheckSquare
+  CheckSquare,
+  Store,
+  ExternalLink
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -33,7 +35,8 @@ export default function Sidebar() {
     {
       title: 'Operaciones',
       items: [
-        { name: 'Pedidos', icon: ShoppingCart, href: '/pedidos' },
+        { name: 'Pedidos CRM', icon: ShoppingCart, href: '/pedidos' },
+        { name: 'E-commerce', icon: Store, href: '/ecommerce', highlight: true },
         { name: 'Notas & Tareas', icon: CheckSquare, href: '/pendientes' },
         { name: 'Gastos', icon: DollarSign, href: '/gastos' },
       ],
@@ -143,9 +146,37 @@ export default function Sidebar() {
         ))}
       </div>
 
+      {/* Quick link to Storefront */}
+      <div style={{ padding: '0 12px 12px 12px' }}>
+        <a
+          href="/tienda"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            padding: '10px 14px',
+            background: 'linear-gradient(135deg, #e53935 0%, #f97316 100%)',
+            color: '#ffffff',
+            borderRadius: '10px',
+            textDecoration: 'none',
+            fontSize: '12.5px',
+            fontWeight: '700',
+            boxShadow: '0 2px 8px rgba(229, 57, 53, 0.25)',
+            transition: 'opacity 0.2s',
+          }}
+        >
+          <Store size={15} />
+          <span>Ver Tienda Online</span>
+          <ExternalLink size={13} />
+        </a>
+      </div>
+
       {/* Footer */}
       <div style={{
-        padding: '14px 16px',
+        padding: '12px 16px',
         borderTop: '1px solid #e2e8f0',
         textAlign: 'center',
         fontSize: '11px',
@@ -157,3 +188,4 @@ export default function Sidebar() {
     </aside>
   );
 }
+
