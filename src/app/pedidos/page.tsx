@@ -65,6 +65,7 @@ export default function PedidosPage() {
   // PDF Presupuesto state
   const [showPdfModal, setShowPdfModal] = useState(false)
   const [pdfData, setPdfData] = useState<Pedido | null>(null)
+  const [pedidoOpcionesModal, setPedidoOpcionesModal] = useState<Pedido | null>(null)
 
   // History filters
   const [historialFilter, setHistorialFilter] = useState('todos')
@@ -474,6 +475,69 @@ export default function PedidosPage() {
 
     toast.success(`Estado actualizado a ${nuevoEstado}`)
     loadData()
+  }
+
+  const handleAprobarOpcion = async (pedido: Pedido, itemIndex: number | 'todos') => {
+    try {
+      let nuevosItems: PedidoItem[] = []
+      let nuevoSubtotal = 0
+      let opcionNombre = ''
+
+      if (itemIndex === 'todos') {
+        nuevosItems = pedido.items
+        nuevoSubtotal = pedido.subtotal
+        opcionNombre = 'Todas las opciones combinadas'
+      } else {
+        const itemElegido = pedido.items[itemIndex]
+        nuevosItems = [itemElegido]
+        nuevoSubtotal = itemElegido.subtotal || ((itemElegido.cantidad || 1) * (itemElegido.precio_unitario || 0))
+        opcionNombre = `Opción ${String.fromCharCode(65 + itemIndex)} (${itemElegido.cantidad} u. de ${itemElegido.nombre})`
+      }
+
+      // Calcular descuento, adicional e IVA manteniendo los porcentajes originales del pedido
+      const descMatch = (pedido.notas || '').match(/\[Desc:\s*(\d+)%\]/)
+      const descPct = pedido.descuento_porcentaje || (descMatch ? Number(descMatch[1]) : 0)
+      const adicMatch = (pedido.notas || '').match(/\[Adicional:\s*(\d+)%\]/)
+      const adicPct = adicMatch ? Number(adicMatch[1]) : 0
+      const hasIva = (pedido.notas || '').includes('[+IVA 22%]')
+
+      const descMonto = Math.round((nuevoSubtotal * descPct) / 100)
+      const adicMonto = Math.round((nuevoSubtotal * adicPct) / 100)
+      const subtotalNeto = Math.max(0, nuevoSubtotal - descMonto + adicMonto)
+      const montoIva = hasIva ? Math.round(subtotalNeto * 0.22 * 100) / 100 : 0
+      const nuevoTotal = subtotalNeto + montoIva
+
+      let notasActualizadas = (pedido.notas || '')
+      if (itemIndex !== 'todos') {
+        notasActualizadas = `[Opción aprobada: ${opcionNombre} por ${formatCurrency(nuevoTotal)}] ${notasActualizadas}`.trim()
+      }
+
+      const { error } = await supabase
+        .from('pedidos')
+        .update({
+          items: nuevosItems,
+          subtotal: nuevoSubtotal,
+          descuento: descMonto,
+          total: nuevoTotal,
+          estado: 'aprobado',
+          notas: notasActualizadas
+        })
+        .eq('id', pedido.id)
+
+      if (error) {
+        toast.error('Error al aprobar opción: ' + error.message)
+        return
+      }
+
+      // Descontar stock si corresponde
+      await descontarStockDePedido(nuevosItems)
+
+      toast.success(`🎉 ¡${opcionNombre} aprobada! Total actualizado a ${formatCurrency(nuevoTotal)}`)
+      setPedidoOpcionesModal(null)
+      loadData()
+    } catch (e: any) {
+      toast.error('Error al procesar opción: ' + e.message)
+    }
   }
 
   const handleToggleCobrado = async (pedido: Pedido) => {
@@ -1381,9 +1445,16 @@ export default function PedidosPage() {
                             {isCobrado ? '🟢 COBRADO' : '⚪ SIN COBRAR'}
                           </button>
                         </td>
-                        <td><strong>{formatCurrency(p.total)}</strong></td>
+                        <td>
+                          <strong>{formatCurrency(p.total)}</strong>
+                          {p.estado === 'presupuesto' && Array.isArray(p.items) && p.items.length > 1 && (
+                            <div style={{ fontSize: 11, color: '#7c3aed', fontWeight: 700 }}>
+                              {p.items.length} alternativas
+                            </div>
+                          )}
+                        </td>
                       <td>
-                        <div style={{ display: 'flex', gap: 4 }}>
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                           <button
                             className="btn btn-sm btn-ghost"
                             style={{ color: '#0284c7', fontWeight: 600 }}
@@ -1407,6 +1478,16 @@ export default function PedidosPage() {
                           >
                             <FileText size={13} /> PDF
                           </button>
+                          {p.estado === 'presupuesto' && Array.isArray(p.items) && p.items.length > 1 && (
+                            <button
+                              className="btn btn-sm btn-ghost"
+                              style={{ color: '#7c3aed', fontWeight: 700, backgroundColor: 'rgba(124, 58, 237, 0.08)' }}
+                              onClick={() => setPedidoOpcionesModal(p)}
+                              title="El cliente eligió una opción. Clic para seleccionar y aprobar la alternativa elegida."
+                            >
+                              🎯 Elegir Opción
+                            </button>
+                          )}
                           <button
                             className="btn btn-sm btn-ghost"
                             style={{ color: 'var(--accent)' }}
@@ -1660,6 +1741,111 @@ export default function PedidosPage() {
             cliente={clientes.find(c => c.id === pdfData.cliente_id)}
             onClose={() => setShowPdfModal(false)}
           />
+        )}
+
+        {/* Modal de Selección de Alternativa Aprobada */}
+        {pedidoOpcionesModal && (
+          <div className="modal-backdrop" onClick={() => setPedidoOpcionesModal(null)}>
+            <div
+              className="modal"
+              style={{ maxWidth: 560 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="modal-header">
+                <div>
+                  <h3 className="modal-title">🎯 Seleccionar Alternativa Aprobada</h3>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
+                    Presupuesto #{pedidoOpcionesModal.numero} • {pedidoOpcionesModal.cliente_nombre || 'Cliente'}
+                  </p>
+                </div>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPedidoOpcionesModal(null)}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.45 }}>
+                  El cliente eligió una de las opciones cotizadas. Seleccioná cuál opción confirmó para pasar el pedido a <strong>Aprobado</strong> con su cantidad e importe exacto:
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {pedidoOpcionesModal.items.map((it, idx) => {
+                    const itemTot = it.subtotal || ((it.cantidad || 1) * (it.precio_unitario || 0))
+                    const unitPrice = it.cantidad > 0 ? Math.round(itemTot / it.cantidad) : (it.precio_unitario || 0)
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: 'var(--bg-hover)',
+                          border: '1.5px solid var(--border)',
+                          borderRadius: 12,
+                          padding: '14px 16px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: 12,
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{
+                              background: '#7c3aed',
+                              color: 'white',
+                              fontSize: 11,
+                              fontWeight: 800,
+                              padding: '2px 8px',
+                              borderRadius: 6
+                            }}>
+                              Opción {String.fromCharCode(65 + idx)}
+                            </span>
+                            <strong style={{ fontSize: 14 }}>{it.nombre}</strong>
+                          </div>
+                          <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 4 }}>
+                            <strong>{it.cantidad} unidades</strong> • {formatCurrency(unitPrice)} c/u
+                          </div>
+                          {(it.medida || it.material || it.acabado) && (
+                            <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
+                              {[it.medida, it.material, it.acabado].filter(Boolean).join(' • ')}
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end', flexShrink: 0 }}>
+                          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--success)' }}>
+                            {formatCurrency(itemTot)}
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-primary"
+                            style={{ fontSize: 12, padding: '5px 12px', fontWeight: 700, background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)' }}
+                            onClick={() => handleAprobarOpcion(pedidoOpcionesModal, idx)}
+                          >
+                            ✓ Elegir esta Opción
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="modal-footer" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ color: '#64748b', fontSize: 12 }}
+                  onClick={() => handleAprobarOpcion(pedidoOpcionesModal, 'todos')}
+                  title="Aprobar todos los ítems juntos sumando el total"
+                >
+                  Aprobar todas combinadas ({formatCurrency(pedidoOpcionesModal.total)})
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={() => setPedidoOpcionesModal(null)}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </main>
     </>

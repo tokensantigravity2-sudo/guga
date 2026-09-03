@@ -52,6 +52,32 @@ interface MetodoPagoData {
   total: number
 }
 
+interface PedidoCobradoDetalle {
+  id: string
+  numero: string
+  cliente_nombre: string
+  fecha: string
+  totalPedido: number
+  montoCobrado: number
+  saldoPendiente: number
+  is100Cobrado: boolean
+  estadoPedido: string
+  metodoPago: string
+  items?: any[]
+}
+
+const extractMetodoPago = (mov: CajaMovimiento): string => {
+  if (mov.metodo_pago && mov.metodo_pago !== 'efectivo') {
+    return mov.metodo_pago.replace('_', ' ').toUpperCase()
+  }
+  const concepto = mov.concepto || ''
+  const match = concepto.match(/Pago:\s*([a-zA-Z_]+)/i)
+  if (match && match[1]) {
+    return match[1].replace('_', ' ').toUpperCase()
+  }
+  return (mov.metodo_pago || 'EFECTIVO').replace('_', ' ').toUpperCase()
+}
+
 export default function ReportesPage() {
   const [periodo, setPeriodo] = useState<PeriodoFilter>('este_mes')
   const [customFrom, setCustomFrom] = useState('')
@@ -67,15 +93,25 @@ export default function ReportesPage() {
   // Aggregated states
   const [resumen, setResumen] = useState({
     ingresos: 0,
+    ingresosPedidos: 0,
+    ingresosSenas: 0,
+    ingresosPagosCompletos: 0,
+    cajaIngresosDirectos: 0,
     gastos: 0,
     ganancia: 0,
     margen: 0,
     pedidosCount: 0,
+    pedidos100Count: 0,
+    pedidosSenaCount: 0,
     ticketPromedio: 0,
     descuentos: 0,
     inventarioValor: 0,
     cajaSaldo: 0,
   })
+
+  const [pedidosCobradosDetalle, setPedidosCobradosDetalle] = useState<PedidoCobradoDetalle[]>([])
+  const [cajaDirectaList, setCajaDirectaList] = useState<CajaMovimiento[]>([])
+  const [filtroTipoCobro, setFiltroTipoCobro] = useState<'todos' | '100' | 'senas'>('todos')
 
   const [mesesData, setMesesData] = useState<MesData[]>([])
   const [gastosPorCategoria, setGastosPorCategoria] = useState<CategoriaGastoData[]>([])
@@ -95,7 +131,7 @@ export default function ReportesPage() {
 
   const loadRawData = async () => {
     const [{ data: p, error: pErr }, { data: g, error: gErr }, { data: s }, { data: c }] = await Promise.all([
-      supabase.from('pedidos').select('*').not('estado', 'eq', 'cancelado').not('estado', 'eq', 'presupuesto'),
+      supabase.from('pedidos').select('*').not('estado', 'eq', 'cancelado'),
       supabase.from('gastos').select('*'),
       supabase.from('stock').select('*'),
       supabase.from('caja_movimientos').select('*'),
@@ -132,10 +168,11 @@ export default function ReportesPage() {
       if (customTo) endDate = new Date(`${customTo}T23:59:59`)
     }
 
-    // Filter pedidos by date
-    const pedidosFiltrados = pedidosRaw.filter(p => {
-      if (!p.created_at) return false
-      const d = new Date(p.created_at)
+    // Filter caja movimientos by date
+    const cajaFiltrada = cajaRaw.filter(c => {
+      const fechaStr = c.fecha || c.created_at
+      if (!fechaStr) return false
+      const d = new Date(fechaStr)
       if (startDate && d < startDate) return false
       if (endDate && d > endDate) return false
       return true
@@ -151,58 +188,121 @@ export default function ReportesPage() {
       return true
     })
 
-    // Filter caja movimientos by date
-    const cajaFiltrada = cajaRaw.filter(c => {
-      const fechaStr = c.fecha || c.created_at
-      if (!fechaStr) return false
-      const d = new Date(fechaStr)
-      if (startDate && d < startDate) return false
-      if (endDate && d > endDate) return false
-      return true
+    // 1. Identificar pedidos con cobro real (100% cobrados o con señas recibidas)
+    const pedidosCobradosList: PedidoCobradoDetalle[] = []
+
+    pedidosRaw.forEach(p => {
+      if (p.estado === 'cancelado') return
+
+      // Movimientos de ingreso en caja registrados en el período actual
+      const movsEnPeriodo = cajaFiltrada.filter(c => c.referencia_id === p.id && c.tipo === 'ingreso')
+      const montoCajaPeriodo = movsEnPeriodo.reduce((sum, c) => sum + Number(c.monto), 0)
+
+      // Total histórico de movimientos en caja para este pedido
+      const allMovsPedido = cajaRaw.filter(c => c.referencia_id === p.id && c.tipo === 'ingreso')
+      const totalHistoricoCaja = allMovsPedido.reduce((sum, c) => sum + Number(c.monto), 0)
+
+      const isCobradoFlag = p.cobrado === true || (p.notas || '').includes('[COBRADO:true]')
+      const totalP = Number(p.total) || 0
+
+      // Si fue marcado como cobrado pero no tiene movimientos explícitos en caja
+      let montoCobradoPeriodo = montoCajaPeriodo
+      let pedidoFecha = p.created_at || ''
+      if (movsEnPeriodo.length > 0) {
+        pedidoFecha = movsEnPeriodo[0].fecha || movsEnPeriodo[0].created_at || p.created_at || ''
+      }
+
+      if (montoCobradoPeriodo === 0 && isCobradoFlag) {
+        if (p.created_at) {
+          const d = new Date(p.created_at)
+          if ((!startDate || d >= startDate) && (!endDate || d <= endDate)) {
+            montoCobradoPeriodo = totalP
+          }
+        }
+      }
+
+      // Solo entra al reporte si efectivamente ingresó dinero (seña o total) o está marcado como cobrado en el período
+      if (montoCobradoPeriodo > 0) {
+        const is100 = isCobradoFlag || (totalHistoricoCaja >= totalP && totalP > 0)
+        const saldoPendiente = Math.max(0, totalP - Math.max(totalHistoricoCaja, montoCobradoPeriodo))
+
+        pedidosCobradosList.push({
+          id: p.id,
+          numero: p.numero,
+          cliente_nombre: p.cliente_nombre || 'Consumidor Final',
+          fecha: pedidoFecha,
+          totalPedido: totalP,
+          montoCobrado: montoCobradoPeriodo,
+          saldoPendiente,
+          is100Cobrado: is100,
+          estadoPedido: p.estado || 'aprobado',
+          metodoPago: p.metodo_pago || (movsEnPeriodo[0] ? extractMetodoPago(movsEnPeriodo[0]) : 'efectivo'),
+          items: p.items || []
+        })
+      }
     })
 
-    // Movimientos directos de caja (entradas que no vienen de un pedido con referencia)
-    const cajaIngresosDirectos = cajaFiltrada
-      .filter(c => c.tipo === 'ingreso' && !c.referencia_id)
-      .reduce((sum, c) => sum + Number(c.monto), 0)
+    // Ordenar pedidos cobrados por fecha más reciente
+    pedidosCobradosList.sort((a, b) => new Date(b.fecha || 0).getTime() - new Date(a.fecha || 0).getTime())
+    setPedidosCobradosDetalle(pedidosCobradosList)
 
-    const cajaSaldoTotal = cajaFiltrada.reduce((sum, c) => sum + (c.tipo === 'ingreso' ? Number(c.monto) : -Number(c.monto)), 0)
+    // Movimientos directos de caja (mostrador que no están asociados a un pedido)
+    const directosCaja = cajaFiltrada.filter(c => c.tipo === 'ingreso' && !c.referencia_id)
+    setCajaDirectaList(directosCaja)
+    const cajaIngresosDirectos = directosCaja.reduce((sum, c) => sum + Number(c.monto), 0)
 
-    // 1. Resumen Ejecutivo
-    const ingresosPedidos = pedidosFiltrados.reduce((sum, p) => sum + Number(p.total), 0)
+    // Señas y cobros totales desglosados
+    const totalSenas = pedidosCobradosList
+      .filter(p => !p.is100Cobrado)
+      .reduce((sum, p) => sum + p.montoCobrado, 0)
+
+    const totalPagosCompletos = pedidosCobradosList
+      .filter(p => p.is100Cobrado)
+      .reduce((sum, p) => sum + p.montoCobrado, 0)
+
+    const ingresosPedidos = totalSenas + totalPagosCompletos
     const ingresosTotal = ingresosPedidos + cajaIngresosDirectos
+
     const gastos = gastosFiltrados.reduce((sum, g) => sum + Number(g.monto), 0)
     const ganancia = ingresosTotal - gastos
     const margen = ingresosTotal > 0 ? Math.round((ganancia / ingresosTotal) * 100) : 0
-    const pedidosCount = pedidosFiltrados.length
+    const pedidosCount = pedidosCobradosList.length
+    const pedidos100Count = pedidosCobradosList.filter(p => p.is100Cobrado).length
+    const pedidosSenaCount = pedidosCobradosList.filter(p => !p.is100Cobrado).length
     const ticketPromedio = pedidosCount > 0 ? Math.round(ingresosPedidos / pedidosCount) : 0
-    const descuentos = pedidosFiltrados.reduce((sum, p) => sum + Number(p.descuento || 0), 0)
     const inventarioValor = stockRaw.reduce((sum, s) => sum + (Number(s.cantidad) * Number(s.costo_unitario || 0)), 0)
+    const cajaSaldoTotal = cajaFiltrada.reduce((sum, c) => sum + (c.tipo === 'ingreso' ? Number(c.monto) : -Number(c.monto)), 0)
 
     setResumen({
       ingresos: ingresosTotal,
+      ingresosPedidos,
+      ingresosSenas: totalSenas,
+      ingresosPagosCompletos: totalPagosCompletos,
+      cajaIngresosDirectos,
       gastos,
       ganancia,
       margen,
       pedidosCount,
+      pedidos100Count,
+      pedidosSenaCount,
       ticketPromedio,
-      descuentos,
+      descuentos: 0,
       inventarioValor,
       cajaSaldo: cajaSaldoTotal,
     })
 
-    // 2. Gráfico por Meses (Comparativo Ingresos vs Gastos)
+    // 2. Gráfico por Meses (Evolución de Ingresos Cobrados vs Egresos)
     const mesesMap = new Map<string, { ingresos: number; gastos: number; count: number }>()
 
-    pedidosFiltrados.forEach(p => {
-      if (!p.created_at) return
-      const date = new Date(p.created_at)
+    pedidosCobradosList.forEach(p => {
+      if (!p.fecha) return
+      const date = new Date(p.fecha)
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
       const prev = mesesMap.get(key) || { ingresos: 0, gastos: 0, count: 0 }
-      mesesMap.set(key, { ...prev, ingresos: prev.ingresos + Number(p.total), count: prev.count + 1 })
+      mesesMap.set(key, { ...prev, ingresos: prev.ingresos + p.montoCobrado, count: prev.count + 1 })
     })
 
-    cajaFiltrada.filter(c => c.tipo === 'ingreso' && !c.referencia_id).forEach(c => {
+    directosCaja.forEach(c => {
       const fechaStr = c.fecha || c.created_at
       if (!fechaStr) return
       const date = new Date(fechaStr)
@@ -253,10 +353,10 @@ export default function ReportesPage() {
 
     setGastosPorCategoria(catList)
 
-    // 4. Ranking de Servicios más Vendidos
+    // 4. Ranking de Servicios más Vendidos (Solo de pedidos que generaron ingresos)
     const srvMap = new Map<string, { cantidad: number; total: number }>()
 
-    pedidosFiltrados.forEach(p => {
+    pedidosCobradosList.forEach(p => {
       if (Array.isArray(p.items)) {
         p.items.forEach(item => {
           const key = item.nombre
@@ -280,12 +380,12 @@ export default function ReportesPage() {
 
     setTopServicios(srvList)
 
-    // 5. Ranking de Clientes
+    // 5. Ranking de Clientes (Solo clientes con pagos reales en el período)
     const cliMap = new Map<string, { pedidos: number; total: number }>()
-    pedidosFiltrados.forEach(p => {
+    pedidosCobradosList.forEach(p => {
       const key = p.cliente_nombre || 'Consumidor Final'
       const prev = cliMap.get(key) || { pedidos: 0, total: 0 }
-      cliMap.set(key, { pedidos: prev.pedidos + 1, total: prev.total + Number(p.total) })
+      cliMap.set(key, { pedidos: prev.pedidos + 1, total: prev.total + p.montoCobrado })
     })
 
     const cliList: ClienteRankingData[] = Array.from(cliMap.entries())
@@ -295,15 +395,10 @@ export default function ReportesPage() {
 
     setTopClientes(cliList)
 
-    // 6. Distribución por Método de Pago
+    // 6. Distribución por Método de Pago (Basado en el dinero real cobrado en caja)
     const pagoMap = new Map<string, number>()
-    pedidosFiltrados.forEach(p => {
-      const key = p.metodo_pago ? p.metodo_pago.replace('_', ' ').toUpperCase() : 'EFECTIVO'
-      pagoMap.set(key, (pagoMap.get(key) || 0) + Number(p.total))
-    })
-
-    cajaFiltrada.filter(c => c.tipo === 'ingreso' && !c.referencia_id).forEach(c => {
-      const key = c.metodo_pago ? c.metodo_pago.replace('_', ' ').toUpperCase() : 'EFECTIVO'
+    cajaFiltrada.filter(c => c.tipo === 'ingreso').forEach(c => {
+      const key = extractMetodoPago(c)
       pagoMap.set(key, (pagoMap.get(key) || 0) + Number(c.monto))
     })
 
@@ -412,10 +507,10 @@ export default function ReportesPage() {
               <TrendingUp size={22} />
             </div>
             <div>
-              <div className="stat-label">Facturación / Ingresos Totales</div>
+              <div className="stat-label">Ingresos Reales Cobrados</div>
               <div className="stat-value" style={{ color: 'var(--success)' }}>{formatCurrency(resumen.ingresos)}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                Pedidos + Movimientos de Caja
+                {formatCurrency(resumen.ingresosPagosCompletos)} en cobros 100% · {formatCurrency(resumen.ingresosSenas)} en señas · {formatCurrency(resumen.cajaIngresosDirectos)} mostrador
               </div>
             </div>
           </div>
@@ -428,7 +523,7 @@ export default function ReportesPage() {
               <div className="stat-label">Egresos / Gastos</div>
               <div className="stat-value" style={{ color: 'var(--danger)' }}>{formatCurrency(resumen.gastos)}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                Insumos, personal y salidas
+                Insumos, personal y salidas operativas
               </div>
             </div>
           </div>
@@ -441,12 +536,27 @@ export default function ReportesPage() {
               <DollarSign size={22} />
             </div>
             <div>
-              <div className="stat-label">Ganancia Neta</div>
+              <div className="stat-label">Ganancia Real</div>
               <div className="stat-value" style={{ color: resumen.ganancia >= 0 ? 'var(--success)' : 'var(--danger)' }}>
                 {formatCurrency(resumen.ganancia)}
               </div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                Resultado operativo libre
+                Cobrado menos egresos ({resumen.margen}% margen)
+              </div>
+            </div>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: 'rgba(20, 155, 142, 0.12)', color: 'var(--accent)' }}>
+              <ShoppingCart size={22} />
+            </div>
+            <div>
+              <div className="stat-label">Pedidos Cobrados / con Seña</div>
+              <div className="stat-value" style={{ color: 'var(--accent)' }}>
+                {resumen.pedidosCount} <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-muted)' }}>pedidos</span>
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
+                {resumen.pedidos100Count} cobrados 100% · {resumen.pedidosSenaCount} con seña
               </div>
             </div>
           </div>
@@ -538,8 +648,8 @@ export default function ReportesPage() {
           </div>
         </div>
 
-        {/* Detailed Table */}
-        <div className="card">
+        {/* Detailed Table por Meses */}
+        <div className="card" style={{ marginBottom: 24 }}>
           <div className="section-title">📋 Resumen Tabular por Meses</div>
 
           <div className="table-wrapper">
@@ -548,7 +658,7 @@ export default function ReportesPage() {
                 <tr>
                   <th>Mes / Período</th>
                   <th>Pedidos Cobrados</th>
-                  <th>Facturación + Caja</th>
+                  <th>Dinero Cobrado + Mostrador</th>
                   <th>Gastos / Egresos</th>
                   <th>Ganancia Neta</th>
                   <th>Margen %</th>
@@ -574,6 +684,182 @@ export default function ReportesPage() {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+
+        {/* TABLA PRINCIPAL: Pedidos Cobrados & Señas Recibidas */}
+        <div className="card" style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+            <div>
+              <div className="section-title" style={{ margin: 0 }}>💰 Pedidos Cobrados & Señas Recibidas ({pedidosCobradosDetalle.length})</div>
+              <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
+                Solo se muestran los pedidos donde ingresó dinero efectivo (cobro 100% o seña). Presupuestos sin cobrar están excluidos de las estadísticas.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className={`btn btn-sm ${filtroTipoCobro === 'todos' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setFiltroTipoCobro('todos')}
+              >
+                Todos ({pedidosCobradosDetalle.length})
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${filtroTipoCobro === '100' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setFiltroTipoCobro('100')}
+              >
+                ✓ 100% Cobrados ({resumen.pedidos100Count})
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${filtroTipoCobro === 'senas' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setFiltroTipoCobro('senas')}
+              >
+                ⏳ Señas ({resumen.pedidosSenaCount})
+              </button>
+            </div>
+          </div>
+
+          {pedidosCobradosDetalle.length === 0 ? (
+            <div style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13.5 }}>
+              No se registraron cobros ni señas en el período seleccionado.
+            </div>
+          ) : (
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Pedido</th>
+                    <th>Cliente</th>
+                    <th>Fecha</th>
+                    <th>Total Pedido</th>
+                    <th>Cobrado en Período</th>
+                    <th>Saldo Pendiente</th>
+                    <th>Estado de Pago</th>
+                    <th>Estado Pedido</th>
+                    <th>Método de Pago</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pedidosCobradosDetalle
+                    .filter(p => {
+                      if (filtroTipoCobro === '100') return p.is100Cobrado
+                      if (filtroTipoCobro === 'senas') return !p.is100Cobrado
+                      return true
+                    })
+                    .map(p => (
+                      <tr key={p.id}>
+                        <td><strong>#{p.numero}</strong></td>
+                        <td><strong>{p.cliente_nombre}</strong></td>
+                        <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{p.fecha ? formatDate(p.fecha) : '-'}</td>
+                        <td><strong>{formatCurrency(p.totalPedido)}</strong></td>
+                        <td><strong style={{ color: 'var(--success)' }}>{formatCurrency(p.montoCobrado)}</strong></td>
+                        <td>
+                          {p.saldoPendiente > 0 ? (
+                            <span style={{ color: '#d97706', fontWeight: 700 }}>{formatCurrency(p.saldoPendiente)}</span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>$0 (Saldado)</span>
+                          )}
+                        </td>
+                        <td>
+                          {p.is100Cobrado ? (
+                            <span className="badge badge-success">✓ 100% Cobrado</span>
+                          ) : (
+                            <span className="badge" style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#b45309', border: '1px solid #f59e0b' }}>
+                              ⏳ Seña Recibida
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          <span className="badge badge-neutral">{p.estadoPedido.replace('_', ' ')}</span>
+                        </td>
+                        <td>
+                          <span style={{ fontSize: 12, textTransform: 'uppercase', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                            {p.metodoPago.replace('_', ' ')}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Ingresos directos en caja (Mostrador) */}
+        {cajaDirectaList.length > 0 && (
+          <div className="card" style={{ marginBottom: 24 }}>
+            <div className="section-title">🏪 Ingresos Directos de Caja / Mostrador ({cajaDirectaList.length})</div>
+            <p style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 14 }}>
+              Movimientos de dinero que entraron a caja directamente (mostrador, fotocopias, servicios menores sin pedido formal).
+            </p>
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Concepto</th>
+                    <th>Método de Pago</th>
+                    <th>Monto Ingresado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cajaDirectaList.map(c => (
+                    <tr key={c.id}>
+                      <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{c.fecha || c.created_at ? formatDate(c.fecha || c.created_at || '') : '-'}</td>
+                      <td><strong>{c.concepto}</strong></td>
+                      <td><span style={{ fontSize: 12, textTransform: 'uppercase', fontWeight: 600 }}>{extractMetodoPago(c)}</span></td>
+                      <td><strong style={{ color: 'var(--success)' }}>{formatCurrency(Number(c.monto))}</strong></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Rankings: Top Servicios y Top Clientes */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
+          {/* Top Servicios */}
+          <div className="card">
+            <div className="section-title">🏆 Servicios Más Vendidos (Cobrados)</div>
+            {topServicios.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No hay datos en el período.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {topServicios.map((srv, idx) => (
+                  <div key={srv.nombre} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontWeight: 800, color: 'var(--accent)', minWidth: 20 }}>#{idx + 1}</span>
+                      <span>{srv.nombre} <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>({srv.cantidad} unid.)</span></span>
+                    </div>
+                    <strong>{formatCurrency(srv.total)}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Top Clientes */}
+          <div className="card">
+            <div className="section-title">👥 Clientes con Mayor Aporte</div>
+            {topClientes.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No hay datos en el período.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {topClientes.map((cli, idx) => (
+                  <div key={cli.nombre} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontWeight: 800, color: 'var(--accent)', minWidth: 20 }}>#{idx + 1}</span>
+                      <span>{cli.nombre} <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>({cli.pedidos} pedidos)</span></span>
+                    </div>
+                    <strong style={{ color: 'var(--success)' }}>{formatCurrency(cli.total)}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </main>
