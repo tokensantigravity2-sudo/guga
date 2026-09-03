@@ -8,7 +8,6 @@ import { Cliente, Pedido } from '@/lib/types'
 import { formatCurrency, formatDate, formatDateTime, getInitials } from '@/lib/helpers'
 import { Search, Plus, Phone, Mail, MapPin, Edit2, Trash2, Users, FileText, ShoppingBag, Printer, X, RotateCcw } from 'lucide-react'
 import toast from 'react-hot-toast'
-import TicketImpresion from '@/components/TicketImpresion'
 import PresupuestoPDFModal from '@/components/PresupuestoPDFModal'
 
 export default function ClientesPage() {
@@ -23,10 +22,6 @@ export default function ClientesPage() {
   const [selectedClienteHistory, setSelectedClienteHistory] = useState<Cliente | null>(null)
   const [historialPedidos, setHistorialPedidos] = useState<Pedido[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
-
-  // Ticket state
-  const [showTicket, setShowTicket] = useState(false)
-  const [ticketData, setTicketData] = useState<Pedido | null>(null)
 
   // PDF modal state
   const [showPdfModal, setShowPdfModal] = useState(false)
@@ -364,12 +359,6 @@ export default function ClientesPage() {
                             >
                               <RotateCcw size={13} /> Repetir Pedido
                             </button>
-                            <button
-                              className="btn btn-sm btn-secondary"
-                              onClick={() => { setTicketData(p); setShowTicket(true) }}
-                            >
-                              <Printer size={13} /> Ticket
-                            </button>
                           </div>
                         </div>
                       </div>
@@ -479,30 +468,6 @@ export default function ClientesPage() {
               </form>
             </div>
           </div>
-        )}
-
-        {/* Ticket Modal */}
-        {showTicket && ticketData && (
-          <TicketImpresion
-            ticket={{
-              numero: ticketData.numero,
-              fecha: new Date(ticketData.created_at || new Date()),
-              items: (Array.isArray(ticketData.items) ? ticketData.items : []).map((item: any) => ({
-                nombre: item.nombre,
-                cantidad: item.cantidad,
-                precio: item.precio || item.precio_unitario || 0,
-              })),
-              subtotal: ticketData.subtotal,
-              descuento: ticketData.descuento || 0,
-              descuentoPorcentaje: ticketData.descuento_porcentaje,
-              total: ticketData.total,
-              metodoPago: ticketData.metodo_pago || 'efectivo',
-              clienteNombre: ticketData.cliente_nombre,
-              clienteRut: selectedClienteHistory?.rut || clientes.find(c => c.id === ticketData.cliente_id || c.nombre === ticketData.cliente_nombre)?.rut,
-              notas: ticketData.notas,
-            }}
-            onClose={() => setShowTicket(false)}
-          />
         )}
 
         {/* PDF Presupuesto Modal */}

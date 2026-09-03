@@ -168,16 +168,59 @@ export default function CategoryIcon({
     return null
   }
 
-  // 1. Check if direct iconId is given
+  // 1. Check if iconId is a custom image, SVG or Data URL (uploaded icon)
+  if (iconId && (iconId.startsWith('data:image') || iconId.startsWith('http://') || iconId.startsWith('https://') || iconId.startsWith('/') || iconId.startsWith('blob:'))) {
+    return (
+      <img
+        src={iconId}
+        alt={name || 'icono'}
+        className={className}
+        style={{
+          width: size,
+          height: size,
+          minWidth: size,
+          minHeight: size,
+          objectFit: 'contain',
+          display: 'inline-block',
+          verticalAlign: 'middle',
+          flexShrink: 0,
+          ...style
+        }}
+      />
+    )
+  }
+
+  // 2. Check if direct iconId is given in vector map
   if (iconId && CATEGORY_ICON_MAP[iconId.toLowerCase()]) {
     const IconComp = CATEGORY_ICON_MAP[iconId.toLowerCase()]
     return <IconComp size={size} color={color} strokeWidth={strokeWidth} className={className} style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0, ...style }} />
   }
 
-  // 2. Check by name
+  // 3. Check by name if it's a URL
   const cleanName = name.trim().toLowerCase()
   if (cleanName === 'none' || cleanName === 'sin-icono') {
     return null
+  }
+
+  if (cleanName.startsWith('data:image') || cleanName.startsWith('http://') || cleanName.startsWith('https://') || cleanName.startsWith('/')) {
+    return (
+      <img
+        src={name}
+        alt={name}
+        className={className}
+        style={{
+          width: size,
+          height: size,
+          minWidth: size,
+          minHeight: size,
+          objectFit: 'contain',
+          display: 'inline-block',
+          verticalAlign: 'middle',
+          flexShrink: 0,
+          ...style
+        }}
+      />
+    )
   }
 
   if (CATEGORY_ICON_MAP[cleanName]) {
@@ -185,7 +228,7 @@ export default function CategoryIcon({
     return <IconComp size={size} color={color} strokeWidth={strokeWidth} className={className} style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0, ...style }} />
   }
 
-  // 3. Fallback to Printer / Package
+  // 4. Fallback to Printer / Package
   const Fallback = CATEGORY_ICON_MAP['printer'] || Printer
   return <Fallback size={size} color={color} strokeWidth={strokeWidth} className={className} style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0, ...style }} />
 }

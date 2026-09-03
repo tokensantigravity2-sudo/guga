@@ -11,7 +11,6 @@ import {
   Check, FileText, Calendar, Filter, UserCheck, ShieldAlert, Sparkles, RotateCcw
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import TicketImpresion from '@/components/TicketImpresion'
 import PresupuestoPDFModal from '@/components/PresupuestoPDFModal'
 
 export default function PedidosPage() {
@@ -62,10 +61,6 @@ export default function PedidosPage() {
     rut: '',
     tipo: 'regular',
   })
-
-  // Ticket state
-  const [showTicket, setShowTicket] = useState(false)
-  const [ticketData, setTicketData] = useState<Pedido | null>(null)
 
   // PDF Presupuesto state
   const [showPdfModal, setShowPdfModal] = useState(false)
@@ -419,9 +414,7 @@ export default function PedidosPage() {
     }
 
     toast.success('¡Pedido/Presupuesto registrado con éxito!')
-    setTicketData(data)
     setPdfData(data)
-    setShowTicket(true)
     resetForm()
     loadData()
   }
@@ -537,7 +530,16 @@ export default function PedidosPage() {
         toast.success(`🟢 Pedido #${pedido.numero} marcado como COBRADO (Total ya registrado en caja)`)
       }
     } else if (!newCobrado) {
-      toast.success(`⚪ Pedido #${pedido.numero} desmarcado como cobrado`)
+      // Eliminar los movimientos de caja registrados para este pedido
+      const { error: delMovErr } = await supabase
+        .from('caja_movimientos')
+        .delete()
+        .eq('referencia_id', pedido.id)
+
+      if (delMovErr) {
+        console.error('Error al eliminar movimientos de caja:', delMovErr)
+      }
+      toast.success(`⚪ Pedido #${pedido.numero} desmarcado como cobrado y eliminado de la Caja`)
     }
 
     loadData()
@@ -545,6 +547,8 @@ export default function PedidosPage() {
 
   const handleDeletePedido = async (id: string, numero: string) => {
     if (!confirm(`¿Estás seguro de eliminar el pedido #${numero}?`)) return
+    // Eliminar también movimientos de caja asociados
+    await supabase.from('caja_movimientos').delete().eq('referencia_id', id)
     const { error } = await supabase.from('pedidos').delete().eq('id', id)
     if (error) {
       toast.error('Error al eliminar pedido: ' + error.message)
@@ -1412,13 +1416,6 @@ export default function PedidosPage() {
                             <RotateCcw size={13} />
                           </button>
                           <button
-                            className="btn btn-sm btn-secondary"
-                            onClick={() => { setTicketData(p); setShowTicket(true) }}
-                            title="Imprimir ticket"
-                          >
-                            <Printer size={13} /> Ticket
-                          </button>
-                          <button
                             className="btn btn-sm btn-danger"
                             onClick={() => handleDeletePedido(p.id, p.numero)}
                             title="Eliminar pedido"
@@ -1654,30 +1651,6 @@ export default function PedidosPage() {
               </form>
             </div>
           </div>
-        )}
-
-        {/* Ticket Modal */}
-        {showTicket && ticketData && (
-          <TicketImpresion
-            ticket={{
-              numero: ticketData.numero,
-              fecha: new Date(ticketData.created_at || new Date()),
-              items: (Array.isArray(ticketData.items) ? ticketData.items : []).map((item: any) => ({
-                nombre: item.nombre,
-                cantidad: item.cantidad,
-                precio: item.precio || item.precio_unitario || 0,
-              })),
-              subtotal: ticketData.subtotal,
-              descuento: ticketData.descuento || 0,
-              descuentoPorcentaje: ticketData.descuento_porcentaje,
-              total: ticketData.total,
-              metodoPago: ticketData.metodo_pago || 'efectivo',
-              clienteNombre: ticketData.cliente_nombre,
-              clienteRut: clientes.find(c => c.id === ticketData.cliente_id || c.nombre === ticketData.cliente_nombre)?.rut,
-              notas: ticketData.notas,
-            }}
-            onClose={() => setShowTicket(false)}
-          />
         )}
 
         {/* Presupuesto PDF Modal */}

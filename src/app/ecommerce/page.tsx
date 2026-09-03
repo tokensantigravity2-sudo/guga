@@ -12,11 +12,10 @@ import {
   Phone, DollarSign, Package, Check, RefreshCw,
   Eye, ArrowUpRight, ShieldAlert, Sparkles, MapPin, Layers,
   Globe, Share2, FileText, ToggleLeft, ToggleRight, Image as ImageIcon,
-  Ban, Palette
+  Ban, Palette, Upload, Link as LinkIcon, Monitor, Smartphone
 } from 'lucide-react'
 import WhatsAppIcon from '@/components/WhatsAppIcon'
 import toast from 'react-hot-toast'
-import TicketImpresion from '@/components/TicketImpresion'
 import PresupuestoPDFModal from '@/components/PresupuestoPDFModal'
 import Link from 'next/link'
 
@@ -46,11 +45,10 @@ export default function EcommerceAdminPage() {
   const [selectedCategoryForIcon, setSelectedCategoryForIcon] = useState<string | null>(null)
   const [iconSearchTerm, setIconSearchTerm] = useState<string>('')
   const [newCategoryName, setNewCategoryName] = useState<string>('')
+  const [customIconUrlInput, setCustomIconUrlInput] = useState<string>('')
 
-  // Selected Order for details modal or Ticket
+  // Selected Order for details modal or PDF
   const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null)
-  const [showTicketModal, setShowTicketModal] = useState(false)
-  const [ticketPedido, setTicketPedido] = useState<Pedido | null>(null)
   const [showPdfModal, setShowPdfModal] = useState(false)
   const [pdfPedido, setPdfPedido] = useState<Pedido | null>(null)
 
@@ -318,25 +316,27 @@ export default function EcommerceAdminPage() {
     }
   }
 
-  // Banner Slides Management
+  // Banner Slides Management (Direct Image Uploading)
   const handleAddBanner = () => {
     const newSlide: AdminBannerSlide = {
       id: Date.now().toString(),
-      desktopUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=1600&auto=format&fit=crop&q=80',
-      mobileUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=800&auto=format&fit=crop&q=80',
+      desktopUrl: '',
+      mobileUrl: '',
       activo: true
     }
     setStoreConfig(prev => ({
       ...prev,
       banners: [...(prev.banners || []), newSlide]
     }))
-    toast.success('Nuevo slide de banner agregado. Configura las URLs y haz clic en Guardar.')
+    toast.success('Nuevo banner agregado. Haz clic en "Subir Imagen" para elegir tu diseño.')
   }
 
   const handleRemoveBanner = (index: number) => {
     setStoreConfig(prev => {
       const copy = (prev.banners || []).filter((_, i) => i !== index)
-      return { ...prev, banners: copy }
+      const updated = { ...prev, banners: copy }
+      localStorage.setItem('guga_store_admin_config', JSON.stringify(updated))
+      return updated
     })
     toast('Banner eliminado')
   }
@@ -349,6 +349,35 @@ export default function EcommerceAdminPage() {
       }
       return { ...prev, banners: copy }
     })
+  }
+
+  // Upload banner file directly from PC
+  const handleBannerFileUpload = (index: number, field: 'desktopUrl' | 'mobileUrl', e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (file.size > 8 * 1024 * 1024) {
+      toast.error('La imagen no puede pesar más de 8MB')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const base64Url = event.target?.result as string
+      if (base64Url) {
+        setStoreConfig(prev => {
+          const copy = [...(prev.banners || [])]
+          if (copy[index]) {
+            copy[index] = { ...copy[index], [field]: base64Url }
+          }
+          const updated = { ...prev, banners: copy }
+          localStorage.setItem('guga_store_admin_config', JSON.stringify(updated))
+          return updated
+        })
+        toast.success(`¡Imagen de Banner ${field === 'desktopUrl' ? 'Computadora' : 'Celular'} subida con éxito!`)
+      }
+    }
+    reader.readAsDataURL(file)
   }
 
   // Filtered Catalog for publication tab
@@ -403,6 +432,36 @@ export default function EcommerceAdminPage() {
       return updated
     })
     toast.success(`"${cat}" configurada sin ícono`)
+  }
+
+  // Upload custom icon file (SVG, PNG, WebP, JPG)
+  const handleFileUploadIcon = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !selectedCategoryForIcon) return
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('El ícono no puede pesar más de 2MB')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const base64Url = event.target?.result as string
+      if (base64Url) {
+        handleSelectIconForCategory(selectedCategoryForIcon, base64Url)
+        toast.success(`¡Ícono personalizado cargado para "${selectedCategoryForIcon}"!`)
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // Apply custom URL icon
+  const handleApplyCustomUrlIcon = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!customIconUrlInput.trim() || !selectedCategoryForIcon) return
+    handleSelectIconForCategory(selectedCategoryForIcon, customIconUrlInput.trim())
+    setCustomIconUrlInput('')
+    toast.success(`URL de ícono asignada a "${selectedCategoryForIcon}"`)
   }
 
   // Add custom category mapping
@@ -1000,30 +1059,6 @@ export default function EcommerceAdminPage() {
                             <span>WA: ¡Pedido Listo!</span>
                           </button>
                         </div>
-
-                        {/* Print Ticket */}
-                        <button
-                          onClick={() => {
-                            setTicketPedido(pd)
-                            setShowTicketModal(true)
-                          }}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            backgroundColor: 'var(--bg-input)',
-                            border: '1px solid var(--border-light)',
-                            padding: '6px 10px',
-                            borderRadius: '6px',
-                            fontSize: '12px',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            color: 'var(--text-secondary)'
-                          }}
-                        >
-                          <Printer size={13} />
-                          <span>Comanda / Ticket</span>
-                        </button>
                       </div>
                     </div>
                   </div>
@@ -1331,15 +1366,15 @@ export default function EcommerceAdminPage() {
             </form>
           </div>
 
-          {/* Banners Manager (Pure Images) */}
+          {/* Banners Manager (Pure Images & Direct Upload) */}
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
               <div>
                 <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-                  🖼️ Banners de la Tienda (Solo Imágenes)
+                  🖼️ Banners de la Tienda (Subir Diseños Gráficos)
                 </h3>
                 <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', margin: '2px 0 0' }}>
-                  Banners 100% visuales sin texto superpuesto para lucir tus diseños gráficos.
+                  Sube tus propios banners gráficos desde tu computadora. Banners 100% visuales sin textos superpuestos.
                 </p>
               </div>
 
@@ -1347,9 +1382,9 @@ export default function EcommerceAdminPage() {
                 type="button"
                 onClick={handleAddBanner}
                 className="btn btn-sm btn-secondary"
-                style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, padding: '8px 14px' }}
               >
-                <Plus size={14} /> + Agregar Banner
+                <Plus size={16} /> + Agregar Banner
               </button>
             </div>
 
@@ -1362,18 +1397,25 @@ export default function EcommerceAdminPage() {
                     backgroundColor: 'var(--bg-input)',
                     border: '1px solid var(--border)',
                     borderRadius: '12px',
-                    padding: '14px',
+                    padding: '16px',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '12px'
+                    gap: '14px'
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontWeight: 800, fontSize: '13px', color: 'var(--text-primary)' }}>
-                      Banner #{idx + 1}
-                    </span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontWeight: 800, fontSize: '14px', color: 'var(--text-primary)' }}>
+                        Banner #{idx + 1}
+                      </span>
+                      {b.desktopUrl && (
+                        <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', backgroundColor: 'rgba(22, 163, 74, 0.12)', color: '#16a34a', fontWeight: 700 }}>
+                          ✓ Imagen cargada
+                        </span>
+                      )}
+                    </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
                         <input
                           type="checkbox"
@@ -1389,58 +1431,187 @@ export default function EcommerceAdminPage() {
                         style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#dc2626', padding: '4px' }}
                         title="Eliminar este banner"
                       >
-                        <Trash2 size={15} />
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </div>
 
-                  {/* Desktop URL */}
+                  {/* Desktop Banner Upload Box */}
                   <div>
-                    <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '3px' }}>
-                      💻 URL Desktop (1200 × 360 px)
-                    </label>
-                    <input
-                      type="text"
-                      className="input"
-                      placeholder="https://... o /banner-desktop.jpg"
-                      value={b.desktopUrl || ''}
-                      onChange={(e) => handleUpdateBanner(idx, 'desktopUrl', e.target.value)}
-                      style={{ fontSize: '12.5px' }}
-                    />
-                  </div>
-
-                  {/* Mobile URL */}
-                  <div>
-                    <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '3px' }}>
-                      📱 URL Mobile (750 × 420 px - opcional)
-                    </label>
-                    <input
-                      type="text"
-                      className="input"
-                      placeholder="https://... o /banner-mobile.jpg"
-                      value={b.mobileUrl || ''}
-                      onChange={(e) => handleUpdateBanner(idx, 'mobileUrl', e.target.value)}
-                      style={{ fontSize: '12.5px' }}
-                    />
-                  </div>
-
-                  {/* Live Preview of image */}
-                  {(b.desktopUrl || b.mobileUrl) && (
-                    <div style={{
-                      borderRadius: '8px',
-                      overflow: 'hidden',
-                      height: '110px',
-                      backgroundColor: '#0f172a',
-                      lineHeight: 0,
-                      border: '1px solid var(--border)'
-                    }}>
-                      <img
-                        src={b.desktopUrl || b.mobileUrl}
-                        alt={`Vista previa Banner ${idx + 1}`}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Monitor size={15} color="var(--accent)" />
+                        <span>Banner para Computadora (1200 × 360 px)</span>
+                      </label>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Recomendado: 1200x360 px</span>
                     </div>
-                  )}
+
+                    <input
+                      type="file"
+                      id={`banner-file-desktop-${idx}`}
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={(e) => handleBannerFileUpload(idx, 'desktopUrl', e)}
+                    />
+
+                    {b.desktopUrl ? (
+                      <div style={{
+                        position: 'relative',
+                        borderRadius: '10px',
+                        overflow: 'hidden',
+                        height: '130px',
+                        backgroundColor: '#0f172a',
+                        border: '1px solid var(--border)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <img
+                          src={b.desktopUrl}
+                          alt={`Banner Desktop ${idx + 1}`}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                        <div style={{
+                          position: 'absolute',
+                          inset: 0,
+                          backgroundColor: 'rgba(0,0,0,0.4)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '10px'
+                        }}>
+                          <button
+                            type="button"
+                            onClick={() => document.getElementById(`banner-file-desktop-${idx}`)?.click()}
+                            className="btn btn-sm btn-primary"
+                            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700 }}
+                          >
+                            <Upload size={14} /> Cambiar Imagen
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateBanner(idx, 'desktopUrl', '')}
+                            className="btn btn-sm btn-secondary"
+                            style={{ color: '#dc2626', fontSize: '12px', fontWeight: 700 }}
+                          >
+                            <Trash2 size={14} /> Quitar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() => document.getElementById(`banner-file-desktop-${idx}`)?.click()}
+                        style={{
+                          border: '2px dashed var(--accent)',
+                          padding: '24px 16px',
+                          borderRadius: '10px',
+                          textAlign: 'center',
+                          cursor: 'pointer',
+                          backgroundColor: 'rgba(20, 155, 142, 0.05)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <Upload size={24} color="var(--accent)" />
+                        <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)' }}>
+                          Haz clic aquí para Subir Imagen de Computadora
+                        </div>
+                        <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
+                          Sube tu diseño gráfico desde tu PC (JPG, PNG o WebP)
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Mobile Banner Upload Box (Optional) */}
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Smartphone size={15} color="var(--text-secondary)" />
+                        <span>Banner para Celular (Opcional - 750 × 420 px)</span>
+                      </label>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Adaptación móvil</span>
+                    </div>
+
+                    <input
+                      type="file"
+                      id={`banner-file-mobile-${idx}`}
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={(e) => handleBannerFileUpload(idx, 'mobileUrl', e)}
+                    />
+
+                    {b.mobileUrl ? (
+                      <div style={{
+                        position: 'relative',
+                        borderRadius: '10px',
+                        overflow: 'hidden',
+                        height: '100px',
+                        backgroundColor: '#0f172a',
+                        border: '1px solid var(--border)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <img
+                          src={b.mobileUrl}
+                          alt={`Banner Mobile ${idx + 1}`}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                        <div style={{
+                          position: 'absolute',
+                          inset: 0,
+                          backgroundColor: 'rgba(0,0,0,0.4)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '10px'
+                        }}>
+                          <button
+                            type="button"
+                            onClick={() => document.getElementById(`banner-file-mobile-${idx}`)?.click()}
+                            className="btn btn-sm btn-primary"
+                            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700 }}
+                          >
+                            <Upload size={14} /> Cambiar Mobile
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateBanner(idx, 'mobileUrl', '')}
+                            className="btn btn-sm btn-secondary"
+                            style={{ color: '#dc2626', fontSize: '12px', fontWeight: 700 }}
+                          >
+                            <Trash2 size={14} /> Quitar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() => document.getElementById(`banner-file-mobile-${idx}`)?.click()}
+                        style={{
+                          border: '1px dashed var(--border)',
+                          padding: '14px 16px',
+                          borderRadius: '10px',
+                          textAlign: 'center',
+                          cursor: 'pointer',
+                          backgroundColor: 'var(--bg-card)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '8px'
+                        }}
+                      >
+                        <Smartphone size={18} color="var(--text-muted)" />
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                          + Subir versión específica para Celular (opcional)
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -2025,29 +2196,6 @@ export default function EcommerceAdminPage() {
         </div>
       )}
 
-      {/* TICKET PRINT MODAL */}
-      {showTicketModal && ticketPedido && (
-        <TicketImpresion
-          ticket={{
-            numero: ticketPedido.numero,
-            fecha: ticketPedido.created_at ? new Date(ticketPedido.created_at) : new Date(),
-            items: (ticketPedido.items || []).map(it => ({
-              nombre: it.nombre,
-              cantidad: it.cantidad,
-              precio_unitario: it.precio_unitario,
-              subtotal: it.subtotal
-            })),
-            subtotal: ticketPedido.subtotal || ticketPedido.total,
-            descuento: ticketPedido.descuento || 0,
-            total: ticketPedido.total,
-            metodoPago: ticketPedido.metodo_pago || 'efectivo',
-            clienteNombre: ticketPedido.cliente_nombre,
-            notas: ticketPedido.notas
-          }}
-          onClose={() => setShowTicketModal(false)}
-        />
-      )}
-
       {/* PDF PRESUPUESTO MODAL */}
       {showPdfModal && pdfPedido && (
         <PresupuestoPDFModal
@@ -2060,26 +2208,26 @@ export default function EcommerceAdminPage() {
       {selectedCategoryForIcon !== null && (
         <div
           className="modal-backdrop"
-          onClick={() => { setSelectedCategoryForIcon(null); setIconSearchTerm(''); }}
+          onClick={() => { setSelectedCategoryForIcon(null); setIconSearchTerm(''); setCustomIconUrlInput(''); }}
           style={{ zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
           <div
             className="modal"
             onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '720px', width: '95%', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
+            style={{ maxWidth: '760px', width: '95%', maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}
           >
             <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
               <div>
                 <h2 style={{ fontSize: '17px', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
-                  Elegir Ícono para: <span style={{ color: 'var(--accent)' }}>{selectedCategoryForIcon}</span>
+                  Elegir o Subir Ícono para: <span style={{ color: 'var(--accent)' }}>{selectedCategoryForIcon}</span>
                 </h2>
                 <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '2px 0 0' }}>
-                  Selecciona un ícono visual o elige la opción &quot;Sin ícono&quot; para mostrar solo texto.
+                  Sube cualquier imagen/SVG desde tu equipo, pega un enlace, o elige un ícono de la galería.
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => { setSelectedCategoryForIcon(null); setIconSearchTerm(''); }}
+                onClick={() => { setSelectedCategoryForIcon(null); setIconSearchTerm(''); setCustomIconUrlInput(''); }}
                 className="btn-ghost"
                 style={{ fontSize: '18px', cursor: 'pointer' }}
               >
@@ -2087,25 +2235,85 @@ export default function EcommerceAdminPage() {
               </button>
             </div>
 
-            {/* Search Bar */}
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', backgroundColor: 'var(--bg-input)' }}>
-              <div style={{ position: 'relative' }}>
-                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                <input
-                  type="text"
-                  className="input"
-                  placeholder="Buscar ícono (ej. tarjeta, remera, taza, bolsa, factura, tijera, caja, sticker...)..."
-                  value={iconSearchTerm}
-                  onChange={(e) => setIconSearchTerm(e.target.value)}
-                  autoFocus
-                  style={{ paddingLeft: '36px', fontSize: '13px' }}
-                />
-              </div>
-            </div>
+            <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              
+              {/* SECTION 1: UPLOAD CUSTOM ICON FROM PC OR URL */}
+              <div style={{
+                backgroundColor: 'var(--bg-input)',
+                padding: '16px',
+                borderRadius: '12px',
+                border: '1px solid var(--border)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Upload size={16} color="var(--accent)" />
+                    <span>Subir Tu Propio Ícono (Cualquier imagen o SVG)</span>
+                  </div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Formatos: SVG, PNG, WebP, JPG</span>
+                </div>
 
-            {/* Icons Grid */}
-            <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* Option 1: No Icon (Prominent Button) */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  {/* File Upload Button */}
+                  <div>
+                    <input
+                      type="file"
+                      id="custom-category-icon-file-input"
+                      accept="image/*,.svg"
+                      style={{ display: 'none' }}
+                      onChange={handleFileUploadIcon}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById('custom-category-icon-file-input')?.click()}
+                      className="btn btn-secondary"
+                      style={{
+                        width: '100%',
+                        padding: '12px 14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        fontWeight: 700,
+                        fontSize: '12.5px',
+                        border: '2px dashed var(--accent)',
+                        backgroundColor: 'rgba(20, 155, 142, 0.05)',
+                        color: 'var(--accent)'
+                      }}
+                    >
+                      <Upload size={16} />
+                      <span>Subir desde mi PC</span>
+                    </button>
+                  </div>
+
+                  {/* Image / SVG URL Form */}
+                  <form onSubmit={handleApplyCustomUrlIcon} style={{ display: 'flex', gap: '6px' }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <LinkIcon size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                      <input
+                        type="url"
+                        className="input"
+                        placeholder="Pegar link de imagen o SVG..."
+                        value={customIconUrlInput}
+                        onChange={(e) => setCustomIconUrlInput(e.target.value)}
+                        style={{ paddingLeft: '30px', fontSize: '12px', height: '100%' }}
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={!customIconUrlInput.trim()}
+                      style={{ padding: '0 12px', fontSize: '12px', fontWeight: 700 }}
+                    >
+                      Aplicar
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              {/* SECTION 2: NO ICON OPTION */}
               {(!iconSearchTerm || 'sin icono texto ninguno none'.includes(iconSearchTerm.toLowerCase())) && (
                 <button
                   type="button"
@@ -2138,64 +2346,91 @@ export default function EcommerceAdminPage() {
                   </div>
                   <div>
                     <div style={{ fontWeight: 800, fontSize: '13.5px', color: '#dc2626' }}>
-                      🚫 Sin Ícono (Mostrar Solo Texto)
+                      🚫 Sin Ícono (Mostrar Solo Texto en la Tienda)
                     </div>
                     <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
-                      La categoría se mostrará limpiamente sin ningún ícono gráfico en la tienda.
+                      La categoría se mostrará limpiamente con su nombre sin ningún ícono gráfico.
                     </div>
                   </div>
                 </button>
               )}
 
-              {/* Vector Icons Tiles */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
-                gap: '10px'
-              }}>
-                {AVAILABLE_VECTOR_ICONS.filter(opt => {
-                  if (opt.id === 'none') return false
-                  if (!iconSearchTerm.trim()) return true
-                  const q = iconSearchTerm.toLowerCase().trim()
-                  return opt.label.toLowerCase().includes(q) || opt.id.toLowerCase().includes(q)
-                }).map((opt) => {
-                  const IconComponent = opt.component
-                  const isSelected = categoryVectorIcons[selectedCategoryForIcon] === opt.id
+              {/* SECTION 3: PRE-SET VECTOR ICONS GALLERY */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Palette size={15} color="var(--accent)" />
+                    <span>Galería de Íconos Vectoriales Prediseñados</span>
+                  </div>
+                </div>
 
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => handleSelectIconForCategory(selectedCategoryForIcon, opt.id)}
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '8px',
-                        padding: '14px 8px',
-                        borderRadius: '10px',
-                        border: isSelected ? '2px solid var(--accent)' : '1px solid var(--border)',
-                        backgroundColor: isSelected ? 'rgba(20, 155, 142, 0.12)' : 'var(--bg-card)',
-                        color: isSelected ? 'var(--accent)' : 'var(--text-primary)',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <IconComponent size={24} strokeWidth={isSelected ? 2.2 : 1.8} />
-                      <span style={{ fontSize: '11px', fontWeight: isSelected ? 800 : 600, textAlign: 'center', lineHeight: 1.2 }}>
-                        {opt.label.split('/')[0].trim()}
-                      </span>
-                    </button>
-                  )
-                })}
+                {/* Search Bar */}
+                <div style={{ position: 'relative' }}>
+                  <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Filtrar íconos (ej. tarjeta, remera, taza, bolsa, factura, tijera, caja, sticker...)..."
+                    value={iconSearchTerm}
+                    onChange={(e) => setIconSearchTerm(e.target.value)}
+                    style={{ paddingLeft: '34px', fontSize: '12.5px' }}
+                  />
+                </div>
+
+                {/* Vector Icons Tiles */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+                  gap: '10px',
+                  maxHeight: '260px',
+                  overflowY: 'auto',
+                  padding: '4px'
+                }}>
+                  {AVAILABLE_VECTOR_ICONS.filter(opt => {
+                    if (opt.id === 'none') return false
+                    if (!iconSearchTerm.trim()) return true
+                    const q = iconSearchTerm.toLowerCase().trim()
+                    return opt.label.toLowerCase().includes(q) || opt.id.toLowerCase().includes(q)
+                  }).map((opt) => {
+                    const IconComponent = opt.component
+                    const isSelected = categoryVectorIcons[selectedCategoryForIcon] === opt.id
+
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => handleSelectIconForCategory(selectedCategoryForIcon, opt.id)}
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '8px',
+                          padding: '12px 6px',
+                          borderRadius: '10px',
+                          border: isSelected ? '2px solid var(--accent)' : '1px solid var(--border)',
+                          backgroundColor: isSelected ? 'rgba(20, 155, 142, 0.12)' : 'var(--bg-card)',
+                          color: isSelected ? 'var(--accent)' : 'var(--text-primary)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <IconComponent size={22} strokeWidth={isSelected ? 2.2 : 1.8} />
+                        <span style={{ fontSize: '11px', fontWeight: isSelected ? 800 : 600, textAlign: 'center', lineHeight: 1.2 }}>
+                          {opt.label.split('/')[0].trim()}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
+
             </div>
 
             <div className="modal-footer" style={{ padding: '12px 20px', borderTop: '1px solid var(--border)' }}>
               <button
                 type="button"
-                onClick={() => { setSelectedCategoryForIcon(null); setIconSearchTerm(''); }}
+                onClick={() => { setSelectedCategoryForIcon(null); setIconSearchTerm(''); setCustomIconUrlInput(''); }}
                 className="btn btn-secondary"
               >
                 Cerrar

@@ -342,7 +342,7 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
                 <img
                   src="/logo-guga.png"
                   alt="GUGA IMPRENTA & GRÁFICA"
-                  style={{ height: 54, maxWidth: 210, objectFit: 'contain' }}
+                  style={{ height: 82, maxWidth: 290, objectFit: 'contain' }}
                   onError={(e) => {
                     // Fallback visual if image fails
                     (e.target as HTMLElement).style.display = 'none';
