@@ -8,11 +8,16 @@ import {
   Search, ShoppingCart, Truck, User, Plus, Minus, Trash2,
   X, Check, Phone, MapPin,
   Clock, Filter, ArrowRight,
-  Package, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown
+  Package, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown,
+  MessageSquare, Building2, Store, CreditCard, Banknote, ShieldCheck,
+  LogIn, LogOut, UserCheck
 } from 'lucide-react'
 import WhatsAppIcon from '@/components/WhatsAppIcon'
 import WhatsAppWidget from '@/components/WhatsAppWidget'
 import CategoryIcon, { DEFAULT_CATEGORY_VECTOR_MAP } from '@/components/CategoryIcon'
+import CustomerAuthModal from '@/components/CustomerAuthModal'
+import StoreHeader from '@/components/StoreHeader'
+import Link from 'next/link'
 import toast from 'react-hot-toast'
 
 interface CartItem {
@@ -106,13 +111,16 @@ export default function TiendaPage() {
   const [isTrackingLoading, setIsTrackingLoading] = useState(false)
 
   // Customer Login/Identify modal
-  const [isUserModalOpen, setIsUserModalOpen] = useState(false)
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const [customerInfo, setCustomerInfo] = useState({
+    id: '',
     nombre: '',
     telefono: '',
     direccion: '',
     email: '',
     rut: '',
+    empresa: ''
   })
 
   // Checkout Form
@@ -157,12 +165,13 @@ export default function TiendaPage() {
         console.error('Error cargando configuración de tienda:', e)
       }
     }
+
     // Load customer info from localStorage
     const savedCustomer = localStorage.getItem('guga_store_customer')
     if (savedCustomer) {
       try {
         const parsed = JSON.parse(savedCustomer)
-        setCustomerInfo(parsed)
+        setCustomerInfo(prev => ({ ...prev, ...parsed }))
         setCheckoutForm(prev => ({
           ...prev,
           nombre: parsed.nombre || '',
@@ -172,6 +181,27 @@ export default function TiendaPage() {
         }))
       } catch (e) {
         console.error(e)
+      }
+    }
+
+    // Load saved cart from localStorage
+    const savedCart = localStorage.getItem('guga_store_cart') || localStorage.getItem('guga_cart_items')
+    if (savedCart) {
+      try {
+        const parsed = JSON.parse(savedCart)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCart(parsed)
+        }
+      } catch (e) {
+        console.error('Error cargando carrito guardado:', e)
+      }
+    }
+
+    // Check if URL has ?openCart=true
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search)
+      if (urlParams.get('openCart') === 'true') {
+        setIsCartOpen(true)
       }
     }
 
@@ -433,7 +463,7 @@ export default function TiendaPage() {
       direccion: customerInfo.direccion || prev.direccion,
       email: customerInfo.email || prev.email,
     }))
-    setIsUserModalOpen(false)
+    setIsAuthModalOpen(false)
     toast.success('Datos guardados correctamente')
   }
 
@@ -469,15 +499,32 @@ export default function TiendaPage() {
 
       // 1. Upsert / Buscar cliente en la tabla clientes
       let clienteId: string | null = null
+      const cleanDigits = checkoutForm.telefono.trim().replace(/\D/g, '')
+
       try {
-        const { data: existingClts } = await supabase
-          .from('clientes')
-          .select('id')
-          .eq('telefono', checkoutForm.telefono.trim())
-          .limit(1)
+        let cltQuery = supabase.from('clientes').select('id, nombre, telefono, direccion, email')
+        if (cleanDigits.length >= 7) {
+          cltQuery = cltQuery.or(`telefono.ilike.%${cleanDigits}%,telefono.ilike.%${checkoutForm.telefono.trim()}%`)
+        } else if (checkoutForm.email.trim()) {
+          cltQuery = cltQuery.eq('email', checkoutForm.email.trim().toLowerCase())
+        } else {
+          cltQuery = cltQuery.eq('nombre', checkoutForm.nombre.trim())
+        }
+
+        const { data: existingClts } = await cltQuery.limit(1)
 
         if (existingClts && existingClts.length > 0) {
           clienteId = existingClts[0].id
+          // Update client details if they provided new address or email
+          if (checkoutForm.direccion.trim() || checkoutForm.email.trim()) {
+            await supabase
+              .from('clientes')
+              .update({
+                direccion: checkoutForm.direccion.trim() || existingClts[0].direccion,
+                email: checkoutForm.email.trim() || existingClts[0].email
+              })
+              .eq('id', existingClts[0].id)
+          }
         } else {
           const { data: newClt } = await supabase
             .from('clientes')
@@ -486,8 +533,8 @@ export default function TiendaPage() {
               telefono: checkoutForm.telefono.trim(),
               direccion: checkoutForm.direccion.trim() || undefined,
               email: checkoutForm.email.trim() || undefined,
-              tipo: 'regular',
-              notas: 'Registrado desde la Tienda Online',
+              tipo: 'web',
+              notas: '[Origen: E-commerce Web] Registrado desde la Tienda Online',
             }])
             .select('id')
             .single()
@@ -513,12 +560,15 @@ export default function TiendaPage() {
         numero: pedidoNumero,
         cliente_id: clienteId,
         cliente_nombre: checkoutForm.nombre.trim(),
+        cliente_telefono: checkoutForm.telefono.trim(),
+        cliente_direccion: checkoutForm.direccion.trim() || (checkoutForm.metodoEntrega === 'retiro' ? 'Retiro en Taller' : ''),
         items: itemsForOrder,
         subtotal: cartSubtotal,
         descuento: 0,
         total: cartTotal,
         metodo_pago: checkoutForm.metodoPago,
         estado: 'presupuesto',
+        origen: 'ecommerce',
         notas: formattedNotas,
       }
 
@@ -632,207 +682,15 @@ export default function TiendaPage() {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', color: '#0f172a', fontFamily: 'var(--font-inter), sans-serif' }}>
 
-      {/* MAIN HEADER */}
-      <header style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 50,
-        backgroundColor: '#ffffff',
-        borderBottom: '1px solid #e2e8f0',
-        boxShadow: '0 2px 10px rgba(0,0,0,0.04)'
-      }}>
-        <div style={{
-          maxWidth: '1360px',
-          margin: '0 auto',
-          padding: '12px 20px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '20px'
-        }}>
-          {/* Logo GUGA */}
-          <a href="/tienda" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
-            <img
-              src="/logo.png"
-              alt="GUGA Imprenta"
-              style={{ maxHeight: '46px', maxWidth: '160px', objectFit: 'contain' }}
-            />
-          </a>
-
-          {/* Search Bar in center */}
-          <div style={{
-            flex: 1,
-            maxWidth: '560px',
-            position: 'relative',
-            display: 'flex',
-            alignItems: 'center'
-          }}>
-            <Search
-              size={18}
-              style={{ position: 'absolute', left: '14px', color: '#94a3b8', pointerEvents: 'none' }}
-            />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar productos (ej. Tarjetas, Facturas, Folletos, Stickers)..."
-              style={{
-                width: '100%',
-                padding: '10px 16px 10px 42px',
-                borderRadius: '999px',
-                border: '1px solid #cbd5e1',
-                backgroundColor: '#f8fafc',
-                fontSize: '14px',
-                outline: 'none',
-                transition: 'all 0.2s'
-              }}
-            />
-            {searchTerm && (
-              <button
-                onClick={() => setSearchTerm('')}
-                style={{
-                  position: 'absolute',
-                  right: '12px',
-                  background: 'none',
-                  border: 'none',
-                  color: '#94a3b8',
-                  cursor: 'pointer'
-                }}
-              >
-                <X size={16} />
-              </button>
-            )}
-          </div>
-
-          {/* Right Header Navigation: Explorar, Carrito, Pedidos, Cuenta */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-
-            {/* Explorar — GUGA Teal filled pill */}
-            <button
-              onClick={() => {
-                setSelectedCategoria('Todas')
-                setSelectedLinea('Todas')
-                setSearchTerm('')
-                const el = document.getElementById('catalogo-section')
-                if (el) el.scrollIntoView({ behavior: 'smooth' })
-              }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '7px',
-                background: 'linear-gradient(135deg, #149b8e 0%, #0e746b 100%)',
-                color: '#ffffff',
-                border: 'none',
-                padding: '9px 18px',
-                borderRadius: '999px',
-                fontSize: '13px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                boxShadow: '0 2px 8px rgba(20, 155, 142, 0.30)',
-                letterSpacing: '0.01em'
-              }}
-            >
-              <Search size={15} />
-              <span>Explorar</span>
-            </button>
-
-            {/* Carrito — GUGA Teal outline pill */}
-            <button
-              onClick={() => setIsCartOpen(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '7px',
-                background: cartCount > 0 ? 'rgba(20, 155, 142, 0.08)' : 'transparent',
-                border: cartCount > 0 ? '1.5px solid #149b8e' : '1.5px solid #e2e8f0',
-                color: cartCount > 0 ? '#0f766e' : '#475569',
-                fontSize: '13px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                padding: '8px 16px',
-                borderRadius: '999px',
-                transition: 'all 0.2s',
-                position: 'relative'
-              }}
-            >
-              <div style={{ position: 'relative' }}>
-                <ShoppingCart size={17} />
-                {cartCount > 0 && (
-                  <span style={{
-                    position: 'absolute',
-                    top: '-9px',
-                    right: '-11px',
-                    background: 'linear-gradient(135deg, #149b8e 0%, #0f766e 100%)',
-                    color: 'white',
-                    fontSize: '10px',
-                    fontWeight: 800,
-                    borderRadius: '999px',
-                    padding: '1px 5px',
-                    minWidth: '16px',
-                    textAlign: 'center',
-                    boxShadow: '0 1px 4px rgba(20, 155, 142, 0.4)'
-                  }}>
-                    {cartCount}
-                  </span>
-                )}
-              </div>
-              <span>Carrito</span>
-              {cartCount > 0 && (
-                <span style={{ fontSize: '12px', color: '#0f766e', fontWeight: 800 }}>
-                  {formatCurrency(cartSubtotal)}
-                </span>
-              )}
-            </button>
-
-            {/* Pedidos — Outline pill, links to /tienda/pedidos */}
-            <a
-              href="/tienda/pedidos"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '7px',
-                background: 'transparent',
-                border: '1.5px solid #e2e8f0',
-                color: '#475569',
-                fontSize: '13px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                padding: '8px 16px',
-                borderRadius: '999px',
-                transition: 'all 0.2s',
-                textDecoration: 'none'
-              }}
-            >
-              <Truck size={17} />
-              <span>Pedidos</span>
-            </a>
-
-            {/* Mi Cuenta — GUGA Teal outline pill, links to /tienda/cuenta */}
-            <a
-              href="/tienda/cuenta"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '7px',
-                background: customerInfo.nombre ? 'rgba(20, 155, 142, 0.08)' : 'transparent',
-                border: customerInfo.nombre ? '1.5px solid #149b8e' : '1.5px solid #e2e8f0',
-                color: customerInfo.nombre ? '#149b8e' : '#475569',
-                fontSize: '13px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                padding: '8px 16px',
-                borderRadius: '999px',
-                transition: 'all 0.2s',
-                textDecoration: 'none'
-              }}
-            >
-              <User size={17} />
-              <span>{customerInfo.nombre ? customerInfo.nombre.split(' ')[0] : 'Mi Cuenta'}</span>
-            </a>
-          </div>
-        </div>
-      </header>
+      {/* UNIFIED STORE HEADER */}
+      <StoreHeader
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        onOpenCart={() => setIsCartOpen(true)}
+        activePage="tienda"
+        cartCountOverride={cartCount}
+        cartSubtotalOverride={cartSubtotal}
+      />
 
       {/* MAIN CONTAINER */}
       <main style={{ maxWidth: '1360px', margin: '0 auto', padding: '24px 20px' }}>
@@ -1742,10 +1600,19 @@ export default function TiendaPage() {
             <h4 style={{ color: '#ffffff', fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>
               Atención al Cliente
             </h4>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <li>📍 Retiro en taller: Lunes a Viernes 08:30 a 18:30hs</li>
-              <li>🚚 Envíos a todo el país por agencia o cadetería</li>
-              <li>💬 Consultas directas al WhatsApp oficial</li>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MapPin size={15} color="#149b8e" />
+                <span>Retiro en taller: Lunes a Viernes 08:30 a 18:30hs</span>
+              </li>
+              <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Truck size={15} color="#149b8e" />
+                <span>Envíos a todo el país por agencia o cadetería</span>
+              </li>
+              <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MessageSquare size={15} color="#149b8e" />
+                <span>Consultas directas al WhatsApp oficial</span>
+              </li>
             </ul>
           </div>
 
@@ -1768,7 +1635,7 @@ export default function TiendaPage() {
           fontSize: '12px',
           color: '#64748b'
         }}>
-          © {new Date().getFullYear()} GUGA Imprenta & Gráfica · Tienda Oficial & CRM Integrado
+          © {new Date().getFullYear()} GUGA Imprenta & Gráfica · Tienda Oficial
         </div>
       </footer>
 
@@ -1859,23 +1726,27 @@ export default function TiendaPage() {
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <button
+                              type="button"
                               onClick={() => updateCartQty(it.servicio.id, -1)}
-                              style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid #cbd5e1', background: 'white', cursor: 'pointer' }}
+                              style={{ width: '26px', height: '26px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#475569' }}
                             >
-                              -
+                              <Minus size={13} />
                             </button>
-                            <span style={{ fontSize: '13px', fontWeight: 700 }}>{it.cantidad}</span>
+                            <span style={{ fontSize: '13px', fontWeight: 700, minWidth: '18px', textAlign: 'center' }}>{it.cantidad}</span>
                             <button
+                              type="button"
                               onClick={() => updateCartQty(it.servicio.id, 1)}
-                              style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid #cbd5e1', background: 'white', cursor: 'pointer' }}
+                              style={{ width: '26px', height: '26px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#475569' }}
                             >
-                              +
+                              <Plus size={13} />
                             </button>
                             <button
+                              type="button"
                               onClick={() => removeFromCart(it.servicio.id)}
-                              style={{ marginLeft: '6px', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}
+                              style={{ marginLeft: '6px', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}
+                              title="Eliminar del carrito"
                             >
-                              <Trash2 size={15} />
+                              <Trash2 size={16} />
                             </button>
                           </div>
                         </div>
@@ -1918,7 +1789,7 @@ export default function TiendaPage() {
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '8px',
-                    boxShadow: '0 4px 12px rgba(220, 38, 38, 0.3)'
+                    boxShadow: '0 4px 12px rgba(20, 155, 142, 0.3)'
                   }}
                 >
                   <span>Continuar con el Pedido</span>
@@ -1989,10 +1860,14 @@ export default function TiendaPage() {
                       fontWeight: 700,
                       fontSize: '13.5px',
                       cursor: 'pointer',
-                      textAlign: 'center'
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px'
                     }}
                   >
-                    🏢 Retiro en Taller (Gratis)
+                    <Building2 size={16} />
+                    <span>Retiro en Taller (Gratis)</span>
                   </button>
 
                   <button
@@ -2007,10 +1882,14 @@ export default function TiendaPage() {
                       fontWeight: 700,
                       fontSize: '13.5px',
                       cursor: 'pointer',
-                      textAlign: 'center'
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px'
                     }}
                   >
-                    🚚 Envío a Domicilio {cartSubtotal >= 4000 ? '(¡Gratis!)' : '(+$250)'}
+                    <Truck size={16} />
+                    <span>Envío {cartSubtotal >= 4000 ? '(¡Gratis!)' : '(+$250)'}</span>
                   </button>
                 </div>
               </div>
@@ -2433,144 +2312,21 @@ export default function TiendaPage() {
         </div>
       )}
 
-      {/* USER IDENTIFY MODAL */}
-      {isUserModalOpen && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0,0,0,0.6)',
-          backdropFilter: 'blur(4px)',
-          zIndex: 110,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: '#ffffff',
-            borderRadius: '20px',
-            width: '100%',
-            maxWidth: '440px',
-            padding: '28px',
-            boxShadow: '0 8px 30px rgba(0,0,0,0.2)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <User size={20} color="#149b8e" />
-                <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                  Mis Datos de Cliente
-                </h3>
-              </div>
-              <button onClick={() => setIsUserModalOpen(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}>
-                <X size={20} />
-              </button>
-            </div>
-
-            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '18px' }}>
-              Guardá tus datos para agilizar tus pedidos y recibir promociones exclusivas.
-            </p>
-
-            <form onSubmit={handleSaveCustomer} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
-                  Nombre y Apellido *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={customerInfo.nombre}
-                  onChange={(e) => setCustomerInfo(prev => ({ ...prev, nombre: e.target.value }))}
-                  placeholder="Tu nombre completo"
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    backgroundColor: '#f8fafc',
-                    fontSize: '13.5px'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
-                  Teléfono / WhatsApp *
-                </label>
-                <input
-                  type="tel"
-                  required
-                  value={customerInfo.telefono}
-                  onChange={(e) => setCustomerInfo(prev => ({ ...prev, telefono: e.target.value }))}
-                  placeholder="099 123 456"
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    backgroundColor: '#f8fafc',
-                    fontSize: '13.5px'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
-                  Dirección Habitual
-                </label>
-                <input
-                  type="text"
-                  value={customerInfo.direccion}
-                  onChange={(e) => setCustomerInfo(prev => ({ ...prev, direccion: e.target.value }))}
-                  placeholder="Calle, número, ciudad"
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    backgroundColor: '#f8fafc',
-                    fontSize: '13.5px'
-                  }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
-                <button
-                  type="button"
-                  onClick={() => setIsUserModalOpen(false)}
-                  style={{
-                    flex: 1,
-                    padding: '10px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    backgroundColor: '#f8fafc',
-                    fontSize: '13.5px',
-                    fontWeight: 700,
-                    cursor: 'pointer'
-                  }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  style={{
-                    flex: 1,
-                    padding: '10px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    backgroundColor: '#149b8e',
-                    color: 'white',
-                    fontSize: '13.5px',
-                    fontWeight: 700,
-                    cursor: 'pointer'
-                  }}
-                >
-                  Guardar Datos
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* PROFESSIONAL CUSTOMER AUTH MODAL */}
+      <CustomerAuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onSuccess={(cust) => {
+          setCustomerInfo(cust)
+          setCheckoutForm(prev => ({
+            ...prev,
+            nombre: cust.nombre || '',
+            telefono: cust.telefono || '',
+            direccion: cust.direccion || '',
+            email: cust.email || ''
+          }))
+        }}
+      />
 
     </div>
   )

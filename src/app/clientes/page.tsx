@@ -187,6 +187,7 @@ export default function ClientesPage() {
 
   const getTipoBadge = (tipo?: string) => {
     switch (tipo) {
+      case 'web': return 'badge-success'
       case 'empresa': return 'badge-accent'
       case 'vip': return 'badge-warning'
       case 'frecuente': return 'badge-success'
@@ -198,24 +199,31 @@ export default function ClientesPage() {
 
   return (
     <>
-      <Header title="Clientes" subtitle="Gestión de clientes y empresas con historial" />
-      <main style={{ padding: '28px', flex: 1 }}>
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <div style={{ position: 'relative', width: 340 }}>
-            <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input
-              className="input"
-              placeholder="Buscar por Nombre, Teléfono o RUT..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{ paddingLeft: 34 }}
-            />
+      <Header title="Gestión de Clientes" />
+      <main className="main-content">
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Directorio de Clientes</h1>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4 }}>
+              Base de clientes locales y registrados desde la tienda web.
+            </p>
           </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="btn btn-primary" onClick={openNewModal}>
+              <Plus size={16} /> Nuevo Cliente
+            </button>
+          </div>
+        </div>
 
-          <button className="btn btn-primary" onClick={openNewModal}>
-            <Plus size={16} /> Nuevo Cliente
-          </button>
+        <div style={{ position: 'relative', marginBottom: 20 }}>
+          <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+          <input
+            className="input"
+            style={{ paddingLeft: 38 }}
+            placeholder="Buscar por nombre, teléfono, email o RUT..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
         </div>
 
         <div className="table-wrapper">
@@ -235,20 +243,38 @@ export default function ClientesPage() {
             <tbody>
               {filtered.map(c => {
                 const stats = clienteStats.get(c.id) || { total: 0, count: 0 }
+                const isWebClient = c.tipo === 'web' || (c.notas && (c.notas.includes('E-commerce') || c.notas.includes('Tienda') || c.notas.includes('[TIENDA ONLINE]')))
+
                 return (
                   <tr key={c.id}>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => openHistory(c)}>
                         <div style={{
                           width: 36, height: 36, borderRadius: 10,
-                          background: 'var(--accent-muted)', color: 'var(--accent)',
+                          background: isWebClient ? 'rgba(20, 155, 142, 0.12)' : 'var(--accent-muted)',
+                          color: isWebClient ? '#0d9488' : 'var(--accent)',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           fontWeight: 700, fontSize: 13, flexShrink: 0
                         }}>
                           {getInitials(c.nombre)}
                         </div>
                         <div>
-                          <strong style={{ color: 'var(--text-primary)' }}>{c.nombre}</strong>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <strong style={{ color: 'var(--text-primary)' }}>{c.nombre}</strong>
+                            {isWebClient && (
+                              <span style={{
+                                fontSize: 10,
+                                fontWeight: 700,
+                                backgroundColor: 'rgba(20, 155, 142, 0.12)',
+                                color: '#0d9488',
+                                padding: '1px 6px',
+                                borderRadius: 4,
+                                border: '1px solid rgba(20, 155, 142, 0.25)'
+                              }}>
+                                🌐 Web
+                              </span>
+                            )}
+                          </div>
                           {c.created_at && (
                             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                               Reg: {formatDate(c.created_at)}

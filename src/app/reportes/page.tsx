@@ -95,7 +95,7 @@ export default function ReportesPage() {
 
   const loadRawData = async () => {
     const [{ data: p, error: pErr }, { data: g, error: gErr }, { data: s }, { data: c }] = await Promise.all([
-      supabase.from('pedidos').select('*').not('estado', 'eq', 'cancelado'),
+      supabase.from('pedidos').select('*').not('estado', 'eq', 'cancelado').not('estado', 'eq', 'presupuesto'),
       supabase.from('gastos').select('*'),
       supabase.from('stock').select('*'),
       supabase.from('caja_movimientos').select('*'),
