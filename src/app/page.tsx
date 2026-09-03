@@ -12,7 +12,9 @@ import Link from 'next/link'
 
 export default function DashboardPage() {
   const [ventas, setVentas] = useState<Pedido[]>([])
+  const [ventasMes, setVentasMes] = useState<{ total: number; estado?: string }[]>([])
   const [gastos, setGastos] = useState<{ monto: number }[]>([])
+  const [cajaEgresosMes, setCajaEgresosMes] = useState<{ monto: number; referencia_id?: string | null }[]>([])
   const [stockBajo, setStockBajo] = useState<StockItem[]>([])
   const [pedidosActivos, setPedidosActivos] = useState(0)
   const [proximasEntregas, setProximasEntregas] = useState<Pedido[]>([])
@@ -23,14 +25,18 @@ export default function DashboardPage() {
     // 1. Instant Cache Hydration: Render in <10ms
     try {
       const cachedVentas = sessionStorage.getItem('guga_cache_dashboard_ventas')
+      const cachedVentasMes = sessionStorage.getItem('guga_cache_dashboard_ventas_mes')
       const cachedGastos = sessionStorage.getItem('guga_cache_dashboard_gastos')
+      const cachedCajaEgresos = sessionStorage.getItem('guga_cache_dashboard_caja_egresos')
       const cachedActivos = sessionStorage.getItem('guga_cache_dashboard_activos')
       const cachedEntregas = sessionStorage.getItem('guga_cache_dashboard_entregas')
       const cachedTareas = sessionStorage.getItem('guga_cache_dashboard_tareas')
       const cachedStock = sessionStorage.getItem('guga_cache_dashboard_stock')
 
       if (cachedVentas) setVentas(JSON.parse(cachedVentas))
+      if (cachedVentasMes) setVentasMes(JSON.parse(cachedVentasMes))
       if (cachedGastos) setGastos(JSON.parse(cachedGastos))
+      if (cachedCajaEgresos) setCajaEgresosMes(JSON.parse(cachedCajaEgresos))
       if (cachedActivos) setPedidosActivos(Number(cachedActivos))
       if (cachedEntregas) setProximasEntregas(JSON.parse(cachedEntregas))
       if (cachedTareas) setTareasPendientes(JSON.parse(cachedTareas))
@@ -49,17 +55,21 @@ export default function DashboardPage() {
       const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
 
       try {
-        const [ventasRes, gastosRes, stockRes, activosRes, entregasRes, tareasRes] = await Promise.all([
+        const [ventasRes, gastosRes, stockRes, activosRes, entregasRes, tareasRes, ventasMesRes, cajaEgresosRes] = await Promise.all([
           supabase.from('pedidos').select('*').gte('created_at', today + 'T00:00:00').not('estado', 'eq', 'cancelado').order('created_at', { ascending: false }),
           supabase.from('gastos').select('monto').gte('fecha', startOfMonth),
           supabase.from('stock').select('*').eq('activo', true),
-          supabase.from('pedidos').select('id', { count: 'exact', head: true }).in('estado', ['presupuesto', 'aprobado', 'en_produccion']),
+          supabase.from('pedidos').select('id', { count: 'exact', head: true }).in('estado', ['aprobado', 'en_produccion']),
           supabase.from('pedidos').select('*').not('fecha_entrega', 'is', null).not('estado', 'in', '("entregado","cancelado")').order('fecha_entrega', { ascending: true }).limit(5),
           supabase.from('tareas').select('*').eq('completada', false).order('created_at', { ascending: false }).limit(4),
+          supabase.from('pedidos').select('total, estado').gte('created_at', startOfMonth + 'T00:00:00').not('estado', 'in', '("presupuesto","cancelado")'),
+          supabase.from('caja_movimientos').select('monto, referencia_id').eq('tipo', 'egreso').gte('fecha', startOfMonth + 'T00:00:00'),
         ])
 
         const newVentas = ventasRes.data || []
+        const newVentasMes = ventasMesRes.data || []
         const newGastos = gastosRes.data || []
+        const newCajaEgresos = cajaEgresosRes.data || []
         const newActivos = activosRes.count || 0
         const newEntregas = entregasRes.data || []
         const newTareas = tareasRes.data || []
@@ -67,7 +77,9 @@ export default function DashboardPage() {
         const newStockBajo = allStock.filter((s: StockItem) => Number(s.cantidad) <= Number(s.minimo))
 
         setVentas(newVentas)
+        setVentasMes(newVentasMes)
         setGastos(newGastos)
+        setCajaEgresosMes(newCajaEgresos)
         setPedidosActivos(newActivos)
         setProximasEntregas(newEntregas)
         setTareasPendientes(newTareas)
@@ -75,7 +87,9 @@ export default function DashboardPage() {
 
         try {
           sessionStorage.setItem('guga_cache_dashboard_ventas', JSON.stringify(newVentas))
+          sessionStorage.setItem('guga_cache_dashboard_ventas_mes', JSON.stringify(newVentasMes))
           sessionStorage.setItem('guga_cache_dashboard_gastos', JSON.stringify(newGastos))
+          sessionStorage.setItem('guga_cache_dashboard_caja_egresos', JSON.stringify(newCajaEgresos))
           sessionStorage.setItem('guga_cache_dashboard_activos', String(newActivos))
           sessionStorage.setItem('guga_cache_dashboard_entregas', JSON.stringify(newEntregas))
           sessionStorage.setItem('guga_cache_dashboard_tareas', JSON.stringify(newTareas))
@@ -90,9 +104,20 @@ export default function DashboardPage() {
     fetchData()
   }, [])
 
-  const totalVentas = ventas.reduce((s, v) => s + Number(v.total), 0)
-  const totalGastosMes = gastos.reduce((s, g) => s + Number(g.monto), 0)
-  const ganancia = totalVentas - totalGastosMes
+  // Pedidos confirmados hoy (excluyendo presupuestos y cancelados)
+  const pedidosConfirmadosHoy = ventas.filter(v => v.estado !== 'presupuesto' && v.estado !== 'cancelado')
+  const presupuestosHoy = ventas.filter(v => v.estado === 'presupuesto')
+  const totalVentasHoy = pedidosConfirmadosHoy.reduce((s, v) => s + Number(v.total), 0)
+
+  // Ventas del mes (excluyendo presupuestos y cancelados) y Ganancia Real
+  const totalVentasMes = ventasMes.reduce((s, v) => s + Number(v.total), 0)
+  const totalGastosTabla = gastos.reduce((s, g) => s + Number(g.monto), 0)
+  // Egresos de caja que NO están ya duplicados en la tabla gastos
+  const totalEgresosCajaSolos = cajaEgresosMes
+    .filter(e => !e.referencia_id)
+    .reduce((s, e) => s + Number(e.monto), 0)
+  const totalGastosMes = totalGastosTabla + totalEgresosCajaSolos
+  const ganancia = totalVentasMes - totalGastosMes
 
   // Pedidos recientes (todos los del día)
   const pedidosRecientes = ventas.slice(0, 8)
@@ -196,8 +221,8 @@ export default function DashboardPage() {
             iconBg="var(--accent-muted)"
             iconColor="var(--accent)"
             label="Pedidos Hoy"
-            value={String(ventas.length)}
-            sub={`${formatCurrency(totalVentas)} facturado`}
+            value={String(pedidosConfirmadosHoy.length)}
+            sub={`${formatCurrency(totalVentasHoy)} facturado${presupuestosHoy.length > 0 ? ` · (${presupuestosHoy.length} ppto${presupuestosHoy.length > 1 ? 's' : ''})` : ''}`}
           />
           <StatCard
             icon={<Printer size={20} />}
@@ -219,9 +244,9 @@ export default function DashboardPage() {
             icon={<TrendingUp size={20} />}
             iconBg={ganancia >= 0 ? 'var(--success-muted)' : 'var(--danger-muted)'}
             iconColor={ganancia >= 0 ? 'var(--success)' : 'var(--danger)'}
-            label="Ganancia Neta"
+            label="Ganancia Neta (Mes)"
             value={formatCurrency(ganancia)}
-            sub="ingresos – gastos"
+            sub={`${formatCurrency(totalVentasMes)} ventas – gastos`}
           />
         </div>
 

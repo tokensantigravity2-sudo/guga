@@ -18,7 +18,7 @@ import toast from 'react-hot-toast'
 
 const COLORS = ['#149b8e', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#10b981', '#6366f1', '#14b8a6', '#f97316']
 
-type PeriodoFilter = 'este_mes' | 'mes_anterior' | '3_meses' | '6_meses' | 'este_ano' | 'personalizado' | 'todo'
+type PeriodoFilter = 'hoy' | 'semana' | 'este_mes' | 'mes_anterior' | '3_meses' | '6_meses' | 'este_ano' | 'personalizado' | 'todo'
 
 interface MesData {
   mes: string
@@ -92,17 +92,23 @@ export default function ReportesPage() {
 
   // Aggregated states
   const [resumen, setResumen] = useState({
+    ventasFacturadas: 0,
     ingresos: 0,
     ingresosPedidos: 0,
     ingresosSenas: 0,
     ingresosPagosCompletos: 0,
     cajaIngresosDirectos: 0,
+    saldoPorCobrar: 0,
     gastos: 0,
+    gastosTabla: 0,
+    egresosCaja: 0,
     ganancia: 0,
+    gananciaCaja: 0,
     margen: 0,
     pedidosCount: 0,
     pedidos100Count: 0,
     pedidosSenaCount: 0,
+    pedidosPendientesCount: 0,
     ticketPromedio: 0,
     descuentos: 0,
     inventarioValor: 0,
@@ -111,7 +117,7 @@ export default function ReportesPage() {
 
   const [pedidosCobradosDetalle, setPedidosCobradosDetalle] = useState<PedidoCobradoDetalle[]>([])
   const [cajaDirectaList, setCajaDirectaList] = useState<CajaMovimiento[]>([])
-  const [filtroTipoCobro, setFiltroTipoCobro] = useState<'todos' | '100' | 'senas'>('todos')
+  const [filtroTipoCobro, setFiltroTipoCobro] = useState<'todos' | '100' | 'senas' | 'pendientes'>('todos')
 
   const [mesesData, setMesesData] = useState<MesData[]>([])
   const [gastosPorCategoria, setGastosPorCategoria] = useState<CategoriaGastoData[]>([])
@@ -147,32 +153,59 @@ export default function ReportesPage() {
     setLoading(false)
   }
 
+  const parseFechaLocal = (fechaStr?: string): Date => {
+    if (!fechaStr) return new Date(0)
+    if (fechaStr.length === 10 && fechaStr.includes('-')) {
+      const [y, m, d] = fechaStr.split('-').map(Number)
+      return new Date(y, m - 1, d, 12, 0, 0)
+    }
+    return new Date(fechaStr)
+  }
+
   const procesarReportes = () => {
     const now = new Date()
     let startDate: Date | null = null
     let endDate: Date | null = null
 
-    if (periodo === 'este_mes') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+    if (periodo === 'hoy') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+    } else if (periodo === 'semana') {
+      const diaSemana = now.getDay()
+      const diffLunes = diaSemana === 0 ? 6 : diaSemana - 1
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffLunes, 0, 0, 0, 0)
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (6 - diffLunes), 23, 59, 59, 999)
+    } else if (periodo === 'este_mes') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
     } else if (periodo === 'mes_anterior') {
-      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-      endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59)
+      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0)
+      endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999)
     } else if (periodo === '3_meses') {
-      startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1)
+      startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1, 0, 0, 0, 0)
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
     } else if (periodo === '6_meses') {
-      startDate = new Date(now.getFullYear(), now.getMonth() - 5, 1)
+      startDate = new Date(now.getFullYear(), now.getMonth() - 5, 1, 0, 0, 0, 0)
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
     } else if (periodo === 'este_ano') {
-      startDate = new Date(now.getFullYear(), 0, 1)
+      startDate = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0)
+      endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999)
     } else if (periodo === 'personalizado') {
-      if (customFrom) startDate = new Date(`${customFrom}T00:00:00`)
-      if (customTo) endDate = new Date(`${customTo}T23:59:59`)
+      if (customFrom) {
+        const [y, m, d] = customFrom.split('-').map(Number)
+        startDate = new Date(y, m - 1, d, 0, 0, 0, 0)
+      }
+      if (customTo) {
+        const [y, m, d] = customTo.split('-').map(Number)
+        endDate = new Date(y, m - 1, d, 23, 59, 59, 999)
+      }
     }
 
     // Filter caja movimientos by date
     const cajaFiltrada = cajaRaw.filter(c => {
       const fechaStr = c.fecha || c.created_at
       if (!fechaStr) return false
-      const d = new Date(fechaStr)
+      const d = parseFechaLocal(fechaStr)
       if (startDate && d < startDate) return false
       if (endDate && d > endDate) return false
       return true
@@ -182,17 +215,36 @@ export default function ReportesPage() {
     const gastosFiltrados = gastosRaw.filter(g => {
       const fechaStr = g.fecha || g.created_at
       if (!fechaStr) return false
-      const d = new Date(fechaStr)
+      const d = parseFechaLocal(fechaStr)
       if (startDate && d < startDate) return false
       if (endDate && d > endDate) return false
       return true
     })
 
-    // 1. Identificar pedidos con cobro real (100% cobrados o con señas recibidas)
-    const pedidosCobradosList: PedidoCobradoDetalle[] = []
+    // Egresos de caja en el período (insumos/talleres pagados desde mostrador)
+    const egresosCajaFiltrados = cajaFiltrada.filter(c => {
+      if (c.tipo !== 'egreso') return false
+      if (c.referencia_id && gastosRaw.some(g => g.id === c.referencia_id)) return false
+      return true
+    })
+
+    const montoGastosTabla = gastosFiltrados.reduce((sum, g) => sum + Number(g.monto), 0)
+    const montoEgresosCaja = egresosCajaFiltrados.reduce((sum, c) => sum + Number(c.monto), 0)
+    const totalGastos = montoGastosTabla + montoEgresosCaja
+
+    // 1. Identificar pedidos confirmados y cobros en el período
+    const pedidosReporteList: PedidoCobradoDetalle[] = []
+    let totalVentasFacturadas = 0
+    let totalCobradoEnPeriodo = 0
+    let totalSenas = 0
+    let totalPagosCompletos = 0
 
     pedidosRaw.forEach(p => {
-      if (p.estado === 'cancelado') return
+      // Excluir cancelados y presupuestos pendientes (¡NUNCA cuentan como venta!)
+      if (p.estado === 'cancelado' || p.estado === 'presupuesto') return
+
+      const pDate = parseFechaLocal(p.created_at)
+      const creadoEnPeriodo = (!startDate || pDate >= startDate) && (!endDate || pDate <= endDate)
 
       // Movimientos de ingreso en caja registrados en el período actual
       const movsEnPeriodo = cajaFiltrada.filter(c => c.referencia_id === p.id && c.tipo === 'ingreso')
@@ -207,30 +259,30 @@ export default function ReportesPage() {
 
       // Si fue marcado como cobrado pero no tiene movimientos explícitos en caja
       let montoCobradoPeriodo = montoCajaPeriodo
-      let pedidoFecha = p.created_at || ''
-      if (movsEnPeriodo.length > 0) {
-        pedidoFecha = movsEnPeriodo[0].fecha || movsEnPeriodo[0].created_at || p.created_at || ''
+      if (montoCobradoPeriodo === 0 && isCobradoFlag && creadoEnPeriodo) {
+        montoCobradoPeriodo = totalP
       }
 
-      if (montoCobradoPeriodo === 0 && isCobradoFlag) {
-        if (p.created_at) {
-          const d = new Date(p.created_at)
-          if ((!startDate || d >= startDate) && (!endDate || d <= endDate)) {
-            montoCobradoPeriodo = totalP
-          }
+      // El pedido entra al reporte si fue creado en el período O si tuvo un cobro en el período
+      if (creadoEnPeriodo || montoCobradoPeriodo > 0) {
+        if (creadoEnPeriodo) {
+          totalVentasFacturadas += totalP
         }
-      }
+        totalCobradoEnPeriodo += montoCobradoPeriodo
 
-      // Solo entra al reporte si efectivamente ingresó dinero (seña o total) o está marcado como cobrado en el período
-      if (montoCobradoPeriodo > 0) {
-        const is100 = isCobradoFlag || (totalHistoricoCaja >= totalP && totalP > 0)
+        const is100 = isCobradoFlag || (totalHistoricoCaja >= totalP && totalP > 0) || (montoCobradoPeriodo >= totalP && totalP > 0)
         const saldoPendiente = Math.max(0, totalP - Math.max(totalHistoricoCaja, montoCobradoPeriodo))
 
-        pedidosCobradosList.push({
+        if (montoCobradoPeriodo > 0) {
+          if (is100) totalPagosCompletos += montoCobradoPeriodo
+          else totalSenas += montoCobradoPeriodo
+        }
+
+        pedidosReporteList.push({
           id: p.id,
           numero: p.numero,
           cliente_nombre: p.cliente_nombre || 'Consumidor Final',
-          fecha: pedidoFecha,
+          fecha: movsEnPeriodo[0]?.fecha || p.created_at || '',
           totalPedido: totalP,
           montoCobrado: montoCobradoPeriodo,
           saldoPendiente,
@@ -242,49 +294,46 @@ export default function ReportesPage() {
       }
     })
 
-    // Ordenar pedidos cobrados por fecha más reciente
-    pedidosCobradosList.sort((a, b) => new Date(b.fecha || 0).getTime() - new Date(a.fecha || 0).getTime())
-    setPedidosCobradosDetalle(pedidosCobradosList)
+    // Ordenar pedidos por fecha más reciente
+    pedidosReporteList.sort((a, b) => new Date(b.fecha || 0).getTime() - new Date(a.fecha || 0).getTime())
+    setPedidosCobradosDetalle(pedidosReporteList)
 
     // Movimientos directos de caja (mostrador que no están asociados a un pedido)
     const directosCaja = cajaFiltrada.filter(c => c.tipo === 'ingreso' && !c.referencia_id)
     setCajaDirectaList(directosCaja)
     const cajaIngresosDirectos = directosCaja.reduce((sum, c) => sum + Number(c.monto), 0)
 
-    // Señas y cobros totales desglosados
-    const totalSenas = pedidosCobradosList
-      .filter(p => !p.is100Cobrado)
-      .reduce((sum, p) => sum + p.montoCobrado, 0)
-
-    const totalPagosCompletos = pedidosCobradosList
-      .filter(p => p.is100Cobrado)
-      .reduce((sum, p) => sum + p.montoCobrado, 0)
-
-    const ingresosPedidos = totalSenas + totalPagosCompletos
-    const ingresosTotal = ingresosPedidos + cajaIngresosDirectos
-
-    const gastos = gastosFiltrados.reduce((sum, g) => sum + Number(g.monto), 0)
-    const ganancia = ingresosTotal - gastos
-    const margen = ingresosTotal > 0 ? Math.round((ganancia / ingresosTotal) * 100) : 0
-    const pedidosCount = pedidosCobradosList.length
-    const pedidos100Count = pedidosCobradosList.filter(p => p.is100Cobrado).length
-    const pedidosSenaCount = pedidosCobradosList.filter(p => !p.is100Cobrado).length
-    const ticketPromedio = pedidosCount > 0 ? Math.round(ingresosPedidos / pedidosCount) : 0
+    const ingresosTotal = totalCobradoEnPeriodo + cajaIngresosDirectos
+    const saldoPorCobrarTotal = Math.max(0, totalVentasFacturadas - totalCobradoEnPeriodo)
+    const ganancia = totalVentasFacturadas - totalGastos
+    const gananciaCaja = ingresosTotal - totalGastos
+    const margen = totalVentasFacturadas > 0 ? Math.round((ganancia / totalVentasFacturadas) * 100) : 0
+    const pedidosCount = pedidosReporteList.length
+    const pedidos100Count = pedidosReporteList.filter(p => p.is100Cobrado).length
+    const pedidosSenaCount = pedidosReporteList.filter(p => !p.is100Cobrado && p.montoCobrado > 0).length
+    const pedidosPendientesCount = pedidosReporteList.filter(p => p.montoCobrado === 0).length
+    const ticketPromedio = pedidosCount > 0 ? Math.round(totalVentasFacturadas / pedidosCount) : 0
     const inventarioValor = stockRaw.reduce((sum, s) => sum + (Number(s.cantidad) * Number(s.costo_unitario || 0)), 0)
     const cajaSaldoTotal = cajaFiltrada.reduce((sum, c) => sum + (c.tipo === 'ingreso' ? Number(c.monto) : -Number(c.monto)), 0)
 
     setResumen({
+      ventasFacturadas: totalVentasFacturadas,
       ingresos: ingresosTotal,
-      ingresosPedidos,
+      ingresosPedidos: totalCobradoEnPeriodo,
       ingresosSenas: totalSenas,
       ingresosPagosCompletos: totalPagosCompletos,
       cajaIngresosDirectos,
-      gastos,
+      saldoPorCobrar: saldoPorCobrarTotal,
+      gastos: totalGastos,
+      gastosTabla: montoGastosTabla,
+      egresosCaja: montoEgresosCaja,
       ganancia,
+      gananciaCaja,
       margen,
       pedidosCount,
       pedidos100Count,
       pedidosSenaCount,
+      pedidosPendientesCount,
       ticketPromedio,
       descuentos: 0,
       inventarioValor,
@@ -294,9 +343,9 @@ export default function ReportesPage() {
     // 2. Gráfico por Meses (Evolución de Ingresos Cobrados vs Egresos)
     const mesesMap = new Map<string, { ingresos: number; gastos: number; count: number }>()
 
-    pedidosCobradosList.forEach(p => {
+    pedidosReporteList.forEach(p => {
       if (!p.fecha) return
-      const date = new Date(p.fecha)
+      const date = parseFechaLocal(p.fecha)
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
       const prev = mesesMap.get(key) || { ingresos: 0, gastos: 0, count: 0 }
       mesesMap.set(key, { ...prev, ingresos: prev.ingresos + p.montoCobrado, count: prev.count + 1 })
@@ -305,7 +354,7 @@ export default function ReportesPage() {
     directosCaja.forEach(c => {
       const fechaStr = c.fecha || c.created_at
       if (!fechaStr) return
-      const date = new Date(fechaStr)
+      const date = parseFechaLocal(fechaStr)
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
       const prev = mesesMap.get(key) || { ingresos: 0, gastos: 0, count: 0 }
       mesesMap.set(key, { ...prev, ingresos: prev.ingresos + Number(c.monto) })
@@ -314,7 +363,7 @@ export default function ReportesPage() {
     gastosFiltrados.forEach(g => {
       const fechaStr = g.fecha || g.created_at
       if (!fechaStr) return
-      const date = new Date(fechaStr)
+      const date = parseFechaLocal(fechaStr)
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
       const prev = mesesMap.get(key) || { ingresos: 0, gastos: 0, count: 0 }
       mesesMap.set(key, { ...prev, gastos: prev.gastos + Number(g.monto) })
@@ -347,16 +396,16 @@ export default function ReportesPage() {
       .map(([nombre, total]) => ({
         nombre,
         total,
-        porcentaje: gastos > 0 ? Math.round((total / gastos) * 100) : 0,
+        porcentaje: totalGastos > 0 ? Math.round((total / totalGastos) * 100) : 0,
       }))
       .sort((a, b) => b.total - a.total)
 
     setGastosPorCategoria(catList)
 
-    // 4. Ranking de Servicios más Vendidos (Solo de pedidos que generaron ingresos)
+    // 4. Ranking de Servicios más Vendidos
     const srvMap = new Map<string, { cantidad: number; total: number }>()
 
-    pedidosCobradosList.forEach(p => {
+    pedidosReporteList.forEach(p => {
       if (Array.isArray(p.items)) {
         p.items.forEach(item => {
           const key = item.nombre
@@ -373,19 +422,19 @@ export default function ReportesPage() {
         nombre,
         cantidad: val.cantidad,
         total: val.total,
-        porcentaje: ingresosPedidos > 0 ? Math.round((val.total / ingresosPedidos) * 100) : 0,
+        porcentaje: totalVentasFacturadas > 0 ? Math.round((val.total / totalVentasFacturadas) * 100) : 0,
       }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 10)
 
     setTopServicios(srvList)
 
-    // 5. Ranking de Clientes (Solo clientes con pagos reales en el período)
+    // 5. Ranking de Clientes (Clientes con pedidos en el período)
     const cliMap = new Map<string, { pedidos: number; total: number }>()
-    pedidosCobradosList.forEach(p => {
+    pedidosReporteList.forEach(p => {
       const key = p.cliente_nombre || 'Consumidor Final'
       const prev = cliMap.get(key) || { pedidos: 0, total: 0 }
-      cliMap.set(key, { pedidos: prev.pedidos + 1, total: prev.total + p.montoCobrado })
+      cliMap.set(key, { pedidos: prev.pedidos + 1, total: prev.total + p.totalPedido })
     })
 
     const cliList: ClienteRankingData[] = Array.from(cliMap.entries())
@@ -425,6 +474,18 @@ export default function ReportesPage() {
             </div>
 
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button
+                className={`btn btn-sm ${periodo === 'hoy' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setPeriodo('hoy')}
+              >
+                📅 Hoy
+              </button>
+              <button
+                className={`btn btn-sm ${periodo === 'semana' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setPeriodo('semana')}
+              >
+                📅 Esta Semana
+              </button>
               <button
                 className={`btn btn-sm ${periodo === 'este_mes' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setPeriodo('este_mes')}
@@ -503,14 +564,40 @@ export default function ReportesPage() {
         {/* KPIs Grid */}
         <div className="grid-stats" style={{ marginBottom: 24 }}>
           <div className="stat-card">
+            <div className="stat-icon" style={{ background: 'rgba(20, 155, 142, 0.12)', color: 'var(--accent)' }}>
+              <ShoppingCart size={22} />
+            </div>
+            <div>
+              <div className="stat-label">Ventas Confirmadas</div>
+              <div className="stat-value" style={{ color: 'var(--accent)' }}>{formatCurrency(resumen.ventasFacturadas)}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
+                {resumen.pedidosCount} pedidos confirmados (excluye presupuestos)
+              </div>
+            </div>
+          </div>
+
+          <div className="stat-card">
             <div className="stat-icon" style={{ background: 'var(--success-muted)', color: 'var(--success)' }}>
               <TrendingUp size={22} />
             </div>
             <div>
-              <div className="stat-label">Ingresos Reales Cobrados</div>
+              <div className="stat-label">Dinero Cobrado en Caja</div>
               <div className="stat-value" style={{ color: 'var(--success)' }}>{formatCurrency(resumen.ingresos)}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                {formatCurrency(resumen.ingresosPagosCompletos)} en cobros 100% · {formatCurrency(resumen.ingresosSenas)} en señas · {formatCurrency(resumen.cajaIngresosDirectos)} mostrador
+                {formatCurrency(resumen.ingresosPagosCompletos)} cobros 100% · {formatCurrency(resumen.ingresosSenas)} señas · {formatCurrency(resumen.cajaIngresosDirectos)} mostrador
+              </div>
+            </div>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: 'rgba(245, 158, 11, 0.12)', color: '#d97706' }}>
+              <CreditCard size={22} />
+            </div>
+            <div>
+              <div className="stat-label">Saldo Pendiente por Cobrar</div>
+              <div className="stat-value" style={{ color: '#d97706' }}>{formatCurrency(resumen.saldoPorCobrar)}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
+                {resumen.pedidosPendientesCount} pedidos pendientes · Flujo neto: {formatCurrency(resumen.gananciaCaja)}
               </div>
             </div>
           </div>
@@ -520,10 +607,10 @@ export default function ReportesPage() {
               <TrendingDown size={22} />
             </div>
             <div>
-              <div className="stat-label">Egresos / Gastos</div>
+              <div className="stat-label">Gastos & Egresos Totales</div>
               <div className="stat-value" style={{ color: 'var(--danger)' }}>{formatCurrency(resumen.gastos)}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                Insumos, personal y salidas operativas
+                {formatCurrency(resumen.gastosTabla)} operativos + {formatCurrency(resumen.egresosCaja)} salidas de caja
               </div>
             </div>
           </div>
@@ -536,40 +623,12 @@ export default function ReportesPage() {
               <DollarSign size={22} />
             </div>
             <div>
-              <div className="stat-label">Ganancia Real</div>
+              <div className="stat-label">Ganancia Neta</div>
               <div className="stat-value" style={{ color: resumen.ganancia >= 0 ? 'var(--success)' : 'var(--danger)' }}>
                 {formatCurrency(resumen.ganancia)}
               </div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                Cobrado menos egresos ({resumen.margen}% margen)
-              </div>
-            </div>
-          </div>
-
-          <div className="stat-card">
-            <div className="stat-icon" style={{ background: 'rgba(20, 155, 142, 0.12)', color: 'var(--accent)' }}>
-              <ShoppingCart size={22} />
-            </div>
-            <div>
-              <div className="stat-label">Pedidos Cobrados / con Seña</div>
-              <div className="stat-value" style={{ color: 'var(--accent)' }}>
-                {resumen.pedidosCount} <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-muted)' }}>pedidos</span>
-              </div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                {resumen.pedidos100Count} cobrados 100% · {resumen.pedidosSenaCount} con seña
-              </div>
-            </div>
-          </div>
-
-          <div className="stat-card">
-            <div className="stat-icon" style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b' }}>
-              <Boxes size={22} />
-            </div>
-            <div>
-              <div className="stat-label">Valor del Stock</div>
-              <div className="stat-value" style={{ color: '#f59e0b' }}>{formatCurrency(resumen.inventarioValor)}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                Capital en depósito/insumos
+                Ventas menos gastos ({resumen.margen}% margen)
               </div>
             </div>
           </div>
@@ -691,9 +750,9 @@ export default function ReportesPage() {
         <div className="card" style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
             <div>
-              <div className="section-title" style={{ margin: 0 }}>💰 Pedidos Cobrados & Señas Recibidas ({pedidosCobradosDetalle.length})</div>
+              <div className="section-title" style={{ margin: 0 }}>📋 Pedidos Confirmados del Período ({pedidosCobradosDetalle.length})</div>
               <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
-                Solo se muestran los pedidos donde ingresó dinero efectivo (cobro 100% o seña). Presupuestos sin cobrar están excluidos de las estadísticas.
+                Pedidos aprobados, en producción o entregados en este período. Los presupuestos no confirmados quedan excluidos.
               </p>
             </div>
 
@@ -719,12 +778,19 @@ export default function ReportesPage() {
               >
                 ⏳ Señas ({resumen.pedidosSenaCount})
               </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${filtroTipoCobro === 'pendientes' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setFiltroTipoCobro('pendientes')}
+              >
+                🔴 Pendientes ({resumen.pedidosPendientesCount})
+              </button>
             </div>
           </div>
 
           {pedidosCobradosDetalle.length === 0 ? (
             <div style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13.5 }}>
-              No se registraron cobros ni señas en el período seleccionado.
+              No se registraron pedidos en el período seleccionado.
             </div>
           ) : (
             <div className="table-wrapper">
@@ -746,7 +812,8 @@ export default function ReportesPage() {
                   {pedidosCobradosDetalle
                     .filter(p => {
                       if (filtroTipoCobro === '100') return p.is100Cobrado
-                      if (filtroTipoCobro === 'senas') return !p.is100Cobrado
+                      if (filtroTipoCobro === 'senas') return !p.is100Cobrado && p.montoCobrado > 0
+                      if (filtroTipoCobro === 'pendientes') return p.montoCobrado === 0
                       return true
                     })
                     .map(p => (
@@ -755,7 +822,13 @@ export default function ReportesPage() {
                         <td><strong>{p.cliente_nombre}</strong></td>
                         <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{p.fecha ? formatDate(p.fecha) : '-'}</td>
                         <td><strong>{formatCurrency(p.totalPedido)}</strong></td>
-                        <td><strong style={{ color: 'var(--success)' }}>{formatCurrency(p.montoCobrado)}</strong></td>
+                        <td>
+                          {p.montoCobrado > 0 ? (
+                            <strong style={{ color: 'var(--success)' }}>{formatCurrency(p.montoCobrado)}</strong>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>$0</span>
+                          )}
+                        </td>
                         <td>
                           {p.saldoPendiente > 0 ? (
                             <span style={{ color: '#d97706', fontWeight: 700 }}>{formatCurrency(p.saldoPendiente)}</span>
@@ -766,9 +839,13 @@ export default function ReportesPage() {
                         <td>
                           {p.is100Cobrado ? (
                             <span className="badge badge-success">✓ 100% Cobrado</span>
-                          ) : (
+                          ) : p.montoCobrado > 0 ? (
                             <span className="badge" style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#b45309', border: '1px solid #f59e0b' }}>
                               ⏳ Seña Recibida
+                            </span>
+                          ) : (
+                            <span className="badge" style={{ backgroundColor: 'rgba(239, 68, 68, 0.12)', color: '#dc2626', border: '1px solid #ef4444' }}>
+                              🔴 Pendiente
                             </span>
                           )}
                         </td>
