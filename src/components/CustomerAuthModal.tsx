@@ -84,8 +84,8 @@ export default function CustomerAuthModal({ isOpen, onClose, onSuccess }: Custom
       // If not found in clientes table, check pedidos table for previous web orders
       const { data: matchedOrders } = await supabase
         .from('pedidos')
-        .select('cliente_id, cliente_nombre, cliente_telefono, cliente_direccion, notas')
-        .or(`cliente_telefono.ilike.%${cleanDigits || term}%,notas.ilike.%${cleanDigits || term}%`)
+        .select('cliente_id, cliente_nombre, notas')
+        .or(`notas.ilike.%${cleanDigits || term}%,cliente_nombre.ilike.%${term}%`)
         .order('created_at', { ascending: false })
         .limit(1)
 
@@ -94,8 +94,8 @@ export default function CustomerAuthModal({ isOpen, onClose, onSuccess }: Custom
         const customerProfile = {
           id: order.cliente_id || undefined,
           nombre: order.cliente_nombre || '',
-          telefono: order.cliente_telefono || term,
-          direccion: order.cliente_direccion || '',
+          telefono: term,
+          direccion: '',
           email: '',
           rut: '',
           empresa: ''
@@ -139,21 +139,25 @@ export default function CustomerAuthModal({ isOpen, onClose, onSuccess }: Custom
     setLoading(true)
     try {
       // 1. Insert into Supabase clientes table
+      const notasExtra = [
+        formData.empresa.trim() ? `Empresa: ${formData.empresa.trim()}` : '',
+        '[Origen: E-commerce Web] Registrado desde la Tienda Online'
+      ].filter(Boolean).join(' | ')
+
       const newClientPayload: any = {
         nombre: formData.nombre.trim(),
         telefono: formData.telefono.trim(),
         email: formData.email.trim() || undefined,
         direccion: formData.direccion.trim() || undefined,
-        empresa: formData.empresa.trim() || undefined,
         rut: formData.rut.trim() || undefined,
         tipo: 'web',
-        notas: '[Origen: E-commerce Web] Registrado desde la Tienda Online'
+        notas: notasExtra
       }
 
       const { data: insertedClient, error } = await supabase
         .from('clientes')
         .insert([newClientPayload])
-        .select('id, nombre, telefono, email, direccion, rut, empresa')
+        .select('id, nombre, telefono, email, direccion, rut')
         .single()
 
       if (error) {

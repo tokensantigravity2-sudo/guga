@@ -594,16 +594,52 @@ export default function PedidosPage() {
         toast.success(`🟢 Pedido #${pedido.numero} marcado como COBRADO (Total ya registrado en caja)`)
       }
     } else if (!newCobrado) {
-      // Eliminar los movimientos de caja registrados para este pedido
-      const { error: delMovErr } = await supabase
+      // Al desmarcar como cobrado (OFF), eliminar ÚNICAMENTE los movimientos de saldo/cobro 100% o entrega
+      // ¡NUNCA borrar la seña original que el cliente ya pagó!
+      const { data: movs } = await supabase
         .from('caja_movimientos')
-        .delete()
+        .select('*')
         .eq('referencia_id', pedido.id)
 
-      if (delMovErr) {
-        console.error('Error al eliminar movimientos de caja:', delMovErr)
+      if (movs && movs.length > 0) {
+        // Señas preservadas
+        const senas = movs.filter(m => {
+          const c = (m.concepto || '').toLowerCase()
+          return c.includes('seña') || c.includes('sena')
+        })
+        const totalSenas = senas.reduce((acc, m) => acc + Number(m.monto), 0)
+
+        // Movimientos a eliminar (los que no son seña, ej: Cobro 100%, Entrega Pedido)
+        const aEliminar = movs.filter(m => {
+          const c = (m.concepto || '').toLowerCase()
+          return !(c.includes('seña') || c.includes('sena'))
+        })
+
+        if (aEliminar.length > 0) {
+          const idsAEliminar = aEliminar.map(m => m.id)
+          const montoRetirado = aEliminar.reduce((acc, m) => acc + Number(m.monto), 0)
+          const { error: delMovErr } = await supabase
+            .from('caja_movimientos')
+            .delete()
+            .in('id', idsAEliminar)
+
+          if (delMovErr) {
+            console.error('Error al eliminar cobro final de caja:', delMovErr)
+          }
+
+          if (totalSenas > 0) {
+            toast.success(`⚪ Saldo de ${formatCurrency(montoRetirado)} retirado. ¡La seña de ${formatCurrency(totalSenas)} se conserva en Caja!`)
+          } else {
+            toast.success(`⚪ Pedido #${pedido.numero} desmarcado como cobrado y retirado de la Caja`)
+          }
+        } else if (totalSenas > 0) {
+          toast(`⚪ Pedido #${pedido.numero} desmarcado como 100% cobrado. La seña de ${formatCurrency(totalSenas)} continúa registrada en Caja.`, {
+            icon: 'ℹ️'
+          })
+        }
+      } else {
+        toast.success(`⚪ Pedido #${pedido.numero} desmarcado como cobrado`)
       }
-      toast.success(`⚪ Pedido #${pedido.numero} desmarcado como cobrado y eliminado de la Caja`)
     }
 
     loadData()
