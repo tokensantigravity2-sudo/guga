@@ -55,8 +55,8 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
       try {
         const { data, error } = await supabase
           .from('servicios')
-          .select('id, nombre, categoria, imagen_url')
-          .limit(300);
+          .select('id, nombre, categoria, imagen_url, descripcion, tiempo_estimado')
+          .limit(500);
 
         if (!error && data) {
           const map: Record<string, any> = {};
@@ -69,11 +69,81 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
           setServiciosMap(map);
         }
       } catch (e) {
-        console.error('Error cargando imágenes de servicios para PDF:', e);
+        console.error('Error cargando servicios para PDF:', e);
       }
     };
     fetchServices();
   }, []);
+
+  // Helper to find matching service in catalog
+  const findServiceForItem = (it: any) => {
+    const srvId = it.producto_id || it.servicio_id;
+    if (srvId && serviciosMap[srvId]) return serviciosMap[srvId];
+
+    const rawName = (it.nombre || '').toLowerCase().trim();
+    if (serviciosMap[rawName]) return serviciosMap[rawName];
+
+    if (rawName.length > 3) {
+      const allSrvs = Object.values(serviciosMap);
+      const match = allSrvs.find((s: any) => {
+        if (!s?.nombre) return false;
+        const sName = s.nombre.toLowerCase().trim();
+        return sName === rawName || sName.startsWith(rawName) || rawName.startsWith(sName);
+      });
+      if (match) return match;
+    }
+
+    return null;
+  };
+
+  // Helper to extract clean description, specs, and details
+  const getItemDetails = (it: any) => {
+    const matchedService = findServiceForItem(it);
+
+    // 1. Limpiar descripción técnica del servicio si existe
+    const cleanSrvDesc = (matchedService?.descripcion || '')
+      .replace(/\[TERCERIZADO:[^\]]*\]/gi, '')
+      .replace(/\[COBRADO:[^\]]*\]/gi, '')
+      .replace(/\[STOCK:[^\]]*\]/gi, '')
+      .replace(/\[Desc:[^\]]*\]/gi, '')
+      .replace(/\[Adicional:[^\]]*\]/gi, '')
+      .replace(/\[\+IVA[^\]]*\]/gi, '')
+      .replace(/\[.*?\]/g, '')
+      .trim();
+
+    // 2. Limpiar descripción o detalles guardados en el ítem
+    const rawItemDesc = (it.descripcion || it.detalles || '')
+      .replace(/\[TERCERIZADO:[^\]]*\]/gi, '')
+      .replace(/\[COBRADO:[^\]]*\]/gi, '')
+      .replace(/\[STOCK:[^\]]*\]/gi, '')
+      .replace(/\[Desc:[^\]]*\]/gi, '')
+      .replace(/\[Adicional:[^\]]*\]/gi, '')
+      .replace(/\[\+IVA[^\]]*\]/gi, '')
+      .replace(/\[.*?\]/g, '')
+      .trim();
+
+    // Determinar descripción final
+    let descripcionFinal = rawItemDesc;
+    if (!descripcionFinal) {
+      descripcionFinal = cleanSrvDesc;
+    } else if (cleanSrvDesc && cleanSrvDesc !== rawItemDesc && !cleanSrvDesc.includes(rawItemDesc)) {
+      descripcionFinal = `${cleanSrvDesc}\n• ${rawItemDesc}`;
+    }
+
+    const medida = (it.medida || '').trim();
+    const material = (it.material || '').trim();
+    const acabado = (it.acabado || '').trim();
+    const tiempoEstimado = (matchedService?.tiempo_estimado || '').trim();
+
+    return {
+      descripcion: descripcionFinal,
+      medida,
+      material,
+      acabado,
+      tiempoEstimado,
+      matchedService
+    };
+  };
 
   // Helper to dynamically resolve product photo
   const getItemProductImage = (it: any): string => {
@@ -82,19 +152,14 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
       return it.imagen_url.trim();
     }
 
-    // 2. Direct lookup by producto_id
-    const srvId = it.producto_id || it.servicio_id;
-    if (srvId && serviciosMap[srvId]?.imagen_url) {
-      return serviciosMap[srvId].imagen_url;
+    // 2. Direct lookup by service
+    const srv = findServiceForItem(it);
+    if (srv?.imagen_url) {
+      return srv.imagen_url;
     }
 
-    // 3. Match by name in loaded CRM services
+    // 3. Match keywords against category fallback images
     const normalizedName = (it.nombre || '').toLowerCase().trim();
-    if (serviciosMap[normalizedName]?.imagen_url) {
-      return serviciosMap[normalizedName].imagen_url;
-    }
-
-    // 4. Match keywords against category fallback images
     for (const [key, url] of Object.entries(CATEGORY_IMAGES_FALLBACK)) {
       if (normalizedName.includes(key)) {
         return url;
@@ -401,39 +466,35 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
               <tr style={{ background: '#000000', color: '#ffffff', textAlign: 'left', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
-                <th style={{ padding: '8px 10px', borderRadius: '6px 0 0 0', width: 44 }}></th>
-                <th style={{ padding: '8px 10px', fontWeight: 800, fontSize: 11.5, letterSpacing: '0.04em' }}>DESCRIPCIÓN Y ESPECIFICACIONES</th>
-                <th style={{ padding: '8px 10px', textAlign: 'center', width: 70, fontWeight: 800, fontSize: 11.5, letterSpacing: '0.04em' }}>CANT.</th>
-                <th style={{ padding: '8px 10px', textAlign: 'right', width: 95, fontWeight: 800, fontSize: 11.5, letterSpacing: '0.04em' }}>P. UNIT.</th>
-                <th style={{ padding: '8px 12px', textAlign: 'right', borderRadius: '0 6px 0 0', width: 110, fontWeight: 800, fontSize: 11.5, letterSpacing: '0.04em' }}>TOTAL</th>
+                <th style={{ padding: '9px 10px', borderRadius: '6px 0 0 0', width: 56 }}></th>
+                <th style={{ padding: '9px 10px', fontWeight: 800, fontSize: 11.5, letterSpacing: '0.04em' }}>DESCRIPCIÓN Y ESPECIFICACIONES TÉCNICAS</th>
+                <th style={{ padding: '9px 10px', textAlign: 'center', width: 70, fontWeight: 800, fontSize: 11.5, letterSpacing: '0.04em' }}>CANT.</th>
+                <th style={{ padding: '9px 10px', textAlign: 'right', width: 95, fontWeight: 800, fontSize: 11.5, letterSpacing: '0.04em' }}>P. UNIT.</th>
+                <th style={{ padding: '9px 12px', textAlign: 'right', borderRadius: '0 6px 0 0', width: 110, fontWeight: 800, fontSize: 11.5, letterSpacing: '0.04em' }}>TOTAL</th>
               </tr>
             </thead>
             <tbody>
               {sheetItems.map((it: any, index: number) => {
                 const isEven = index % 2 === 0;
-                const specsList = [
-                  it.medida ? `${it.medida}` : null,
-                  it.material ? `${it.material}` : null,
-                  it.acabado ? `${it.acabado}` : null,
-                  it.descripcion ? it.descripcion.replace(/\[TERCERIZADO:[^\]]*\]/gi, '').replace(/\[.*?\]/g, '').trim() : null
-                ].filter(Boolean);
-
+                const details = getItemDetails(it);
                 const productImg = getItemProductImage(it);
                 const itemTot = it.subtotal || (it.cantidad * (it.precio_unitario || it.precio || 0));
                 const unitPrice = it.cantidad > 0 ? (itemTot / it.cantidad) : (it.precio_unitario || 0);
 
+                const hasBadges = details.medida || details.material || details.acabado || details.tiempoEstimado;
+
                 return (
-                  <tr key={index} style={{ background: isEven ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                    <td style={{ padding: '8px', verticalAlign: 'middle', width: 48 }}>
+                  <tr key={index} style={{ background: isEven ? '#ffffff' : '#f8fafc', borderBottom: '1.5px solid #e2e8f0' }}>
+                    <td style={{ padding: '12px 8px', verticalAlign: 'top', width: 56 }}>
                       <img
                         src={productImg}
                         alt={it.nombre || 'Producto'}
                         crossOrigin="anonymous"
                         style={{
-                          width: 42,
-                          height: 42,
-                          minWidth: 42,
-                          minHeight: 42,
+                          width: 48,
+                          height: 48,
+                          minWidth: 48,
+                          minHeight: 48,
                           objectFit: 'cover',
                           borderRadius: 6,
                           border: '1px solid #cbd5e1',
@@ -441,24 +502,82 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
                         }}
                       />
                     </td>
-                    <td style={{ padding: '10px 8px', verticalAlign: 'middle' }}>
-                      <div style={{ fontWeight: 800, color: '#0f172a', fontSize: 13.5 }}>
+                    <td style={{ padding: '12px 10px', verticalAlign: 'top' }}>
+                      <div style={{ fontWeight: 800, color: '#0f172a', fontSize: 14, lineHeight: 1.25, marginBottom: details.descripcion || hasBadges ? 5 : 0 }}>
                         {isSingleOption && <span style={{ color: '#be185d', marginRight: 6 }}>[Opción {optionLetter}]</span>}
                         {it.nombre}
                       </div>
-                      {specsList.length > 0 && (
-                        <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>
-                          {specsList.join(' • ')}
+
+                      {/* Descripción detallada del producto */}
+                      {details.descripcion && (
+                        <div style={{
+                          fontSize: 12,
+                          color: '#334155',
+                          lineHeight: 1.45,
+                          marginBottom: hasBadges ? 7 : 0,
+                          whiteSpace: 'pre-line'
+                        }}>
+                          {details.descripcion}
+                        </div>
+                      )}
+
+                      {/* Ficha técnica estructurada: Badges de especificaciones */}
+                      {hasBadges && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                          {details.medida && (
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              background: '#f1f5f9', border: '1px solid #cbd5e1',
+                              padding: '2px 8px', borderRadius: 4,
+                              fontSize: 11, fontWeight: 600, color: '#1e293b',
+                              WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'
+                            }}>
+                              <span style={{ color: '#0f766e', fontWeight: 800 }}>📏 Formato:</span> {details.medida}
+                            </span>
+                          )}
+                          {details.material && (
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              background: '#f1f5f9', border: '1px solid #cbd5e1',
+                              padding: '2px 8px', borderRadius: 4,
+                              fontSize: 11, fontWeight: 600, color: '#1e293b',
+                              WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'
+                            }}>
+                              <span style={{ color: '#0f766e', fontWeight: 800 }}>📄 Papel/Material:</span> {details.material}
+                            </span>
+                          )}
+                          {details.acabado && (
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              background: '#f1f5f9', border: '1px solid #cbd5e1',
+                              padding: '2px 8px', borderRadius: 4,
+                              fontSize: 11, fontWeight: 600, color: '#1e293b',
+                              WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'
+                            }}>
+                              <span style={{ color: '#0f766e', fontWeight: 800 }}>✨ Terminación:</span> {details.acabado}
+                            </span>
+                          )}
+                          {details.tiempoEstimado && (
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              background: '#f8fafc', border: '1px solid #e2e8f0',
+                              padding: '2px 8px', borderRadius: 4,
+                              fontSize: 11, fontWeight: 500, color: '#475569',
+                              WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'
+                            }}>
+                              <span style={{ color: '#64748b', fontWeight: 700 }}>⏱️ Entrega estimada:</span> {details.tiempoEstimado}
+                            </span>
+                          )}
                         </div>
                       )}
                     </td>
-                    <td style={{ padding: '10px 8px', textAlign: 'center', verticalAlign: 'middle', fontWeight: 700, fontSize: 13, color: '#0f172a' }}>
+                    <td style={{ padding: '12px 8px', textAlign: 'center', verticalAlign: 'top', fontWeight: 700, fontSize: 13, color: '#0f172a' }}>
                       {it.cantidad}
                     </td>
-                    <td style={{ padding: '10px 8px', textAlign: 'right', verticalAlign: 'middle', fontSize: 12, color: '#64748b', fontWeight: 600 }}>
+                    <td style={{ padding: '12px 8px', textAlign: 'right', verticalAlign: 'top', fontSize: 12, color: '#64748b', fontWeight: 600 }}>
                       {formatCurrency(unitPrice)}
                     </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', verticalAlign: 'middle', fontWeight: 800, color: '#0f172a', fontSize: 13.5 }}>
+                    <td style={{ padding: '12px 12px', textAlign: 'right', verticalAlign: 'top', fontWeight: 800, color: '#0f172a', fontSize: 13.5 }}>
                       {formatCurrency(itemTot)}
                     </td>
                   </tr>
@@ -475,8 +594,8 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
               <span>📌</span> Observaciones y Términos:
             </div>
             {isSingleOption && (
-              <div style={{ background: 'rgba(190, 24, 93, 0.06)', border: '1px solid rgba(190, 24, 93, 0.25)', padding: '6px 10px', borderRadius: 6, marginBottom: 8, color: '#9d174d', fontSize: 11.5, fontWeight: 700 }}>
-                💡 <strong>Opción {optionLetter}:</strong> Cotización correspondiente a <strong>{sheetItems[0]?.cantidad} unidades</strong>. Opciones no acumulativas (a elección del cliente).
+              <div style={{ background: 'rgba(190, 24, 93, 0.06)', border: '1px solid rgba(190, 24, 93, 0.25)', padding: '8px 12px', borderRadius: 6, marginBottom: 8, color: '#9d174d', fontSize: 11.5, fontWeight: 700 }}>
+                💡 <strong>Opción {optionLetter}:</strong> Cotización correspondiente a <strong>{sheetItems[0]?.cantidad} unidades</strong> ({formatCurrency(sheetItems[0]?.precio_unitario || (sheetItems[0]?.subtotal / sheetItems[0]?.cantidad) || 0)} c/u). Opciones alternativas a elección del cliente.
               </div>
             )}
             <p style={{ color: '#475569', margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>

@@ -39,6 +39,8 @@ export interface PedidoItem {
   imagen_url?: string
   unidad?: string
   no_afectar_stock?: boolean
+  descripcion?: string
+  detalles?: string
 }
 
 export interface Pedido {

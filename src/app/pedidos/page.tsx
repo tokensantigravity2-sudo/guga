@@ -44,6 +44,7 @@ export default function PedidosPage() {
   const [itemMedida, setItemMedida] = useState('')
   const [itemMaterial, setItemMaterial] = useState('')
   const [itemAcabado, setItemAcabado] = useState('')
+  const [itemDescripcion, setItemDescripcion] = useState('')
   const [itemCantidad, setItemCantidad] = useState(100)
   const [itemPrecioUnitario, setItemPrecioUnitario] = useState(0)
   const [itemNoAfectarStock, setItemNoAfectarStock] = useState(false)
@@ -216,6 +217,13 @@ export default function PedidosPage() {
     setItemMedida('')
     setItemMaterial('')
     setItemAcabado('')
+    const cleanDesc = (servicio.descripcion || '')
+      .replace(/\[TERCERIZADO:[^\]]*\]/gi, '')
+      .replace(/\[COBRADO:[^\]]*\]/gi, '')
+      .replace(/\[STOCK:[^\]]*\]/gi, '')
+      .replace(/\[.*?\]/g, '')
+      .trim()
+    setItemDescripcion(cleanDesc)
     setItemNoAfectarStock(false)
     setShowItemModal(true)
   }
@@ -229,6 +237,7 @@ export default function PedidosPage() {
     setItemMedida('')
     setItemMaterial('')
     setItemAcabado('')
+    setItemDescripcion('')
     setItemNoAfectarStock(true)
     setShowItemModal(true)
   }
@@ -265,6 +274,7 @@ export default function PedidosPage() {
       acabado: itemAcabado || undefined,
       imagen_url: selectedServicio?.imagen_url || undefined,
       no_afectar_stock: itemNoAfectarStock,
+      descripcion: itemDescripcion.trim() || undefined,
     }
 
     setCart(prev => [...prev, newItem])
@@ -1027,12 +1037,13 @@ export default function PedidosPage() {
                           <span>{item.nombre}</span>
                           <span style={{ color: 'var(--accent)' }}>{formatCurrency(item.subtotal)}</span>
                         </div>
-                        {(item.medida || item.material || item.acabado || item.no_afectar_stock) && (
+                        {(item.medida || item.material || item.acabado || item.descripcion || item.no_afectar_stock) && (
                           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                             {[
                               item.medida,
                               item.material,
                               item.acabado,
+                              item.descripcion ? `📝 ${item.descripcion.slice(0, 45)}${item.descripcion.length > 45 ? '...' : ''}` : null,
                               item.no_afectar_stock ? '🚫 No afecta stock' : null
                             ].filter(Boolean).join(' • ')}
                           </div>
@@ -1763,6 +1774,21 @@ export default function PedidosPage() {
                   />
                 </div>
 
+                <div className="form-group">
+                  <label>Descripción y Especificaciones Detalladas (para el Presupuesto / PDF)</label>
+                  <textarea
+                    className="input"
+                    rows={2}
+                    placeholder="ej. Impreso a color frente y dorso, papel ilustración 300g, esquinas redondeadas..."
+                    value={itemDescripcion}
+                    onChange={e => setItemDescripcion(e.target.value)}
+                    style={{ resize: 'vertical', fontSize: 13 }}
+                  />
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    Esta descripción detallada figurará en el PDF formal del presupuesto.
+                  </span>
+                </div>
+
                 {/* Checkbox: No Afectar Stock */}
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
@@ -1947,9 +1973,14 @@ export default function PedidosPage() {
                           <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 4 }}>
                             <strong>{it.cantidad} unidades</strong> • {formatCurrency(unitPrice)} c/u
                           </div>
-                          {(it.medida || it.material || it.acabado) && (
+                          {(it.medida || it.material || it.acabado || it.descripcion) && (
                             <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                              {[it.medida, it.material, it.acabado].filter(Boolean).join(' • ')}
+                              {[
+                                it.medida,
+                                it.material,
+                                it.acabado,
+                                it.descripcion ? `📝 ${it.descripcion}` : null
+                              ].filter(Boolean).join(' • ')}
                             </div>
                           )}
                         </div>
