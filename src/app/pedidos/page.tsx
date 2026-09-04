@@ -383,7 +383,7 @@ export default function PedidosPage() {
 
     // Afectar stock automáticamente si el estado es aprobado/en_produccion/terminado/entregado
     if (estadoPedido !== 'presupuesto' && estadoPedido !== 'cancelado') {
-      await descontarStockDePedido(cart)
+      await descontarStockDePedido(cart, data?.id, data?.notas)
     }
 
     // REGISTRAR PAGO / SEÑA EN CAJA DIARIA (Si ingresó dinero > 0 y no es cta corriente)
@@ -411,7 +411,13 @@ export default function PedidosPage() {
     loadData()
   }
 
-  const descontarStockDePedido = async (items: PedidoItem[]) => {
+  const descontarStockDePedido = async (items: PedidoItem[], pedidoId?: string, pedidoNotas?: string) => {
+    // Si ya se descontó el stock para este pedido, no volver a descontar
+    if (pedidoNotas && pedidoNotas.includes('[STOCK:descontado]')) {
+      return
+    }
+
+    let itemsDescontados = 0
     for (const item of items) {
       if (item.no_afectar_stock) continue
 
@@ -424,7 +430,15 @@ export default function PedidosPage() {
       if (match) {
         const newCantidad = Math.max(0, Number(match.cantidad) - Number(item.cantidad))
         await supabase.from('stock').update({ cantidad: newCantidad }).eq('id', match.id)
+        itemsDescontados++
       }
+    }
+
+    // Marcar en notas que el stock fue descontado para este pedido
+    if (pedidoId && itemsDescontados > 0) {
+      const { data: currentPed } = await supabase.from('pedidos').select('notas').eq('id', pedidoId).single()
+      const cleanNotas = (currentPed?.notas || '').replace(/\[STOCK:descontado\]/g, '').trim()
+      await supabase.from('pedidos').update({ notas: `${cleanNotas} [STOCK:descontado]`.trim() }).eq('id', pedidoId)
     }
   }
 
@@ -435,9 +449,9 @@ export default function PedidosPage() {
       return
     }
 
-    // Descontar stock si pasa a produccion/aprobado/entregado
+    // Descontar stock si pasa a produccion/aprobado/entregado (solo si no fue descontado previamente)
     if (nuevoEstado !== 'presupuesto' && nuevoEstado !== 'cancelado') {
-      await descontarStockDePedido(pedido.items || [])
+      await descontarStockDePedido(pedido.items || [], id, pedido.notas)
     }
 
     toast.success(`Estado actualizado a ${nuevoEstado}`)
@@ -513,7 +527,7 @@ export default function PedidosPage() {
     const totalYaIngresado = movs?.reduce((acc, m) => acc + Number(m.monto || 0), 0) || 0
     const totalPedido = Number(pedido.total || 0)
 
-    const isExplicitlyCobrado = pedido.cobrado === true || (pedido.notas || '').includes('[COBRADO:true]')
+    const isExplicitlyCobrado = (pedido.notas || '').includes('[COBRADO:true]')
     const isCurrentlyCobrado = isExplicitlyCobrado || (totalPedido > 0 && totalYaIngresado >= totalPedido)
     const newCobrado = !isCurrentlyCobrado
 
@@ -527,16 +541,10 @@ export default function PedidosPage() {
     }
 
     let payload: any = {
-      cobrado: newCobrado,
       notas: newNotas || null
     }
 
     let { error } = await supabase.from('pedidos').update(payload).eq('id', pedido.id)
-    if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
-      delete payload.cobrado
-      const res = await supabase.from('pedidos').update(payload).eq('id', pedido.id)
-      error = res.error
-    }
 
     if (error) {
       toast.error('Error al actualizar cobro: ' + error.message)

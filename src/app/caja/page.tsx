@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { CajaMovimiento, Cliente } from '@/lib/types'
-import { formatCurrency, formatDateTime, CATEGORIAS_GASTO } from '@/lib/helpers'
+import { formatCurrency, formatDateTime, CATEGORIAS_GASTO, getTodayStr } from '@/lib/helpers'
 import {
   Plus, ArrowUpCircle, ArrowDownCircle, Wallet, TrendingUp, TrendingDown,
   Edit2, Trash2, User, CreditCard, Receipt, FileText, CheckCircle2, XCircle, Search, X
@@ -17,7 +17,7 @@ export default function CajaPage() {
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editingMov, setEditingMov] = useState<CajaMovimiento | null>(null)
-  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0])
+  const [filterDate, setFilterDate] = useState(getTodayStr())
 
   // Search client state in modal
   const [clienteSearch, setClienteSearch] = useState('')

@@ -142,12 +142,55 @@ export default function StockPage() {
     s.categoria?.toLowerCase().includes(search.toLowerCase())
   )
 
+  const totalValorInventario = stock.reduce((sum, item) => sum + (Number(item.cantidad || 0) * Number(item.costo_unitario || 0)), 0)
+  const itemsBajoStock = stock.filter(item => Number(item.cantidad || 0) <= Number(item.minimo || 0))
+  const itemsDisponibles = stock.filter(item => Number(item.cantidad || 0) > 0)
+
   if (loading) return <div className="spinner" style={{ margin: '50px auto' }} />
 
   return (
     <>
       <Header title="Stock & Materiales" subtitle="Inventario de insumos de imprenta" />
       <main style={{ padding: '28px', flex: 1 }}>
+
+        {/* Stats Grid con el Valor Total de Stock */}
+        <div className="grid-stats" style={{ marginBottom: 24 }}>
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: 'rgba(37, 99, 235, 0.12)', color: '#2563eb' }}>
+              <Boxes size={22} />
+            </div>
+            <div>
+              <div className="stat-label">Valor Total del Stock</div>
+              <div className="stat-value" style={{ color: '#2563eb', fontWeight: 800 }}>
+                {formatCurrency(totalValorInventario)}
+              </div>
+            </div>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: 'var(--success-muted)', color: 'var(--success)' }}>
+              <Boxes size={22} />
+            </div>
+            <div>
+              <div className="stat-label">Insumos con Existencias</div>
+              <div className="stat-value" style={{ color: 'var(--success)' }}>
+                {itemsDisponibles.length} / {stock.length}
+              </div>
+            </div>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-icon" style={{ background: itemsBajoStock.length > 0 ? 'var(--danger-muted)' : 'var(--bg-hover)', color: itemsBajoStock.length > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>
+              <AlertTriangle size={22} />
+            </div>
+            <div>
+              <div className="stat-label">Nivel Bajo / Sin Stock</div>
+              <div className="stat-value" style={{ color: itemsBajoStock.length > 0 ? 'var(--danger)' : 'var(--text-primary)' }}>
+                {itemsBajoStock.length} materiales
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div style={{ position: 'relative', width: 300 }}>
