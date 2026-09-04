@@ -118,34 +118,21 @@ export default function StoreHeader({
         borderBottom: '1px solid #e2e8f0',
         boxShadow: '0 2px 10px rgba(0,0,0,0.04)'
       }}>
-        <div style={{
-          maxWidth: '1360px',
-          margin: '0 auto',
-          padding: '12px 20px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '20px'
-        }}>
+        <div className="store-header-inner">
           {/* Logo GUGA */}
-          <Link href="/tienda" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
+          <Link href="/tienda" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', flexShrink: 0 }}>
             <img
               src="/logo.png"
               alt="GUGA Imprenta"
-              style={{ maxHeight: '44px', maxWidth: '160px', objectFit: 'contain' }}
+              className="store-header-logo"
+              style={{ maxHeight: '42px', maxWidth: '150px', objectFit: 'contain' }}
             />
           </Link>
 
-          {/* Search Bar in center */}
+          {/* Search Bar in center (Desktop) */}
           <form
             onSubmit={handleSearchSubmit}
-            style={{
-              flex: 1,
-              maxWidth: '560px',
-              position: 'relative',
-              display: 'flex',
-              alignItems: 'center'
-            }}
+            className="store-header-search-desktop"
           >
             <Search
               size={18}
@@ -155,7 +142,7 @@ export default function StoreHeader({
               type="text"
               value={localSearch}
               onChange={(e) => handleSearchChange(e.target.value)}
-              placeholder="Buscar productos (ej. Tarjetas, Facturas, Folletos, Stickers)..."
+              placeholder="Buscar productos..."
               style={{
                 width: '100%',
                 padding: '10px 16px 10px 42px',
@@ -187,11 +174,12 @@ export default function StoreHeader({
           </form>
 
           {/* Right Header Navigation: Explorar, Carrito, Pedidos, Cuenta */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="store-header-actions">
 
             {/* Explorar — GUGA Teal filled pill */}
             <button
               type="button"
+              className="store-action-btn"
               onClick={() => {
                 if (activePage === 'tienda') {
                   if (setSearchTerm) setSearchTerm('')
@@ -202,9 +190,6 @@ export default function StoreHeader({
                 }
               }}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '7px',
                 background: 'linear-gradient(135deg, #149b8e 0%, #0e746b 100%)',
                 color: '#ffffff',
                 border: 'none',
@@ -217,14 +202,16 @@ export default function StoreHeader({
                 boxShadow: '0 2px 8px rgba(20, 155, 142, 0.30)',
                 letterSpacing: '0.01em'
               }}
+              title="Explorar catálogo"
             >
               <Search size={15} />
-              <span>Explorar</span>
+              <span className="store-btn-text">Explorar</span>
             </button>
 
             {/* Carrito — GUGA Teal outline pill */}
             <button
               type="button"
+              className="store-action-btn"
               onClick={handleCartClick}
               style={{
                 display: 'flex',
@@ -241,6 +228,7 @@ export default function StoreHeader({
                 transition: 'all 0.2s',
                 position: 'relative'
               }}
+              title="Ver Carrito de Compras"
             >
               <div style={{ position: 'relative' }}>
                 <ShoppingCart size={17} />
@@ -263,9 +251,9 @@ export default function StoreHeader({
                   </span>
                 )}
               </div>
-              <span>Carrito</span>
+              <span className="store-btn-text">Carrito</span>
               {displayCount > 0 && (
-                <span style={{ fontSize: '12px', color: '#0f766e', fontWeight: 800 }}>
+                <span className="store-btn-text" style={{ fontSize: '12px', color: '#0f766e', fontWeight: 800 }}>
                   {formatCurrency(displaySubtotal)}
                 </span>
               )}
@@ -274,6 +262,7 @@ export default function StoreHeader({
             {/* Pedidos — Outline pill */}
             <Link
               href="/tienda/pedidos"
+              className="store-action-btn"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -289,9 +278,10 @@ export default function StoreHeader({
                 transition: 'all 0.2s',
                 textDecoration: 'none'
               }}
+              title="Rastrear mis Pedidos"
             >
               <Truck size={17} color={activePage === 'pedidos' ? '#149b8e' : '#475569'} />
-              <span>Pedidos</span>
+              <span className="store-btn-text">Pedidos</span>
             </Link>
 
             {/* Dynamic Customer Pill / Login Trigger */}
@@ -299,6 +289,7 @@ export default function StoreHeader({
               <div style={{ position: 'relative' }}>
                 <button
                   type="button"
+                  className="store-action-btn"
                   onClick={() => setIsUserMenuOpen(prev => !prev)}
                   style={{
                     display: 'flex',
@@ -314,6 +305,7 @@ export default function StoreHeader({
                     borderRadius: '999px',
                     transition: 'all 0.2s'
                   }}
+                  title="Mi Cuenta"
                 >
                   <div style={{
                     width: '26px',
@@ -329,7 +321,7 @@ export default function StoreHeader({
                   }}>
                     {customerInfo.nombre ? customerInfo.nombre.charAt(0).toUpperCase() : <User size={13} />}
                   </div>
-                  <span>{customerInfo.nombre ? `¡Hola, ${customerInfo.nombre.split(' ')[0]}!` : 'Mi Cuenta'}</span>
+                  <span className="store-btn-text">{customerInfo.nombre ? `¡Hola, ${customerInfo.nombre.split(' ')[0]}!` : 'Mi Cuenta'}</span>
                   <ChevronDown size={14} style={{ transform: isUserMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
                 </button>
 
@@ -339,100 +331,111 @@ export default function StoreHeader({
                       position: 'absolute',
                       top: 'calc(100% + 8px)',
                       right: 0,
-                      width: '220px',
                       backgroundColor: '#ffffff',
                       borderRadius: '16px',
-                      boxShadow: '0 12px 30px rgba(0,0,0,0.12)',
                       border: '1px solid #e2e8f0',
-                      padding: '8px',
-                      zIndex: 100,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '2px'
+                      boxShadow: '0 12px 30px rgba(0,0,0,0.12)',
+                      width: '240px',
+                      zIndex: 60,
+                      overflow: 'hidden',
+                      animation: 'slideUp 0.15s ease'
                     }}
                   >
-                    <div style={{ padding: '8px 10px 6px 10px', borderBottom: '1px solid #f1f5f9', marginBottom: '4px' }}>
-                      <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a' }}>{customerInfo.nombre || 'Cliente GUGA'}</div>
-                      <div style={{ fontSize: '11.5px', color: '#64748b' }}>{customerInfo.telefono}</div>
+                    <div style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
+                      <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#0f172a' }}>
+                        {customerInfo.nombre || 'Cliente GUGA'}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                        {customerInfo.telefono || customerInfo.email || 'Sesión iniciada'}
+                      </div>
                     </div>
 
-                    <Link
-                      href="/tienda/cuenta"
-                      onClick={() => setIsUserMenuOpen(false)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '8px 10px',
-                        borderRadius: '8px',
-                        color: activePage === 'cuenta' ? '#149b8e' : '#334155',
-                        backgroundColor: activePage === 'cuenta' ? 'rgba(20, 155, 142, 0.08)' : 'transparent',
-                        fontSize: '13px',
-                        fontWeight: 600,
-                        textDecoration: 'none',
-                        transition: 'background-color 0.15s'
-                      }}
-                    >
-                      <User size={15} color="#149b8e" />
-                      <span>Mi Perfil & Datos</span>
-                    </Link>
+                    <div style={{ padding: '6px' }}>
+                      <Link
+                        href="/tienda/cuenta"
+                        onClick={() => setIsUserMenuOpen(false)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          color: '#334155',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          textDecoration: 'none',
+                          transition: 'background 0.15s'
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                      >
+                        <User size={16} color="#149b8e" />
+                        <span>Mi Perfil y Datos</span>
+                      </Link>
 
-                    <Link
-                      href="/tienda/pedidos"
-                      onClick={() => setIsUserMenuOpen(false)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '8px 10px',
-                        borderRadius: '8px',
-                        color: activePage === 'pedidos' ? '#149b8e' : '#334155',
-                        backgroundColor: activePage === 'pedidos' ? 'rgba(20, 155, 142, 0.08)' : 'transparent',
-                        fontSize: '13px',
-                        fontWeight: 600,
-                        textDecoration: 'none',
-                        transition: 'background-color 0.15s'
-                      }}
-                    >
-                      <Truck size={15} color="#149b8e" />
-                      <span>Mis Pedidos</span>
-                    </Link>
+                      <Link
+                        href="/tienda/pedidos"
+                        onClick={() => setIsUserMenuOpen(false)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          color: '#334155',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          textDecoration: 'none',
+                          transition: 'background 0.15s'
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                      >
+                        <Truck size={16} color="#149b8e" />
+                        <span>Mis Pedidos y Presupuestos</span>
+                      </Link>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        localStorage.removeItem('guga_store_customer')
-                        setCustomerInfo({})
-                        setIsUserMenuOpen(false)
-                        toast.success('Sesión cerrada correctamente')
-                        window.dispatchEvent(new Event('storage'))
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '8px 10px',
-                        borderRadius: '8px',
-                        color: '#ef4444',
-                        backgroundColor: 'transparent',
-                        border: 'none',
-                        fontSize: '13px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        marginTop: '4px',
-                        borderTop: '1px solid #f1f5f9'
-                      }}
-                    >
-                      <LogOut size={15} />
-                      <span>Cerrar Sesión</span>
-                    </button>
+                      <div style={{ height: '1px', backgroundColor: '#f1f5f9', margin: '4px 0' }} />
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          localStorage.removeItem('guga_store_customer')
+                          setCustomerInfo({})
+                          setIsUserMenuOpen(false)
+                          toast.success('Sesión cerrada')
+                          window.dispatchEvent(new Event('storage'))
+                        }}
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          color: '#ef4444',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'background 0.15s'
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#fef2f2')}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                      >
+                        <LogOut size={16} />
+                        <span>Cerrar Sesión</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
             ) : (
               <button
                 type="button"
+                className="store-action-btn"
                 onClick={() => setIsAuthModalOpen(true)}
                 style={{
                   display: 'flex',
@@ -448,12 +451,63 @@ export default function StoreHeader({
                   borderRadius: '999px',
                   transition: 'all 0.2s'
                 }}
+                title="Iniciar Sesión / Registrarse"
               >
                 <LogIn size={16} />
-                <span>Iniciar Sesión</span>
+                <span className="store-btn-text">Iniciar Sesión</span>
               </button>
             )}
           </div>
+        </div>
+
+        {/* Mobile Search Bar Row (Shown only on small screens) */}
+        <div className="store-header-search-mobile">
+          <form
+            onSubmit={handleSearchSubmit}
+            style={{
+              position: 'relative',
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center'
+            }}
+          >
+            <Search
+              size={16}
+              style={{ position: 'absolute', left: '14px', color: '#94a3b8', pointerEvents: 'none' }}
+            />
+            <input
+              type="text"
+              value={localSearch}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="Buscar productos..."
+              style={{
+                width: '100%',
+                padding: '9px 16px 9px 38px',
+                borderRadius: '999px',
+                border: '1px solid #cbd5e1',
+                backgroundColor: '#f8fafc',
+                fontSize: '13.5px',
+                outline: 'none',
+                color: '#0f172a'
+              }}
+            />
+            {localSearch && (
+              <button
+                type="button"
+                onClick={() => handleSearchChange('')}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  background: 'none',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer'
+                }}
+              >
+                <X size={15} />
+              </button>
+            )}
+          </form>
         </div>
       </header>
 

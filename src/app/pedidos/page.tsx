@@ -18,6 +18,7 @@ export default function PedidosPage() {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [stockItems, setStockItems] = useState<StockItem[]>([])
+  const [cajaMovs, setCajaMovs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'nuevo' | 'historial'>('nuevo')
   const [editingPedido, setEditingPedido] = useState<Pedido | null>(null)
@@ -75,6 +76,7 @@ export default function PedidosPage() {
   const [historialFechaFin, setHistorialFechaFin] = useState('')
   const [historialCategoria, setHistorialCategoria] = useState('')
   const [historialMetodoPago, setHistorialMetodoPago] = useState('')
+  const [historialCobro, setHistorialCobro] = useState('')
 
   useEffect(() => {
     // 1. Hidratación instantánea de caché: carga inmediata en <10ms sin esperar la red
@@ -107,11 +109,12 @@ export default function PedidosPage() {
 
   const loadData = async () => {
     try {
-      const [{ data: srvs }, { data: clts }, { data: pds }, { data: stks }] = await Promise.all([
+      const [{ data: srvs }, { data: clts }, { data: pds }, { data: stks }, { data: cMovs }] = await Promise.all([
         supabase.from('servicios').select('*').eq('disponible', true).order('categoria'),
         supabase.from('clientes').select('*').order('nombre'),
-        supabase.from('pedidos').select('*').order('created_at', { ascending: false }).limit(50),
+        supabase.from('pedidos').select('*').order('created_at', { ascending: false }).limit(60),
         supabase.from('stock').select('*').order('nombre'),
+        supabase.from('caja_movimientos').select('id, tipo, monto, concepto, referencia_id').not('referencia_id', 'is', null)
       ])
 
       if (srvs) {
@@ -129,6 +132,9 @@ export default function PedidosPage() {
       if (stks) {
         setStockItems(stks)
         try { sessionStorage.setItem('guga_cache_stks', JSON.stringify(stks)) } catch {}
+      }
+      if (cMovs) {
+        setCajaMovs(cMovs)
       }
 
       // Verificar si viene un pedido para repetir desde Clientes o Historial
@@ -194,6 +200,7 @@ export default function PedidosPage() {
       .replace(/\[Desc:.*?\]/g, '')
       .replace(/\[Adicional:.*?\]/g, '')
       .replace(/\[\+IVA.*?\]/g, '')
+      .replace(/\[COBRADO:true\]/g, '')
       .trim()
     setNotas(cleanNotas)
     setActiveTab('nuevo')
@@ -315,7 +322,9 @@ export default function PedidosPage() {
     const descTag = descuentoPorcentaje > 0 ? `[Desc: ${descuentoPorcentaje}%]` : null
     const adicTag = adicionalPorcentaje > 0 ? `[Adicional: ${adicionalPorcentaje}%]` : null
     const ivaTag = incluirIva ? `[+IVA 22%]` : null
-    const notasFinal = [notas, descTag, adicTag, ivaTag].filter(Boolean).join(' ') || null
+    const isTotalPaid = montoSena >= total && total > 0
+    const cobradoTag = isTotalPaid ? '[COBRADO:true]' : null
+    const notasFinal = [notas, descTag, adicTag, ivaTag, cobradoTag].filter(Boolean).join(' ') || null
     let pedidoData: any = {
       numero,
       cliente_id: selectedCliente?.id || null,
@@ -329,6 +338,7 @@ export default function PedidosPage() {
       estado: estadoPedido,
       fecha_entrega: fechaEntrega || null,
       notas: notasFinal,
+      cobrado: isTotalPaid,
     }
 
     let data: any = null
@@ -341,6 +351,7 @@ export default function PedidosPage() {
       error = res.error
 
       if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
+        delete pedidoData.cobrado
         delete pedidoData.descuento_porcentaje
         const res2 = await supabase.from('pedidos').update(pedidoData).eq('id', editingPedido.id).select().single()
         data = res2.data
@@ -357,6 +368,7 @@ export default function PedidosPage() {
       error = res.error
 
       if (error && (error.message.includes('column') || error.message.includes('schema') || error.code === 'PGRST204')) {
+        delete pedidoData.cobrado
         delete pedidoData.descuento_porcentaje
         const res2 = await supabase.from('pedidos').insert(pedidoData).select().single()
         data = res2.data
@@ -374,10 +386,10 @@ export default function PedidosPage() {
       await descontarStockDePedido(cart)
     }
 
-    // 1. REGISTRAR PAGO / SEÑA EN CAJA DIARIA (Si ingresó dinero > 0 y no es cta corriente)
+    // REGISTRAR PAGO / SEÑA EN CAJA DIARIA (Si ingresó dinero > 0 y no es cta corriente)
+    // Nota: Si el estado es 'entregado' pero solo dejó seña, SOLO entra la seña. El saldo restante se cobra explícitamente.
     if (montoSena > 0 && metodoPago !== 'cuenta_corriente') {
       const nowIso = new Date().toISOString()
-      const isTotalPaid = montoSena >= total
       let movSena: any = {
         tipo: 'ingreso',
         monto: montoSena,
@@ -390,27 +402,6 @@ export default function PedidosPage() {
         console.error('Error al insertar en caja_movimientos:', movErr)
       } else {
         toast.success(isTotalPaid ? `💵 Pago total (${formatCurrency(montoSena)}) registrado en la Caja Diaria` : `💵 Seña de ${formatCurrency(montoSena)} registrada en la Caja Diaria`)
-      }
-    }
-
-    // 2. REGISTRAR EN CAJA DIARIA SI EL ESTADO ES 'ENTREGADO'
-    if (estadoPedido === 'entregado' && metodoPago !== 'cuenta_corriente') {
-      const saldoFinal = Math.max(0, total - montoSena)
-      if (saldoFinal > 0) {
-        const nowIso = new Date().toISOString()
-        let movData: any = {
-          tipo: 'ingreso',
-          monto: saldoFinal,
-          concepto: `[Pago: ${metodoPago}] Entrega Pedido #${numero} - ${selectedCliente?.nombre || 'Consumidor Final'}`,
-          referencia_id: data.id,
-          fecha: nowIso,
-        }
-        let { error: movErr } = await supabase.from('caja_movimientos').insert(movData)
-        if (movErr) {
-          console.error('Error al registrar entrega en caja:', movErr)
-        } else {
-          toast.success(`💰 Saldo por Entrega (${formatCurrency(saldoFinal)}) registrado en la Caja Diaria`)
-        }
       }
     }
 
@@ -447,30 +438,6 @@ export default function PedidosPage() {
     // Descontar stock si pasa a produccion/aprobado/entregado
     if (nuevoEstado !== 'presupuesto' && nuevoEstado !== 'cancelado') {
       await descontarStockDePedido(pedido.items || [])
-    }
-
-    // CUANDO PASA A 'ENTREGADO': Registrar saldo pendiente en caja diaria si aún no existe
-    if (nuevoEstado === 'entregado' && pedido.metodo_pago !== 'cuenta_corriente') {
-      const { data: movs } = await supabase.from('caja_movimientos').select('*').eq('referencia_id', id)
-      const totalYaIngresado = movs?.reduce((acc, m) => acc + Number(m.monto), 0) || 0
-      const saldoPendiente = Math.max(0, Number(pedido.total) - totalYaIngresado)
-
-      if (saldoPendiente > 0) {
-        const nowIso = new Date().toISOString()
-        let movData: any = {
-          tipo: 'ingreso',
-          monto: saldoPendiente,
-          concepto: `[Pago: ${pedido.metodo_pago || 'efectivo'}] Entrega Pedido #${pedido.numero} - ${pedido.cliente_nombre || 'Consumidor Final'}`,
-          referencia_id: id,
-          fecha: nowIso,
-        }
-        const { error: movErr } = await supabase.from('caja_movimientos').insert(movData)
-        if (movErr) {
-          console.error('Error al insertar entrega en caja:', movErr)
-        } else {
-          toast.success(`💰 Ingreso por Entrega (${formatCurrency(saldoPendiente)}) registrado en la Caja Diaria`)
-        }
-      }
     }
 
     toast.success(`Estado actualizado a ${nuevoEstado}`)
@@ -541,7 +508,13 @@ export default function PedidosPage() {
   }
 
   const handleToggleCobrado = async (pedido: Pedido) => {
-    const isCurrentlyCobrado = pedido.cobrado === true || (pedido.notas || '').includes('[COBRADO:true]')
+    // 1. Obtener movimientos actuales en caja para este pedido
+    const { data: movs } = await supabase.from('caja_movimientos').select('*').eq('referencia_id', pedido.id)
+    const totalYaIngresado = movs?.reduce((acc, m) => acc + Number(m.monto || 0), 0) || 0
+    const totalPedido = Number(pedido.total || 0)
+
+    const isExplicitlyCobrado = pedido.cobrado === true || (pedido.notas || '').includes('[COBRADO:true]')
+    const isCurrentlyCobrado = isExplicitlyCobrado || (totalPedido > 0 && totalYaIngresado >= totalPedido)
     const newCobrado = !isCurrentlyCobrado
 
     let newNotas = pedido.notas || ''
@@ -572,16 +545,18 @@ export default function PedidosPage() {
 
     // SI SE MARCA COMO COBRADO (ON): Registrar saldo pendiente en la Caja Diaria
     if (newCobrado && pedido.metodo_pago !== 'cuenta_corriente') {
-      const { data: movs } = await supabase.from('caja_movimientos').select('*').eq('referencia_id', pedido.id)
-      const totalYaIngresado = movs?.reduce((acc, m) => acc + Number(m.monto), 0) || 0
-      const saldoPendiente = Math.max(0, Number(pedido.total) - totalYaIngresado)
+      const saldoPendiente = Math.max(0, totalPedido - totalYaIngresado)
 
       if (saldoPendiente > 0) {
         const nowIso = new Date().toISOString()
+        const concepto = totalYaIngresado > 0
+          ? `[Pago: ${pedido.metodo_pago || 'efectivo'}] Saldo Cobrado Pedido #${pedido.numero} - ${pedido.cliente_nombre || 'Consumidor Final'}`
+          : `[Pago: ${pedido.metodo_pago || 'efectivo'}] Cobro 100% Pedido #${pedido.numero} - ${pedido.cliente_nombre || 'Consumidor Final'}`
+
         let movData: any = {
           tipo: 'ingreso',
           monto: saldoPendiente,
-          concepto: `[Pago: ${pedido.metodo_pago || 'efectivo'}] Cobro 100% Pedido #${pedido.numero} - ${pedido.cliente_nombre || 'Consumidor Final'}`,
+          concepto,
           referencia_id: pedido.id,
           fecha: nowIso,
         }
@@ -589,18 +564,17 @@ export default function PedidosPage() {
         if (movErr) {
           console.error('Error registrando cobro en caja:', movErr)
         }
-        toast.success(`💵 ¡100% COBRADO! Se ingresaron ${formatCurrency(saldoPendiente)} a la Caja Diaria`)
+        if (totalYaIngresado > 0) {
+          toast.success(`💵 ¡Saldo de ${formatCurrency(saldoPendiente)} cobrado! Pedido 100% liquidado en Caja`)
+        } else {
+          toast.success(`💵 ¡100% COBRADO! Se ingresaron ${formatCurrency(saldoPendiente)} a la Caja Diaria`)
+        }
       } else {
-        toast.success(`🟢 Pedido #${pedido.numero} marcado como COBRADO (Total ya registrado en caja)`)
+        toast.success(`🟢 Pedido #${pedido.numero} marcado como COBRADO`)
       }
     } else if (!newCobrado) {
       // Al desmarcar como cobrado (OFF), eliminar ÚNICAMENTE los movimientos de saldo/cobro 100% o entrega
       // ¡NUNCA borrar la seña original que el cliente ya pagó!
-      const { data: movs } = await supabase
-        .from('caja_movimientos')
-        .select('*')
-        .eq('referencia_id', pedido.id)
-
       if (movs && movs.length > 0) {
         // Señas preservadas
         const senas = movs.filter(m => {
@@ -609,7 +583,7 @@ export default function PedidosPage() {
         })
         const totalSenas = senas.reduce((acc, m) => acc + Number(m.monto), 0)
 
-        // Movimientos a eliminar (los que no son seña, ej: Cobro 100%, Entrega Pedido)
+        // Movimientos a eliminar (los que no son seña, ej: Cobro 100%, Saldo Cobrado, Entrega Pedido)
         const aEliminar = movs.filter(m => {
           const c = (m.concepto || '').toLowerCase()
           return !(c.includes('seña') || c.includes('sena'))
@@ -713,6 +687,20 @@ export default function PedidosPage() {
 
     // 2. Método de pago
     if (historialMetodoPago && p.metodo_pago !== historialMetodoPago) return false
+
+    // 2.5 Estado de Cobro (Cobrado 100%, Con Seña, Sin Cobrar)
+    if (historialCobro) {
+      const pMovs = cajaMovs.filter(m => m.referencia_id === p.id && m.tipo === 'ingreso')
+      const totalCobradoEnCaja = pMovs.reduce((acc, m) => acc + Number(m.monto || 0), 0)
+      const pedidoTotal = Number(p.total || 0)
+      const isCobradoExplicit = p.cobrado === true || (p.notas || '').includes('[COBRADO:true]')
+      const isCobrado = isCobradoExplicit || (pedidoTotal > 0 && totalCobradoEnCaja >= pedidoTotal)
+      const tieneSenaPendiente = !isCobrado && totalCobradoEnCaja > 0
+
+      if (historialCobro === 'cobrado' && !isCobrado) return false
+      if (historialCobro === 'sena' && !tieneSenaPendiente) return false
+      if (historialCobro === 'sin_cobrar' && (isCobrado || totalCobradoEnCaja > 0)) return false
+    }
 
     // 3. Fechas desde / hasta
     const pDate = (p.created_at || '').substring(0, 10)
@@ -1321,7 +1309,21 @@ export default function PedidosPage() {
                   </select>
                 </div>
 
-                {(historialSearch || historialFechaInicio || historialFechaFin || historialCategoria || historialMetodoPago || historialFilter !== 'todos') && (
+                <div style={{ width: 155 }}>
+                  <select
+                    className="input"
+                    value={historialCobro}
+                    onChange={e => setHistorialCobro(e.target.value)}
+                    style={{ padding: '6px 10px', fontSize: 13 }}
+                  >
+                    <option value="">Todos los Cobros</option>
+                    <option value="cobrado">🟢 Cobrado 100%</option>
+                    <option value="sena">⏳ Con Seña (Resta Saldo)</option>
+                    <option value="sin_cobrar">⚪ Sin Cobrar</option>
+                  </select>
+                </div>
+
+                {(historialSearch || historialFechaInicio || historialFechaFin || historialCategoria || historialMetodoPago || historialCobro || historialFilter !== 'todos') && (
                   <button
                     className="btn btn-sm btn-ghost"
                     onClick={() => {
@@ -1331,6 +1333,7 @@ export default function PedidosPage() {
                       setHistorialFechaFin('')
                       setHistorialCategoria('')
                       setHistorialMetodoPago('')
+                      setHistorialCobro('')
                     }}
                     style={{ fontSize: 12, color: 'var(--danger)' }}
                   >
@@ -1413,7 +1416,21 @@ export default function PedidosPage() {
                 </thead>
                 <tbody>
                   {filteredPedidos.map(p => {
-                    const isCobrado = p.cobrado === true || (p.notas || '').includes('[COBRADO:true]')
+                    const pMovs = cajaMovs.filter(m => m.referencia_id === p.id && m.tipo === 'ingreso')
+                    const totalCobradoEnCaja = pMovs.reduce((acc, m) => acc + Number(m.monto || 0), 0)
+                    const senas = pMovs.filter(m => {
+                      const c = (m.concepto || '').toLowerCase()
+                      return c.includes('seña') || c.includes('sena')
+                    })
+                    const totalSenas = senas.reduce((acc, m) => acc + Number(m.monto || 0), 0)
+
+                    const pedidoTotal = Number(p.total || 0)
+                    const isCobradoExplicit = p.cobrado === true || (p.notas || '').includes('[COBRADO:true]')
+                    const isCobrado = isCobradoExplicit || (pedidoTotal > 0 && totalCobradoEnCaja >= pedidoTotal)
+
+                    const tieneSenaPendiente = !isCobrado && (totalSenas > 0 || (totalCobradoEnCaja > 0 && totalCobradoEnCaja < pedidoTotal))
+                    const saldoRestante = Math.max(0, pedidoTotal - totalCobradoEnCaja)
+
                     return (
                       <tr key={p.id}>
                         <td>
@@ -1451,43 +1468,125 @@ export default function PedidosPage() {
                         <td>{p.fecha_entrega ? formatDateTime(p.fecha_entrega) : '—'}</td>
                         <td><span className="badge badge-neutral">{p.metodo_pago}</span></td>
                         <td>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleCobrado(p)}
-                            style={{
-                              padding: '5px 12px',
-                              borderRadius: 20,
-                              border: 'none',
-                              fontWeight: 700,
-                              fontSize: 12,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 6,
-                              background: isCobrado ? '#16a34a' : '#f1f5f9',
-                              color: isCobrado ? '#ffffff' : '#64748b',
-                              boxShadow: isCobrado ? '0 2px 6px rgba(22, 163, 74, 0.3)' : 'inset 0 0 0 1px #cbd5e1',
-                              transition: 'all 0.2s ease'
-                            }}
-                            title={isCobrado ? 'Cobrado 100% (Ingresado a Caja Diaria). Clic para desmarcar.' : 'Sin cobrar. Clic para activar ON y registrar el 100% del dinero en la Caja Diaria.'}
-                          >
-                            <span style={{
-                              width: 9,
-                              height: 9,
-                              borderRadius: '50%',
-                              background: isCobrado ? '#ffffff' : '#94a3b8',
-                              display: 'inline-block'
-                            }} />
-                            {isCobrado ? '🟢 COBRADO' : '⚪ SIN COBRAR'}
-                          </button>
+                          {isCobrado ? (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleCobrado(p)}
+                              style={{
+                                padding: '5px 12px',
+                                borderRadius: 20,
+                                border: 'none',
+                                fontWeight: 700,
+                                fontSize: 12,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                background: '#16a34a',
+                                color: '#ffffff',
+                                boxShadow: '0 2px 6px rgba(22, 163, 74, 0.3)',
+                                transition: 'all 0.2s ease'
+                              }}
+                              title={totalSenas > 0 ? `Cobrado 100% (Seña original: ${formatCurrency(totalSenas)} + Saldo). Clic para desmarcar saldo.` : 'Cobrado 100% (Ingresado a Caja Diaria). Clic para desmarcar.'}
+                            >
+                              <span style={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: '50%',
+                                background: '#ffffff',
+                                display: 'inline-block'
+                              }} />
+                              🟢 COBRADO
+                            </button>
+                          ) : tieneSenaPendiente ? (
+                            <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleCobrado(p)}
+                                style={{
+                                  padding: '4px 10px',
+                                  borderRadius: 20,
+                                  border: '1px solid #d97706',
+                                  fontWeight: 700,
+                                  fontSize: 11.5,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 5,
+                                  background: '#fef3c7',
+                                  color: '#b45309',
+                                  boxShadow: '0 1px 3px rgba(217, 119, 6, 0.15)',
+                                  transition: 'all 0.2s ease'
+                                }}
+                                title={`Seña registrada en Caja: ${formatCurrency(totalCobradoEnCaja)}. Clic para cobrar el saldo restante de ${formatCurrency(saldoRestante)} en la Caja.`}
+                              >
+                                <span style={{
+                                  width: 7,
+                                  height: 7,
+                                  borderRadius: '50%',
+                                  background: '#d97706',
+                                  display: 'inline-block'
+                                }} />
+                                ⏳ SEÑA: {formatCurrency(totalCobradoEnCaja)}
+                              </button>
+                              <span style={{
+                                fontSize: 11,
+                                color: '#dc2626',
+                                fontWeight: 700,
+                                paddingLeft: 4,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 3
+                              }}>
+                                Resta: {formatCurrency(saldoRestante)}
+                              </span>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleCobrado(p)}
+                              style={{
+                                padding: '5px 12px',
+                                borderRadius: 20,
+                                border: 'none',
+                                fontWeight: 700,
+                                fontSize: 12,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                background: '#f1f5f9',
+                                color: '#64748b',
+                                boxShadow: 'inset 0 0 0 1px #cbd5e1',
+                                transition: 'all 0.2s ease'
+                              }}
+                              title="Sin cobrar. Clic para registrar el cobro total en la Caja Diaria."
+                            >
+                              <span style={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: '50%',
+                                background: '#94a3b8',
+                                display: 'inline-block'
+                              }} />
+                              ⚪ SIN COBRAR
+                            </button>
+                          )}
                         </td>
                         <td>
-                          <strong>{formatCurrency(p.total)}</strong>
-                          {p.estado === 'presupuesto' && Array.isArray(p.items) && p.items.length > 1 && (
-                            <div style={{ fontSize: 11, color: '#7c3aed', fontWeight: 700 }}>
-                              {p.items.length} alternativas
-                            </div>
-                          )}
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <strong>{formatCurrency(p.total)}</strong>
+                            {tieneSenaPendiente && (
+                              <span style={{ fontSize: 10.5, color: '#b45309', fontWeight: 600 }}>
+                                (Seña: {formatCurrency(totalCobradoEnCaja)})
+                              </span>
+                            )}
+                            {p.estado === 'presupuesto' && Array.isArray(p.items) && p.items.length > 1 && (
+                              <div style={{ fontSize: 11, color: '#7c3aed', fontWeight: 700 }}>
+                                {p.items.length} alternativas
+                              </div>
+                            )}
+                          </div>
                         </td>
                       <td>
                         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>

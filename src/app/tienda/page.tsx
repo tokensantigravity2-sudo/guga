@@ -135,6 +135,7 @@ export default function TiendaPage() {
   })
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false)
   const [orderSuccess, setOrderSuccess] = useState<{ pedidoNumero: string; whatsappUrl: string } | null>(null)
+  const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false)
 
   // Category Vector Line Icons State
   const [categoryVectorIcons, setCategoryVectorIcons] = useState<Record<string, string>>(DEFAULT_CATEGORY_VECTOR_MAP)
@@ -693,7 +694,7 @@ export default function TiendaPage() {
       />
 
       {/* MAIN CONTAINER */}
-      <main style={{ maxWidth: '1360px', margin: '0 auto', padding: '24px 20px' }}>
+      <main style={{ maxWidth: '1360px', margin: '0 auto', padding: '16px 16px' }}>
 
         {/* HERO SECTION WITH TITLE & SEARCH */}
         <div style={{
@@ -701,12 +702,12 @@ export default function TiendaPage() {
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'wrap',
-          gap: '16px',
-          marginBottom: '20px'
+          gap: '12px',
+          marginBottom: '16px'
         }}>
           <div>
             <h1 style={{
-              fontSize: '28px',
+              fontSize: 'clamp(20px, 3.5vw, 28px)',
               fontWeight: 800,
               color: '#334155',
               letterSpacing: '-0.02em',
@@ -714,41 +715,66 @@ export default function TiendaPage() {
             }}>
               Encuentra lo que necesitas
             </h1>
-            <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0 0' }}>
+            <p style={{ color: '#64748b', fontSize: '13px', margin: '3px 0 0 0' }}>
               Catálogo oficial de productos, formatos y presupuestos de <strong>GUGA Imprenta</strong>
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 600 }}>Ordenar por:</span>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {/* Mobile Filter Button (Visible on screens <= 960px) */}
+            <button
+              type="button"
+              className="tienda-mobile-filter-trigger"
+              onClick={() => setIsMobileFiltersOpen(true)}
               style={{
+                alignItems: 'center',
+                gap: '6px',
                 padding: '8px 14px',
                 borderRadius: '8px',
-                border: '1px solid #cbd5e1',
-                backgroundColor: '#ffffff',
+                border: (selectedLinea !== 'Todas' || selectedCategoria !== 'Todas') ? '1.5px solid #149b8e' : '1px solid #cbd5e1',
+                backgroundColor: (selectedLinea !== 'Todas' || selectedCategoria !== 'Todas') ? 'rgba(20, 155, 142, 0.08)' : '#ffffff',
+                color: (selectedLinea !== 'Todas' || selectedCategoria !== 'Todas') ? '#149b8e' : '#334155',
                 fontSize: '13px',
-                fontWeight: 600,
-                color: '#334155',
+                fontWeight: 700,
                 cursor: 'pointer',
-                outline: 'none'
+                boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
               }}
             >
-              <option value="relevancia">Relevancia</option>
-              <option value="precio_menor">Precio: Menor a Mayor</option>
-              <option value="precio_mayor">Precio: Mayor a Menor</option>
-              <option value="nombre">Nombre A - Z</option>
-            </select>
+              <Filter size={15} color={(selectedLinea !== 'Todas' || selectedCategoria !== 'Todas') ? '#149b8e' : '#64748b'} />
+              <span>Filtros {(selectedLinea !== 'Todas' || selectedCategoria !== 'Todas') ? '•' : ''}</span>
+            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '12.5px', color: '#64748b', fontWeight: 600 }}>Ordenar:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                style={{
+                  padding: '7px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#ffffff',
+                  fontSize: '12.5px',
+                  fontWeight: 600,
+                  color: '#334155',
+                  cursor: 'pointer',
+                  outline: 'none'
+                }}
+              >
+                <option value="relevancia">Relevancia</option>
+                <option value="precio_menor">Precio: Menor a Mayor</option>
+                <option value="precio_mayor">Precio: Mayor a Menor</option>
+                <option value="nombre">Nombre A - Z</option>
+              </select>
+            </div>
           </div>
         </div>
 
         {/* LAYOUT GRID: SIDEBAR FILTERS (LEFT) + HERO BANNER & PRODUCTS (RIGHT) */}
-        <div style={{ display: 'grid', gridTemplateColumns: '270px 1fr', gap: '28px', alignItems: 'start' }}>
+        <div className="tienda-main-grid">
 
-          {/* LEFT SIDEBAR FILTERS */}
-          <aside style={{
+          {/* LEFT SIDEBAR FILTERS (DESKTOP) */}
+          <aside className="tienda-sidebar-desktop" style={{
             backgroundColor: '#ffffff',
             borderRadius: '16px',
             border: '1px solid #e2e8f0',
@@ -987,17 +1013,104 @@ export default function TiendaPage() {
           {/* RIGHT COLUMN: SLEEK HERO BANNER CAROUSEL & PRODUCT GRID */}
           <div id="catalogo-section">
 
+            {/* MOBILE HORIZONTAL CATEGORY SCROLL BAR (Visible on screens <= 960px) */}
+            <div className="tienda-mobile-categories-bar">
+              <button
+                type="button"
+                onClick={() => setSelectedCategoria('Todas')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '7px 14px',
+                  borderRadius: '999px',
+                  border: selectedCategoria === 'Todas' ? '1.5px solid #149b8e' : '1px solid #cbd5e1',
+                  backgroundColor: selectedCategoria === 'Todas' ? '#149b8e' : '#ffffff',
+                  color: selectedCategoria === 'Todas' ? '#ffffff' : '#334155',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  boxShadow: selectedCategoria === 'Todas' ? '0 2px 6px rgba(20,155,142,0.3)' : 'none',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <CategoryIcon
+                  iconId={categoryVectorIcons['Todas'] || 'layout-grid'}
+                  size={14}
+                  color={selectedCategoria === 'Todas' ? '#ffffff' : '#64748b'}
+                  strokeWidth={2}
+                />
+                <span>Todas</span>
+                <span style={{
+                  backgroundColor: selectedCategoria === 'Todas' ? 'rgba(255,255,255,0.25)' : '#f1f5f9',
+                  color: selectedCategoria === 'Todas' ? '#ffffff' : '#64748b',
+                  padding: '1px 6px',
+                  borderRadius: '999px',
+                  fontSize: '10.5px',
+                  fontWeight: 800
+                }}>
+                  {servicios.length}
+                </span>
+              </button>
+
+              {Object.entries(categoryCounts).filter(([cat]) => cat !== 'Todas').map(([cat, count]) => {
+                const isSelected = selectedCategoria === cat
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setSelectedCategoria(isSelected ? 'Todas' : cat)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '7px 14px',
+                      borderRadius: '999px',
+                      border: isSelected ? '1.5px solid #149b8e' : '1px solid #cbd5e1',
+                      backgroundColor: isSelected ? '#149b8e' : '#ffffff',
+                      color: isSelected ? '#ffffff' : '#334155',
+                      fontSize: '12px',
+                      fontWeight: isSelected ? 700 : 600,
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                      boxShadow: isSelected ? '0 2px 6px rgba(20,155,142,0.3)' : 'none',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    <CategoryIcon
+                      iconId={categoryVectorIcons[cat] || cat}
+                      size={14}
+                      color={isSelected ? '#ffffff' : '#64748b'}
+                      strokeWidth={1.9}
+                    />
+                    <span>{cat}</span>
+                    <span style={{
+                      backgroundColor: isSelected ? 'rgba(255,255,255,0.25)' : '#f1f5f9',
+                      color: isSelected ? '#ffffff' : '#64748b',
+                      padding: '1px 6px',
+                      borderRadius: '999px',
+                      fontSize: '10.5px',
+                      fontWeight: 800
+                    }}>
+                      {count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
             {/* COMPACT & SLEEK IMAGE BANNER CAROUSEL (100% Solo Imágenes sin texto) */}
             {activeBannersList && activeBannersList.length > 0 && (
               <div style={{
                 position: 'relative',
                 borderRadius: '16px',
                 overflow: 'hidden',
-                marginBottom: '24px',
+                marginBottom: '20px',
                 boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
                 backgroundColor: '#f1f5f9',
                 width: '100%',
-                height: '210px',
+                height: 'clamp(130px, 28vw, 210px)',
                 lineHeight: 0
               }}>
                 {/* Picture Banner with Desktop & Mobile sources */}
@@ -1246,11 +1359,7 @@ export default function TiendaPage() {
               </div>
             ) : (
               <>
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))',
-                  gap: '20px'
-                }}>
+                <div className="tienda-products-grid">
                   {displayedProducts.map((srv) => {
                   const cartItem = cart.find(it => it.servicio.id === srv.id)
                   const imgUrl = getProductImage(srv)
@@ -1281,6 +1390,7 @@ export default function TiendaPage() {
                     >
                       {/* Product Image Container */}
                       <div
+                        className="product-card-img-container"
                         style={{
                           height: '180px',
                           backgroundColor: '#f1f5f9',
@@ -1305,28 +1415,29 @@ export default function TiendaPage() {
                         {/* Category Badge with Vector Line Icon */}
                         <div style={{
                           position: 'absolute',
-                          top: '10px',
-                          left: '10px',
+                          top: '8px',
+                          left: '8px',
                           backgroundColor: 'rgba(15, 23, 42, 0.82)',
                           backdropFilter: 'blur(4px)',
                           color: '#ffffff',
-                          fontSize: '11px',
+                          fontSize: '10px',
                           fontWeight: 700,
-                          padding: '4px 8px',
+                          padding: '3px 7px',
                           borderRadius: '6px',
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '5px'
+                          gap: '4px'
                         }}>
-                          <CategoryIcon iconId={categoryVectorIcons[srv.categoria] || srv.categoria} size={13} color="#ffffff" strokeWidth={2} />
+                          <CategoryIcon iconId={categoryVectorIcons[srv.categoria] || srv.categoria} size={12} color="#ffffff" strokeWidth={2} />
                           <span style={{ textTransform: 'uppercase' }}>{srv.categoria}</span>
                         </div>
                       </div>
 
                       {/* Product Body */}
-                      <div style={{ padding: '16px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                      <div className="product-card-body" style={{ padding: '16px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                         <div>
                           <h4
+                            className="product-card-title"
                             style={{
                               fontSize: '14.5px',
                               fontWeight: 700,
@@ -1344,7 +1455,7 @@ export default function TiendaPage() {
                           </h4>
 
                           {srv.tiempo_estimado && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: '#64748b', marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b', marginBottom: '10px' }}>
                               <Clock size={12} />
                               <span>Entrega: {srv.tiempo_estimado}</span>
                             </div>
@@ -1353,12 +1464,12 @@ export default function TiendaPage() {
 
                         {/* Price & Add to Cart Controls */}
                         <div>
-                          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '10px' }}>
                             <div>
-                              <span style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a' }}>
+                              <span className="product-card-price" style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a' }}>
                                 {formatCurrency(srv.precio_base)}
                               </span>
-                              <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '4px' }}>
+                              <span className="product-card-unit" style={{ fontSize: '11px', color: '#64748b', marginLeft: '4px' }}>
                                 /{formatProductUnit(srv)}
                               </span>
                             </div>
@@ -1377,8 +1488,8 @@ export default function TiendaPage() {
                               <button
                                 onClick={() => updateCartQty(srv.id, -1)}
                                 style={{
-                                  width: '30px',
-                                  height: '30px',
+                                  width: '28px',
+                                  height: '28px',
                                   borderRadius: '6px',
                                   backgroundColor: '#ffffff',
                                   border: '1px solid #cbd5e1',
@@ -1389,18 +1500,18 @@ export default function TiendaPage() {
                                   color: '#334155'
                                 }}
                               >
-                                <Minus size={14} />
+                                <Minus size={13} />
                               </button>
 
-                              <span style={{ fontSize: '13.5px', fontWeight: 800, color: '#0f172a' }}>
+                              <span style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a' }}>
                                 {cartItem.cantidad}
                               </span>
 
                               <button
                                 onClick={() => updateCartQty(srv.id, 1)}
                                 style={{
-                                  width: '30px',
-                                  height: '30px',
+                                  width: '28px',
+                                  height: '28px',
                                   borderRadius: '6px',
                                   backgroundColor: '#ffffff',
                                   border: '1px solid #cbd5e1',
@@ -1411,12 +1522,13 @@ export default function TiendaPage() {
                                   color: '#334155'
                                 }}
                               >
-                                <Plus size={14} />
+                                <Plus size={13} />
                               </button>
                             </div>
                           ) : (
                             <button
                               onClick={() => addToCart(srv, 1)}
+                              className="product-card-btn"
                               style={{
                                 width: '100%',
                                 display: 'flex',
@@ -1437,8 +1549,8 @@ export default function TiendaPage() {
                               onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
                               onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
                             >
-                              <ShoppingCart size={15} />
-                              <span>Agregar al carrito</span>
+                              <ShoppingCart size={14} />
+                              <span>Agregar</span>
                             </button>
                           )}
                         </div>
@@ -1654,15 +1766,18 @@ export default function TiendaPage() {
           justifyContent: 'flex-end',
           animation: 'fadeIn 0.2s ease'
         }}>
-          <div style={{
-            width: '100%',
-            maxWidth: '440px',
-            backgroundColor: '#ffffff',
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            boxShadow: '-4px 0 24px rgba(0,0,0,0.15)'
-          }}>
+          <div
+            className="tienda-cart-drawer"
+            style={{
+              width: '100%',
+              maxWidth: '440px',
+              backgroundColor: '#ffffff',
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '-4px 0 24px rgba(0,0,0,0.15)'
+            }}
+          >
             {/* Drawer Header */}
             <div style={{
               padding: '18px 20px',
@@ -1757,44 +1872,62 @@ export default function TiendaPage() {
               )}
             </div>
 
-            {/* Drawer Footer / Checkout Trigger */}
+            {/* Cart Footer */}
             {cart.length > 0 && (
-              <div style={{ padding: '20px', borderTop: '1px solid #e2e8f0', backgroundColor: '#ffffff' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px', color: '#64748b' }}>
-                  <span>Subtotal productos:</span>
-                  <span style={{ fontWeight: 700, color: '#0f172a' }}>{formatCurrency(cartSubtotal)}</span>
+              <div style={{
+                padding: '20px',
+                borderTop: '1px solid #e2e8f0',
+                backgroundColor: '#f8fafc'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+                  <span style={{ fontSize: '14px', color: '#64748b', fontWeight: 600 }}>Total Estimado:</span>
+                  <span style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a' }}>
+                    {formatCurrency(cartSubtotal)}
+                  </span>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', fontSize: '18px', fontWeight: 800, color: '#0f172a' }}>
-                  <span>Total estimado:</span>
-                  <span style={{ color: '#149b8e' }}>{formatCurrency(cartTotal)}</span>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    onClick={() => setCart([])}
+                    style={{
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      backgroundColor: '#ffffff',
+                      color: '#64748b',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Vaciar
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsCartOpen(false)
+                      setIsCheckoutOpen(true)
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: '#149b8e',
+                      color: '#ffffff',
+                      fontSize: '14px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      boxShadow: '0 2px 8px rgba(20, 155, 142, 0.3)'
+                    }}
+                  >
+                    <span>Iniciar Pedido</span>
+                    <ArrowRight size={16} />
+                  </button>
                 </div>
-
-                <button
-                  onClick={() => {
-                    setIsCartOpen(false)
-                    setIsCheckoutOpen(true)
-                  }}
-                  style={{
-                    width: '100%',
-                    backgroundColor: '#149b8e',
-                    color: '#ffffff',
-                    padding: '13px',
-                    borderRadius: '10px',
-                    border: 'none',
-                    fontSize: '15px',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    boxShadow: '0 4px 12px rgba(20, 155, 142, 0.3)'
-                  }}
-                >
-                  <span>Continuar con el Pedido</span>
-                  <ArrowRight size={18} />
-                </button>
               </div>
             )}
           </div>
@@ -1812,18 +1945,21 @@ export default function TiendaPage() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '20px'
+          padding: '12px'
         }}>
-          <div style={{
-            backgroundColor: '#ffffff',
-            borderRadius: '20px',
-            width: '100%',
-            maxWidth: '560px',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            padding: '28px',
-            boxShadow: '0 8px 30px rgba(0,0,0,0.2)'
-          }}>
+          <div
+            className="tienda-checkout-modal"
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '20px',
+              width: '100%',
+              maxWidth: '560px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              padding: '24px',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.2)'
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
               <div>
                 <h3 style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', margin: 0 }}>
@@ -1847,7 +1983,7 @@ export default function TiendaPage() {
                 <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '8px', textTransform: 'uppercase' }}>
                   Tipo de Entrega
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div className="checkout-delivery-buttons" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                   <button
                     type="button"
                     onClick={() => setCheckoutForm(prev => ({ ...prev, metodoEntrega: 'retiro' }))}
@@ -1858,7 +1994,7 @@ export default function TiendaPage() {
                       backgroundColor: checkoutForm.metodoEntrega === 'retiro' ? 'rgba(20, 155, 142, 0.08)' : '#f8fafc',
                       color: checkoutForm.metodoEntrega === 'retiro' ? '#149b8e' : '#334155',
                       fontWeight: 700,
-                      fontSize: '13.5px',
+                      fontSize: '13px',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -1880,7 +2016,7 @@ export default function TiendaPage() {
                       backgroundColor: checkoutForm.metodoEntrega === 'envio' ? 'rgba(20, 155, 142, 0.08)' : '#f8fafc',
                       color: checkoutForm.metodoEntrega === 'envio' ? '#149b8e' : '#334155',
                       fontWeight: 700,
-                      fontSize: '13.5px',
+                      fontSize: '13px',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -1895,7 +2031,7 @@ export default function TiendaPage() {
               </div>
 
               {/* Customer Info Form */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+              <div className="checkout-form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
                     Nombre y Apellido *
@@ -2308,6 +2444,201 @@ export default function TiendaPage() {
                 Ingresá tu número de teléfono o código de pedido para ver las actualizaciones en tiempo real.
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* MOBILE FILTERS SHEET / MODAL */}
+      {isMobileFiltersOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          backdropFilter: 'blur(3px)',
+          zIndex: 120,
+          display: 'flex',
+          alignItems: 'flex-end',
+          animation: 'fadeIn 0.15s ease'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderTopLeftRadius: '20px',
+            borderTopRightRadius: '20px',
+            width: '100%',
+            maxHeight: '82vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 -10px 30px rgba(0,0,0,0.15)'
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Filter size={18} color="#149b8e" />
+                <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  Filtrar Catálogo
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMobileFiltersOpen(false)}
+                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+              {/* Líneas */}
+              <div style={{ marginBottom: '20px' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', marginBottom: '10px' }}>
+                  Líneas / Acabados
+                </h4>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLinea('Todas')}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      border: selectedLinea === 'Todas' ? '1.5px solid #149b8e' : '1px solid #cbd5e1',
+                      backgroundColor: selectedLinea === 'Todas' ? 'rgba(20,155,142,0.1)' : '#f8fafc',
+                      color: selectedLinea === 'Todas' ? '#149b8e' : '#334155',
+                      fontSize: '12px',
+                      fontWeight: selectedLinea === 'Todas' ? 700 : 500,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Todas ({servicios.length})
+                  </button>
+                  {Object.entries(lineasConConteo).filter(([k]) => k !== 'Todas').map(([linea, count]) => {
+                    const isSelected = selectedLinea === linea
+                    return (
+                      <button
+                        key={linea}
+                        type="button"
+                        onClick={() => setSelectedLinea(isSelected ? 'Todas' : linea)}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          border: isSelected ? '1.5px solid #149b8e' : '1px solid #cbd5e1',
+                          backgroundColor: isSelected ? 'rgba(20,155,142,0.1)' : '#f8fafc',
+                          color: isSelected ? '#149b8e' : '#334155',
+                          fontSize: '12px',
+                          fontWeight: isSelected ? 700 : 500,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {linea} ({count})
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Categorías */}
+              <div style={{ marginBottom: '16px' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', marginBottom: '10px' }}>
+                  Categorías
+                </h4>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategoria('Todas')}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      border: selectedCategoria === 'Todas' ? '1.5px solid #149b8e' : '1px solid #cbd5e1',
+                      backgroundColor: selectedCategoria === 'Todas' ? 'rgba(20,155,142,0.1)' : '#f8fafc',
+                      color: selectedCategoria === 'Todas' ? '#149b8e' : '#334155',
+                      fontSize: '12px',
+                      fontWeight: selectedCategoria === 'Todas' ? 700 : 500,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Todas ({servicios.length})
+                  </button>
+                  {Object.entries(categoryCounts).filter(([k]) => k !== 'Todas').map(([cat, count]) => {
+                    const isSelected = selectedCategoria === cat
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setSelectedCategoria(isSelected ? 'Todas' : cat)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          border: isSelected ? '1.5px solid #149b8e' : '1px solid #cbd5e1',
+                          backgroundColor: isSelected ? 'rgba(20,155,142,0.1)' : '#f8fafc',
+                          color: isSelected ? '#149b8e' : '#334155',
+                          fontSize: '12px',
+                          fontWeight: isSelected ? 700 : 500,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <CategoryIcon iconId={categoryVectorIcons[cat] || cat} size={13} color={isSelected ? '#149b8e' : '#64748b'} strokeWidth={2} />
+                        <span>{cat} ({count})</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Buttons */}
+            <div style={{
+              padding: '14px 20px',
+              borderTop: '1px solid #e2e8f0',
+              display: 'flex',
+              gap: '10px',
+              backgroundColor: '#f8fafc'
+            }}>
+              {(selectedLinea !== 'Todas' || selectedCategoria !== 'Todas') && (
+                <button
+                  type="button"
+                  onClick={() => { setSelectedLinea('Todas'); setSelectedCategoria('Todas'); }}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    backgroundColor: '#ffffff',
+                    color: '#64748b',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Limpiar
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsMobileFiltersOpen(false)}
+                style={{
+                  flex: 2,
+                  padding: '10px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: '#149b8e',
+                  color: '#ffffff',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                Ver {filteredProducts.length} productos
+              </button>
+            </div>
           </div>
         </div>
       )}
