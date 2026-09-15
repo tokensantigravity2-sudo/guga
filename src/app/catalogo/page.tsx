@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
-import { Servicio, Proveedor } from '@/lib/types'
+import { Servicio, Proveedor, VariableServicio, EscalaPrecio } from '@/lib/types'
 import { formatCurrency, CATEGORIAS_SERVICIO } from '@/lib/helpers'
-import { Search, Plus, Edit2, Trash2, X, Printer, Check, Factory, Home } from 'lucide-react'
+import { Search, Plus, Edit2, Trash2, X, Printer, Check, Factory, Home, Layers, Sparkles } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function CatalogoPage() {
@@ -31,6 +31,7 @@ export default function CatalogoPage() {
     es_tercerizado: false,
     proveedor_tercerizado_id: '',
     costo_tercerizado: 0,
+    variantes: [] as VariableServicio[],
   })
 
   useEffect(() => {
@@ -52,11 +53,24 @@ export default function CatalogoPage() {
     setLoading(false)
   }
 
-  const parseTercerizadoInfo = (srv: Servicio) => {
+  const parseServicioInfo = (srv: Servicio) => {
     let esTerc = !!srv.es_tercerizado
     let provId = srv.proveedor_tercerizado_id || ''
     let costo = Number(srv.costo_tercerizado || 0)
-    let descLimpia = (srv.descripcion || '').replace(/\[TERCERIZADO:[\s\S]*?\]$/, '').trim()
+    let variantes: VariableServicio[] = []
+
+    if (Array.isArray(srv.variantes) && srv.variantes.length > 0) {
+      variantes = srv.variantes
+    } else if ((srv.descripcion || '').includes('[VARIANTES:')) {
+      const vMatch = (srv.descripcion || '').match(/\[VARIANTES:([\s\S]*?)\]/)
+      if (vMatch) {
+        try {
+          variantes = JSON.parse(vMatch[1])
+        } catch (err) {
+          console.error('Error parsing variantes JSON', err)
+        }
+      }
+    }
 
     if ((srv.descripcion || '').includes('[TERCERIZADO:')) {
       esTerc = true
@@ -66,7 +80,86 @@ export default function CatalogoPage() {
         costo = Number(match[2]) || costo
       }
     }
-    return { esTerc, provId, costo, descLimpia }
+
+    let descLimpia = (srv.descripcion || '')
+      .replace(/\[VARIANTES:[\s\S]*?\]/g, '')
+      .replace(/\[TERCERIZADO:[\s\S]*?\]/g, '')
+      .trim()
+
+    return { esTerc, provId, costo, descLimpia, variantes }
+  }
+
+  const parseTercerizadoInfo = parseServicioInfo
+
+  const handleAddVariable = () => {
+    setForm(prev => ({
+      ...prev,
+      variantes: [
+        ...prev.variantes,
+        {
+          id: Date.now().toString(),
+          nombre: '',
+          escalas: [
+            { id: Date.now().toString() + '-1', cantidad: 100, precio: 0 },
+            { id: Date.now().toString() + '-2', cantidad: 500, precio: 0 },
+            { id: Date.now().toString() + '-3', cantidad: 1000, precio: 0 },
+          ]
+        }
+      ]
+    }))
+  }
+
+  const handleRemoveVariable = (varId: string) => {
+    setForm(prev => ({
+      ...prev,
+      variantes: prev.variantes.filter(v => v.id !== varId)
+    }))
+  }
+
+  const handleVariableNombreChange = (varId: string, nombre: string) => {
+    setForm(prev => ({
+      ...prev,
+      variantes: prev.variantes.map(v => v.id === varId ? { ...v, nombre } : v)
+    }))
+  }
+
+  const handleAddEscala = (varId: string) => {
+    setForm(prev => ({
+      ...prev,
+      variantes: prev.variantes.map(v => {
+        if (v.id !== varId) return v
+        const lastQty = v.escalas.length > 0 ? v.escalas[v.escalas.length - 1].cantidad : 0
+        const newQty = lastQty ? (lastQty < 1000 ? lastQty + 400 : lastQty * 2) : 100
+        return {
+          ...v,
+          escalas: [...v.escalas, { id: Date.now().toString(), cantidad: newQty, precio: 0 }]
+        }
+      })
+    }))
+  }
+
+  const handleRemoveEscala = (varId: string, escalaIdx: number) => {
+    setForm(prev => ({
+      ...prev,
+      variantes: prev.variantes.map(v => {
+        if (v.id !== varId) return v
+        const newEscalas = [...v.escalas]
+        newEscalas.splice(escalaIdx, 1)
+        return { ...v, escalas: newEscalas }
+      })
+    }))
+  }
+
+  const handleEscalaChange = (varId: string, escalaIdx: number, field: 'cantidad' | 'precio', value: number) => {
+    setForm(prev => ({
+      ...prev,
+      variantes: prev.variantes.map(v => {
+        if (v.id !== varId) return v
+        const newEscalas = [...v.escalas]
+        newEscalas[escalaIdx] = { ...newEscalas[escalaIdx], [field]: value }
+        return { ...v, escalas: newEscalas }
+      })
+    }))
   }
 
   const compressAndSetImage = (file: File) => {
@@ -156,10 +249,32 @@ export default function CatalogoPage() {
 
     const catFinal = form.categoria === 'OTRO' ? (form.nuevaCategoria.trim() || 'General') : form.categoria
 
-    const descClean = form.descripcion.replace(/\[TERCERIZADO:[\s\S]*?\]$/, '').trim()
-    const descFinal = form.es_tercerizado
-      ? (descClean ? `${descClean} [TERCERIZADO:${form.proveedor_tercerizado_id || ''}:${form.costo_tercerizado || 0}]` : `[TERCERIZADO:${form.proveedor_tercerizado_id || ''}:${form.costo_tercerizado || 0}]`)
-      : descClean
+    const cleanVariantes = (form.variantes || [])
+      .map(v => ({
+        ...v,
+        nombre: v.nombre.trim(),
+        escalas: (v.escalas || [])
+          .filter(e => Number(e.cantidad) > 0 && Number(e.precio) > 0)
+          .map(e => ({ cantidad: Number(e.cantidad), precio: Number(e.precio) }))
+      }))
+      .filter(v => v.nombre.length > 0)
+
+    let descClean = form.descripcion
+      .replace(/\[VARIANTES:[\s\S]*?\]/g, '')
+      .replace(/\[TERCERIZADO:[\s\S]*?\]/g, '')
+      .trim()
+
+    let descFinal = descClean
+    if (form.es_tercerizado) {
+      descFinal = descFinal
+        ? `${descFinal} [TERCERIZADO:${form.proveedor_tercerizado_id || ''}:${form.costo_tercerizado || 0}]`
+        : `[TERCERIZADO:${form.proveedor_tercerizado_id || ''}:${form.costo_tercerizado || 0}]`
+    }
+    if (cleanVariantes.length > 0) {
+      descFinal = descFinal
+        ? `${descFinal} [VARIANTES:${JSON.stringify(cleanVariantes)}]`
+        : `[VARIANTES:${JSON.stringify(cleanVariantes)}]`
+    }
 
     let payload: any = {
       nombre: form.nombre.trim(),
@@ -173,6 +288,7 @@ export default function CatalogoPage() {
       es_tercerizado: form.es_tercerizado,
       proveedor_tercerizado_id: form.es_tercerizado ? (form.proveedor_tercerizado_id || null) : null,
       costo_tercerizado: form.es_tercerizado ? (Number(form.costo_tercerizado) || 0) : 0,
+      variantes: cleanVariantes.length > 0 ? cleanVariantes : null,
     }
 
     if (editingServicio) {
@@ -181,6 +297,7 @@ export default function CatalogoPage() {
         delete payload.es_tercerizado
         delete payload.proveedor_tercerizado_id
         delete payload.costo_tercerizado
+        delete payload.variantes
         const res = await supabase.from('servicios').update(payload).eq('id', editingServicio.id)
         error = res.error
       }
@@ -192,6 +309,7 @@ export default function CatalogoPage() {
         delete payload.es_tercerizado
         delete payload.proveedor_tercerizado_id
         delete payload.costo_tercerizado
+        delete payload.variantes
         const res = await supabase.from('servicios').insert(payload)
         error = res.error
       }
@@ -258,6 +376,7 @@ export default function CatalogoPage() {
       es_tercerizado: false,
       proveedor_tercerizado_id: '',
       costo_tercerizado: 0,
+      variantes: [],
     })
     setShowModal(true)
   }
@@ -265,7 +384,7 @@ export default function CatalogoPage() {
   const openEdit = (srv: Servicio) => {
     setEditingServicio(srv)
     const isStandardCat = CATEGORIAS_SERVICIO.includes(srv.categoria)
-    const { esTerc, provId, costo, descLimpia } = parseTercerizadoInfo(srv)
+    const { esTerc, provId, costo, descLimpia, variantes } = parseServicioInfo(srv)
     setForm({
       nombre: srv.nombre,
       descripcion: descLimpia,
@@ -279,6 +398,7 @@ export default function CatalogoPage() {
       es_tercerizado: esTerc,
       proveedor_tercerizado_id: provId,
       costo_tercerizado: costo,
+      variantes: variantes || [],
     })
     setShowModal(true)
   }
@@ -351,7 +471,8 @@ export default function CatalogoPage() {
             </thead>
             <tbody>
               {filtered.map(srv => {
-                const { esTerc, descLimpia } = parseTercerizadoInfo(srv)
+                const { esTerc, descLimpia, variantes } = parseServicioInfo(srv)
+                const hasVariantes = variantes && variantes.length > 0
                 return (
                   <tr key={srv.id} style={{ opacity: srv.disponible ? 1 : 0.5 }}>
                     <td>
@@ -373,6 +494,26 @@ export default function CatalogoPage() {
                         )}
                         <div>
                           <strong style={{ fontSize: 14 }}>{srv.nombre}</strong>
+                          {hasVariantes && (
+                            <div style={{ display: 'flex', gap: 5, alignItems: 'center', marginTop: 3, flexWrap: 'wrap' }}>
+                              <span style={{
+                                fontSize: 11,
+                                padding: '2px 7px',
+                                borderRadius: 6,
+                                background: 'rgba(124, 58, 237, 0.12)',
+                                color: '#7c3aed',
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 3
+                              }}>
+                                <Layers size={11} /> {variantes.length} {variantes.length === 1 ? 'variable' : 'variables'}
+                              </span>
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                                ({variantes.map(v => v.nombre).join(', ')})
+                              </span>
+                            </div>
+                          )}
                           {descLimpia && (
                             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
                               {descLimpia}
@@ -393,7 +534,16 @@ export default function CatalogoPage() {
                       )}
                     </td>
                   <td><span className="badge badge-accent">{srv.categoria}</span></td>
-                  <td><strong style={{ color: 'var(--accent)' }}>{formatCurrency(srv.precio_base)}</strong></td>
+                  <td>
+                    <div>
+                      <strong style={{ color: 'var(--accent)' }}>{formatCurrency(srv.precio_base)}</strong>
+                      {hasVariantes && (
+                        <div style={{ fontSize: 10.5, color: '#7c3aed', fontWeight: 600 }}>
+                          (o por escala de variable)
+                        </div>
+                      )}
+                    </div>
+                  </td>
                   <td>{srv.unidad || 'unidad'}</td>
                   <td>{srv.tiempo_estimado || '—'}</td>
                   <td>
@@ -569,6 +719,179 @@ export default function CatalogoPage() {
                         <option value="millar">Millar (1000u)</option>
                       </select>
                     </div>
+                  </div>
+
+                  {/* Ramificación de Variables y Precios por Cantidad */}
+                  <div style={{
+                    marginTop: 14,
+                    marginBottom: 16,
+                    padding: '16px',
+                    borderRadius: 12,
+                    background: 'var(--bg-card, #ffffff)',
+                    border: '1.5px solid #cbd5e1',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <Layers size={16} color="#7c3aed" /> Ramificación de Variables y Cantidades
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
+                          Definí variables (ej: Común, Mate, Laca UV) con sus precios por cantidad (100, 500, 1000...).
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary"
+                        onClick={handleAddVariable}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, backgroundColor: '#7c3aed', borderColor: '#7c3aed' }}
+                      >
+                        <Plus size={14} /> Agregar Variable
+                      </button>
+                    </div>
+
+                    {form.variantes.length === 0 ? (
+                      <div style={{
+                        padding: '14px',
+                        background: 'var(--bg-hover)',
+                        borderRadius: 8,
+                        fontSize: 12,
+                        color: 'var(--text-secondary)',
+                        textAlign: 'center',
+                        border: '1px dashed var(--border)'
+                      }}>
+                        Sin variables adicionales configuradas. Se usará el <strong>Precio Base de Venta</strong> ({formatCurrency(form.precio_base)} por {form.unidad}).
+                        <div style={{ marginTop: 6 }}>
+                          <button
+                            type="button"
+                            onClick={handleAddVariable}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#7c3aed',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              textDecoration: 'underline'
+                            }}
+                          >
+                            + Crear variables y precios escalonados
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        {form.variantes.map((v, vIdx) => (
+                          <div key={v.id || vIdx} style={{
+                            padding: '12px 14px',
+                            background: '#ffffff',
+                            borderRadius: 10,
+                            border: '1px solid #cbd5e1',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                              <span style={{
+                                width: 22,
+                                height: 22,
+                                borderRadius: '50%',
+                                background: '#7c3aed',
+                                color: '#ffffff',
+                                fontSize: 11,
+                                fontWeight: 800,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0
+                              }}>
+                                {vIdx + 1}
+                              </span>
+                              <div style={{ flex: 1 }}>
+                                <input
+                                  className="input"
+                                  placeholder="Nombre de la variable (ej. Común, Laminado Mate, Doble Faz, etc.)"
+                                  value={v.nombre}
+                                  onChange={e => handleVariableNombreChange(v.id, e.target.value)}
+                                  style={{ fontWeight: 600, fontSize: 13 }}
+                                  required
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-ghost"
+                                onClick={() => handleRemoveVariable(v.id)}
+                                style={{ color: 'var(--danger)' }}
+                                title="Eliminar variable"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+
+                            {/* Escalas de cantidad y precios */}
+                            <div style={{ background: 'var(--bg-hover)', padding: '10px 12px', borderRadius: 8 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+                                <span>Cantidades y Precios de Venta</span>
+                                <span>Total del combo</span>
+                              </div>
+
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                {v.escalas.map((esc, eIdx) => {
+                                  const unit = esc.cantidad > 0 && esc.precio > 0 ? (esc.precio / esc.cantidad).toFixed(2) : '0'
+                                  return (
+                                    <div key={esc.id || eIdx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1 }}>
+                                        <input
+                                          className="input"
+                                          type="number"
+                                          placeholder="Cant."
+                                          value={esc.cantidad || ''}
+                                          onChange={e => handleEscalaChange(v.id, eIdx, 'cantidad', Number(e.target.value))}
+                                          style={{ width: '90px', padding: '5px 8px', fontSize: 12.5 }}
+                                        />
+                                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>unid.</span>
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1.2 }}>
+                                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>$</span>
+                                        <input
+                                          className="input"
+                                          type="number"
+                                          step="0.01"
+                                          placeholder="Precio Total"
+                                          value={esc.precio || ''}
+                                          onChange={e => handleEscalaChange(v.id, eIdx, 'precio', Number(e.target.value))}
+                                          style={{ flex: 1, padding: '5px 8px', fontSize: 12.5, fontWeight: 700, color: 'var(--accent)' }}
+                                        />
+                                      </div>
+
+                                      <div style={{ width: '90px', fontSize: 11, color: 'var(--text-muted)', textAlign: 'right' }}>
+                                        ${unit} c/u
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        className="btn btn-sm btn-ghost"
+                                        onClick={() => handleRemoveEscala(v.id, eIdx)}
+                                        style={{ color: '#94a3b8', padding: '4px' }}
+                                        title="Eliminar escala"
+                                      >
+                                        <X size={14} />
+                                      </button>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-ghost"
+                                onClick={() => handleAddEscala(v.id)}
+                                style={{ marginTop: 8, fontSize: 11.5, color: '#7c3aed', fontWeight: 600, padding: '4px 8px' }}
+                              >
+                                + Agregar otra cantidad (ej. 2000u)
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div className="form-group">

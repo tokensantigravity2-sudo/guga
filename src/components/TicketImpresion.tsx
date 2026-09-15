@@ -68,7 +68,10 @@ export default function TicketImpresion({ ticket, onClose }: TicketImpresionProp
             </style>
           </head>
           <body>
-            <div class="center bold">GUGA IMPRENTA</div>
+            <div class="center" style="margin-bottom: 6px;">
+              <img src="/logo.png" alt="GUGA IMPRENTA" style="max-height: 38px; max-width: 140px; display: block; margin: 0 auto; object-fit: contain;" />
+            </div>
+            <div class="center bold">GUGA IMPRENTA & GRÁFICA</div>
             <div class="center">Imprenta & Diseño</div>
             <div class="separator"></div>
             <div>Pedido: ${ticket.numero}</div>
@@ -186,7 +189,14 @@ export default function TicketImpresion({ ticket, onClose }: TicketImpresionProp
               boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
             }}
           >
-            <div style={{ textAlign: 'center', fontWeight: 'bold' }}>GUGA IMPRENTA</div>
+            <div style={{ textAlign: 'center', marginBottom: '8px' }}>
+              <img
+                src="/logo.png"
+                alt="GUGA"
+                style={{ maxHeight: '38px', maxWidth: '140px', margin: '0 auto', display: 'block', objectFit: 'contain' }}
+              />
+            </div>
+            <div style={{ textAlign: 'center', fontWeight: 'bold' }}>GUGA IMPRENTA & GRÁFICA</div>
             <div style={{ textAlign: 'center' }}>Imprenta & Diseño</div>
             <div style={{ borderTop: '1px dashed #d1d5db', margin: '8px 0' }}></div>
             <div>Pedido: {ticket.numero}</div>

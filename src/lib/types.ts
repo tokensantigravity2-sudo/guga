@@ -10,6 +10,19 @@ export interface Cliente {
   created_at?: string
 }
 
+export interface EscalaPrecio {
+  id?: string
+  cantidad: number
+  precio: number // Precio total para esa cantidad (ej: 100u -> $800)
+}
+
+export interface VariableServicio {
+  id: string
+  nombre: string // ej: "Laminado Mate", "Brillo Simple Faz", etc.
+  descripcion?: string
+  escalas: EscalaPrecio[] // [{ cantidad: 100, precio: 800 }, { cantidad: 500, precio: 2200 }]
+}
+
 export interface Servicio {
   id: string
   nombre: string
@@ -23,6 +36,7 @@ export interface Servicio {
   es_tercerizado?: boolean
   proveedor_tercerizado_id?: string
   costo_tercerizado?: number
+  variantes?: VariableServicio[]
   created_at?: string
 }
 
@@ -41,6 +55,7 @@ export interface PedidoItem {
   no_afectar_stock?: boolean
   descripcion?: string
   detalles?: string
+  variante_nombre?: string
 }
 
 export interface Pedido {

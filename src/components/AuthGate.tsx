@@ -54,11 +54,11 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
         alignItems: 'center',
       }}>
         {/* GUGA PRINT LOGO */}
-        <div style={{ marginBottom: '28px', textAlign: 'center' }}>
+        <div style={{ marginBottom: '24px', textAlign: 'center' }}>
           <img
             src="/logo.png"
-            alt="GUGA PRINT"
-            style={{ maxHeight: '64px', maxWidth: '100%', objectFit: 'contain' }}
+            alt="GUGA IMPRENTA & GRÁFICA"
+            style={{ height: '68px', maxWidth: '240px', width: 'auto', objectFit: 'contain' }}
           />
         </div>
 

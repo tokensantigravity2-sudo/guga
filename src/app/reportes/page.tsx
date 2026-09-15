@@ -634,6 +634,55 @@ export default function ReportesPage() {
           </div>
         </div>
 
+        {/* Desglose explicativo de Ganancia Neta */}
+        <div style={{
+          background: 'var(--bg-card)',
+          borderRadius: 12,
+          border: '1px solid var(--border)',
+          padding: '16px 20px',
+          marginBottom: 24,
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: 18,
+          alignItems: 'center'
+        }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em', marginBottom: 4 }}>
+              📐 FÓRMULA DE GANANCIA NETA (FACTURACIÓN)
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ color: 'var(--accent)' }}>Ventas ({formatCurrency(resumen.ventasFacturadas)})</span>
+              <span style={{ color: 'var(--text-muted)' }}>−</span>
+              <span style={{ color: 'var(--danger)' }}>Gastos Totales ({formatCurrency(resumen.gastos)})</span>
+              <span style={{ color: 'var(--text-muted)' }}>=</span>
+              <span style={{ color: resumen.ganancia >= 0 ? 'var(--success)' : 'var(--danger)', fontSize: 17 }}>
+                {formatCurrency(resumen.ganancia)}
+              </span>
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 4 }}>
+              Margen de ganancia: <strong>{resumen.margen}%</strong> sobre el total vendido en el período.
+            </div>
+          </div>
+
+          <div style={{ borderLeft: '1px solid var(--border)', paddingLeft: 18 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em', marginBottom: 4 }}>
+              💵 GANANCIA NETA EN CAJA (DINERO COBRADO REAL)
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ color: '#0d9488' }}>Cobrado Real ({formatCurrency(resumen.ingresos)})</span>
+              <span style={{ color: 'var(--text-muted)' }}>−</span>
+              <span style={{ color: 'var(--danger)' }}>Egresos ({formatCurrency(resumen.gastos)})</span>
+              <span style={{ color: 'var(--text-muted)' }}>=</span>
+              <span style={{ color: resumen.gananciaCaja >= 0 ? 'var(--success)' : 'var(--danger)', fontSize: 17 }}>
+                {formatCurrency(resumen.gananciaCaja)}
+              </span>
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 4 }}>
+              Saldo pendiente por cobrar: <strong style={{ color: '#d97706' }}>{formatCurrency(resumen.saldoPorCobrar)}</strong> ({resumen.pedidosPendientesCount + resumen.pedidosSenaCount} pedidos con saldo pendiente).
+            </div>
+          </div>
+        </div>
+
         {/* Charts Row 1 */}
         <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', gap: 20, marginBottom: 24 }}>
           {/* Main Bar Chart: Ingresos vs Gastos vs Ganancia */}

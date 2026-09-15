@@ -246,7 +246,7 @@ export default function DashboardPage() {
             iconColor={ganancia >= 0 ? 'var(--success)' : 'var(--danger)'}
             label="Ganancia Neta (Mes)"
             value={formatCurrency(ganancia)}
-            sub={`${formatCurrency(totalVentasMes)} ventas – gastos`}
+            sub={`${formatCurrency(totalVentasMes)} ventas − ${formatCurrency(totalGastosMes)} gastos`}
           />
         </div>
 

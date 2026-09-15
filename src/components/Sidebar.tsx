@@ -78,24 +78,29 @@ export default function Sidebar() {
       fontFamily: '"Inter", system-ui, sans-serif',
       zIndex: 40
     }}>
-      {/* Brand Header directly displaying logo.png without any box background */}
+      {/* Brand Header */}
       <div style={{
-        padding: '20px 16px',
+        padding: '14px 18px',
         borderBottom: '1px solid #e2e8f0',
         backgroundColor: '#ffffff',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center'
+        justifyContent: 'center',
+        minHeight: '80px'
       }}>
-        <img
-          src="/logo.png"
-          alt="GUGA PRINT"
-          style={{
-            maxHeight: '48px',
-            maxWidth: '100%',
-            objectFit: 'contain'
-          }}
-        />
+        <Link href="/" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', textDecoration: 'none' }} title="Ir al Panel Principal">
+          <img
+            src="/logo.png"
+            alt="GUGA IMPRENTA & GRÁFICA"
+            style={{
+              height: '54px',
+              maxWidth: '190px',
+              width: 'auto',
+              objectFit: 'contain',
+              display: 'block'
+            }}
+          />
+        </Link>
       </div>
 
       {/* Navigation list */}

@@ -123,9 +123,9 @@ export default function StoreHeader({
           <Link href="/tienda" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', flexShrink: 0 }}>
             <img
               src="/logo.png"
-              alt="GUGA Imprenta"
+              alt="GUGA Imprenta & Gráfica"
               className="store-header-logo"
-              style={{ maxHeight: '42px', maxWidth: '150px', objectFit: 'contain' }}
+              style={{ height: '48px', maxWidth: '190px', width: 'auto', objectFit: 'contain' }}
             />
           </Link>
 

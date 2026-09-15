@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS servicios (
   tiempo_estimado TEXT,
   disponible BOOLEAN DEFAULT TRUE,
   imagen_url TEXT,
+  variantes JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

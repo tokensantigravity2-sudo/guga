@@ -214,12 +214,9 @@ export default function CustomerAuthModal({ isOpen, onClose, onSuccess }: Custom
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <img
-              src="/logo-guga.png"
-              alt="GUGA Imprenta"
-              style={{ maxHeight: '36px', maxWidth: '130px', objectFit: 'contain' }}
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = '/logo.png'
-              }}
+              src="/logo.png"
+              alt="GUGA Imprenta & Gráfica"
+              style={{ height: '46px', maxWidth: '170px', width: 'auto', objectFit: 'contain' }}
             />
           </div>
 

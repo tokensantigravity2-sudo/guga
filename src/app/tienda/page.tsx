@@ -1702,7 +1702,19 @@ export default function TiendaPage() {
           marginBottom: '30px'
         }}>
           <div>
-            <img src="/logo.png" alt="GUGA Imprenta" style={{ maxHeight: '44px', marginBottom: '14px', filter: 'brightness(0) invert(1)' }} />
+            <div style={{
+              display: 'inline-block',
+              backgroundColor: '#ffffff',
+              padding: '6px 14px',
+              borderRadius: '8px',
+              marginBottom: '14px'
+            }}>
+              <img
+                src="/logo.png"
+                alt="GUGA Imprenta & Gráfica"
+                style={{ height: '46px', maxWidth: '170px', width: 'auto', display: 'block', objectFit: 'contain' }}
+              />
+            </div>
             <p style={{ fontSize: '13px', lineHeight: '1.5', color: '#cbd5e1' }}>
               Tu imprenta de confianza. Fabricamos folletos, talonarios, tarjetas, banners y etiquetas con la mayor calidad gráfica.
             </p>

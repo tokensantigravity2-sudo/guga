@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { Pedido, Gasto, Tarea, CajaMovimiento } from '@/lib/types'
 import { formatCurrency, formatDate } from '@/lib/helpers'
 import {
   ChevronLeft, ChevronRight, Calendar as CalendarIcon,
-  ShoppingCart, DollarSign, CheckSquare, Plus, Clock, Filter, Wallet, ArrowUpCircle, ArrowDownCircle
+  ShoppingCart, DollarSign, CheckSquare, Plus, Clock, Filter, Wallet, ArrowUpCircle, ArrowDownCircle,
+  ExternalLink
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -40,13 +41,36 @@ export default function CalendarioPage() {
     const [{ data: p }, { data: g }, { data: c }, { data: t }] = await Promise.all([
       supabase.from('pedidos').select('*').not('estado', 'eq', 'cancelado'),
       supabase.from('gastos').select('*'),
-      supabase.from('caja_movimientos').select('*'),
+      supabase.from('caja_movimientos').select('*').order('created_at', { ascending: false }),
       supabase.from('tareas').select('*'),
     ])
 
+    let allCaja: CajaMovimiento[] = c ? [...c] : []
+    const existingRefIds = new Set(allCaja.map(m => m.referencia_id).filter(Boolean))
+
+    if (p) {
+      p.forEach(ped => {
+        const isCobrado = ped.cobrado === true || (ped.notas || '').includes('[COBRADO:true]')
+        if (isCobrado && !existingRefIds.has(ped.id) && ped.estado !== 'cancelado') {
+          const fecha = ped.created_at || new Date().toISOString()
+          allCaja.push({
+            id: `ped-caja-${ped.id}`,
+            tipo: 'ingreso',
+            monto: Number(ped.total) || 0,
+            concepto: `[Pago: ${ped.metodo_pago || 'efectivo'}] Cobro 100% Pedido #${ped.numero} - ${ped.cliente_nombre || 'Consumidor Final'}`,
+            referencia_id: ped.id,
+            fecha,
+            created_at: fecha,
+            metodo_pago: ped.metodo_pago || 'efectivo',
+            cliente_nombre: ped.cliente_nombre || 'Consumidor Final'
+          })
+        }
+      })
+    }
+
     if (p) setPedidos(p)
     if (g) setGastos(g)
-    if (c) setCajaMovs(c)
+    setCajaMovs(allCaja)
     if (t) setTareas(t)
     setLoading(false)
   }
@@ -143,6 +167,27 @@ export default function CalendarioPage() {
       })
     }
   })
+
+  // Agregación de caja diaria por fecha (YYYY-MM-DD)
+  const cashByDay = useMemo(() => {
+    const map: Record<string, { ingresos: number; egresos: number; saldo: number; count: number }> = {}
+    cajaMovs.forEach(c => {
+      const fechaStr = c.fecha || c.created_at
+      if (!fechaStr) return
+      const f = fechaStr.split('T')[0]
+      if (!map[f]) map[f] = { ingresos: 0, egresos: 0, saldo: 0, count: 0 }
+      map[f].count++
+      const m = Number(c.monto || 0)
+      if (c.tipo === 'ingreso') {
+        map[f].ingresos += m
+        map[f].saldo += m
+      } else {
+        map[f].egresos += m
+        map[f].saldo -= m
+      }
+    })
+    return map
+  }, [cajaMovs])
 
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
@@ -285,6 +330,32 @@ export default function CalendarioPage() {
                     )}
                   </div>
 
+                  {/* Resumen de Caja del Día si hubo movimientos o cobros */}
+                  {cashByDay[dayStr] && (cashByDay[dayStr].ingresos > 0 || cashByDay[dayStr].egresos > 0) && (
+                    <div
+                      title={`Caja: +${formatCurrency(cashByDay[dayStr].ingresos)} / -${formatCurrency(cashByDay[dayStr].egresos)} (${cashByDay[dayStr].count} cobros/movimientos)`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '2px 5px',
+                        borderRadius: 4,
+                        background: cashByDay[dayStr].saldo >= 0 ? 'rgba(16, 185, 129, 0.14)' : 'rgba(239, 68, 68, 0.14)',
+                        border: `1px solid ${cashByDay[dayStr].saldo >= 0 ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)'}`,
+                        color: cashByDay[dayStr].saldo >= 0 ? 'var(--success)' : 'var(--danger)',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        marginBottom: 4,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}
+                    >
+                      <span>💵 {cashByDay[dayStr].saldo >= 0 ? '+' : '-'}{formatCurrency(Math.abs(cashByDay[dayStr].saldo))}</span>
+                      <span style={{ fontSize: 9, opacity: 0.85 }}>({cashByDay[dayStr].count})</span>
+                    </div>
+                  )}
+
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 85, overflowY: 'auto', minWidth: 0 }}>
                     {dayEvents.slice(0, 3).map(ev => (
                       <div
@@ -335,6 +406,46 @@ export default function CalendarioPage() {
                 <button className="btn btn-ghost btn-sm" onClick={() => setSelectedDay(null)}>✕</button>
               </div>
               <div className="modal-body">
+                {/* Resumen de Caja destacada para el día seleccionado */}
+                {cashByDay[selectedDay] && (cashByDay[selectedDay].ingresos > 0 || cashByDay[selectedDay].egresos > 0) && (
+                  <div style={{
+                    background: 'var(--bg-hover)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 10,
+                    padding: 12,
+                    marginBottom: 14
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <strong style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Wallet size={15} style={{ color: 'var(--accent)' }} /> Resumen de Caja del Día
+                      </strong>
+                      <a
+                        href={`/caja?fecha=${selectedDay}`}
+                        className="btn btn-sm btn-ghost"
+                        style={{ fontSize: 11, padding: '2px 6px', gap: 4, color: 'var(--accent)' }}
+                      >
+                        Ir a Caja <ExternalLink size={11} />
+                      </a>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, textAlign: 'center' }}>
+                      <div style={{ background: 'rgba(16, 185, 129, 0.08)', padding: '6px 4px', borderRadius: 6 }}>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>Ingresos</span>
+                        <strong style={{ fontSize: 12, color: 'var(--success)' }}>+{formatCurrency(cashByDay[selectedDay].ingresos)}</strong>
+                      </div>
+                      <div style={{ background: 'rgba(239, 68, 68, 0.08)', padding: '6px 4px', borderRadius: 6 }}>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>Egresos</span>
+                        <strong style={{ fontSize: 12, color: 'var(--danger)' }}>{cashByDay[selectedDay].egresos > 0 ? `-${formatCurrency(cashByDay[selectedDay].egresos)}` : '$0'}</strong>
+                      </div>
+                      <div style={{ background: 'rgba(20, 155, 142, 0.08)', padding: '6px 4px', borderRadius: 6 }}>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block' }}>Cierre Neto</span>
+                        <strong style={{ fontSize: 12, color: cashByDay[selectedDay].saldo >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                          {formatCurrency(cashByDay[selectedDay].saldo)}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {selectedDayEvents.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {selectedDayEvents.map(ev => (

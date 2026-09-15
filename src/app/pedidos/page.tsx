@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
-import { Servicio, Cliente, PedidoItem, Pedido, StockItem } from '@/lib/types'
+import { Servicio, Cliente, PedidoItem, Pedido, StockItem, VariableServicio, EscalaPrecio } from '@/lib/types'
 import { formatCurrency, formatDateTime, generateNumeroPedido, ESTADOS_PEDIDO, CATEGORIAS_SERVICIO, cleanProductDescription, formatProductUnit } from '@/lib/helpers'
 import {
   Plus, Minus, ShoppingCart, Search, X, Trash2,
   CreditCard, Banknote, ArrowLeftRight, Printer,
-  Check, FileText, Calendar, Filter, UserCheck, ShieldAlert, Sparkles, RotateCcw
+  Check, FileText, Calendar, Filter, UserCheck, ShieldAlert, Sparkles, RotateCcw, Layers
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import PresupuestoPDFModal from '@/components/PresupuestoPDFModal'
@@ -47,8 +47,10 @@ export default function PedidosPage() {
   const [itemDescripcion, setItemDescripcion] = useState('')
   const [itemCantidad, setItemCantidad] = useState(100)
   const [itemPrecioUnitario, setItemPrecioUnitario] = useState(0)
-  const [itemNoAfectarStock, setItemNoAfectarStock] = useState(false)
   const [itemPrecioEsTotal, setItemPrecioEsTotal] = useState(false)
+  const [availableVariantes, setAvailableVariantes] = useState<VariableServicio[]>([])
+  const [selectedVariable, setSelectedVariable] = useState<VariableServicio | null>(null)
+  const [selectedEscala, setSelectedEscala] = useState<EscalaPrecio | null>(null)
 
   // Order options
   const [adicionalPorcentaje, setAdicionalPorcentaje] = useState(0)
@@ -208,28 +210,95 @@ export default function PedidosPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  const parseServicioVariantes = (servicio: Servicio): VariableServicio[] => {
+    if (Array.isArray(servicio.variantes) && servicio.variantes.length > 0) {
+      return servicio.variantes
+    }
+    if ((servicio.descripcion || '').includes('[VARIANTES:')) {
+      const match = (servicio.descripcion || '').match(/\[VARIANTES:([\s\S]*?)\]/)
+      if (match) {
+        try {
+          return JSON.parse(match[1])
+        } catch (e) {
+          console.error('Error parsing variantes JSON', e)
+        }
+      }
+    }
+    return []
+  }
+
   const openAddItemModal = (servicio: Servicio) => {
     setSelectedServicio(servicio)
     setItemCustomNombre(servicio.nombre)
-    setItemPrecioUnitario(Number(servicio.precio_base))
-    setItemCantidad(100)
-    setItemPrecioEsTotal(false)
     setItemMedida('')
     setItemMaterial('')
     setItemAcabado('')
+
     const cleanDesc = (servicio.descripcion || '')
+      .replace(/\[VARIANTES:[\s\S]*?\]/gi, '')
       .replace(/\[TERCERIZADO:[^\]]*\]/gi, '')
       .replace(/\[COBRADO:[^\]]*\]/gi, '')
       .replace(/\[STOCK:[^\]]*\]/gi, '')
       .replace(/\[.*?\]/g, '')
       .trim()
     setItemDescripcion(cleanDesc)
-    setItemNoAfectarStock(false)
+
+    const vars = parseServicioVariantes(servicio)
+    setAvailableVariantes(vars)
+
+    if (vars.length > 0) {
+      const firstVar = vars[0]
+      setSelectedVariable(firstVar)
+      setItemAcabado(firstVar.nombre)
+      if (firstVar.escalas && firstVar.escalas.length > 0) {
+        const firstEsc = firstVar.escalas[0]
+        setSelectedEscala(firstEsc)
+        setItemCantidad(firstEsc.cantidad)
+        setItemPrecioUnitario(firstEsc.precio)
+        setItemPrecioEsTotal(true)
+      } else {
+        setSelectedEscala(null)
+        setItemCantidad(100)
+        setItemPrecioUnitario(Number(servicio.precio_base))
+        setItemPrecioEsTotal(false)
+      }
+    } else {
+      setSelectedVariable(null)
+      setSelectedEscala(null)
+      setItemCantidad(100)
+      setItemPrecioUnitario(Number(servicio.precio_base))
+      setItemPrecioEsTotal(false)
+    }
+
     setShowItemModal(true)
+  }
+
+  const handleSelectVariable = (v: VariableServicio) => {
+    setSelectedVariable(v)
+    setItemAcabado(v.nombre)
+    if (v.escalas && v.escalas.length > 0) {
+      const match = v.escalas.find(e => e.cantidad === itemCantidad) || v.escalas[0]
+      setSelectedEscala(match)
+      setItemCantidad(match.cantidad)
+      setItemPrecioUnitario(match.precio)
+      setItemPrecioEsTotal(true)
+    } else {
+      setSelectedEscala(null)
+    }
+  }
+
+  const handleSelectEscala = (esc: EscalaPrecio) => {
+    setSelectedEscala(esc)
+    setItemCantidad(esc.cantidad)
+    setItemPrecioUnitario(esc.precio)
+    setItemPrecioEsTotal(true)
   }
 
   const openAddCustomItemModal = () => {
     setSelectedServicio(null)
+    setAvailableVariantes([])
+    setSelectedVariable(null)
+    setSelectedEscala(null)
     setItemCustomNombre('')
     setItemPrecioUnitario(0)
     setItemCantidad(1)
@@ -238,12 +307,15 @@ export default function PedidosPage() {
     setItemMaterial('')
     setItemAcabado('')
     setItemDescripcion('')
-    setItemNoAfectarStock(true)
     setShowItemModal(true)
   }
 
   const addItemToCart = () => {
-    const nombreFinal = selectedServicio ? selectedServicio.nombre : itemCustomNombre.trim()
+    const varNombre = selectedVariable ? selectedVariable.nombre : ''
+    const nombreFinal = selectedServicio
+      ? (varNombre ? `${selectedServicio.nombre} — ${varNombre}` : selectedServicio.nombre)
+      : itemCustomNombre.trim()
+
     if (!nombreFinal) {
       toast.error('El nombre del trabajo es obligatorio')
       return
@@ -271,10 +343,10 @@ export default function PedidosPage() {
       subtotal: sub,
       medida: itemMedida || undefined,
       material: itemMaterial || undefined,
-      acabado: itemAcabado || undefined,
+      acabado: itemAcabado || varNombre || undefined,
       imagen_url: selectedServicio?.imagen_url || undefined,
-      no_afectar_stock: itemNoAfectarStock,
       descripcion: itemDescripcion.trim() || undefined,
+      variante_nombre: varNombre || undefined,
     }
 
     setCart(prev => [...prev, newItem])
@@ -872,54 +944,64 @@ export default function PedidosPage() {
                   <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Especificaciones únicas a medida</span>
                 </div>
 
-                {filteredServicios.map(srv => (
-                  <div
-                    key={srv.id}
-                    className="card"
-                    onClick={() => openAddItemModal(srv)}
-                    style={{
-                      cursor: 'pointer',
-                      transition: 'all 0.15s',
-                      border: '1px solid var(--border)',
-                      position: 'relative'
-                    }}
-                  >
-                    {srv.imagen_url && (
-                      <div style={{ width: '100%', height: 100, borderRadius: 8, overflow: 'hidden', marginBottom: 8, background: 'var(--bg-hover)' }}>
-                        <img
-                          src={srv.imagen_url}
-                          alt={srv.nombre}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          onError={e => { (e.target as HTMLElement).style.display = 'none' }}
-                        />
-                      </div>
-                    )}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-                        {srv.categoria}
-                      </span>
-                      {srv.es_tercerizado && (
-                        <span className="badge badge-warning" style={{ fontSize: 9 }}>Tercerizado</span>
+                {filteredServicios.map(srv => {
+                  const srvVars = parseServicioVariantes(srv)
+                  return (
+                    <div
+                      key={srv.id}
+                      className="card"
+                      onClick={() => openAddItemModal(srv)}
+                      style={{
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                        border: '1px solid var(--border)',
+                        position: 'relative'
+                      }}
+                    >
+                      {srv.imagen_url && (
+                        <div style={{ width: '100%', height: 100, borderRadius: 8, overflow: 'hidden', marginBottom: 8, background: 'var(--bg-hover)' }}>
+                          <img
+                            src={srv.imagen_url}
+                            alt={srv.nombre}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            onError={e => { (e.target as HTMLElement).style.display = 'none' }}
+                          />
+                        </div>
                       )}
-                    </div>
-                    <div style={{ fontWeight: 700, fontSize: 14, marginTop: 2, marginBottom: 4 }}>
-                      {srv.nombre}
-                    </div>
-                    {cleanProductDescription(srv.descripcion) && (
-                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, lineClamp: 2, display: '-webkit-box', WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                        {cleanProductDescription(srv.descripcion)}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
+                          {srv.categoria}
+                        </span>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          {srvVars.length > 0 && (
+                            <span className="badge badge-info" style={{ fontSize: 9, background: 'rgba(20, 155, 142, 0.12)', color: 'var(--accent)', borderColor: 'var(--accent)' }}>
+                              🌿 {srvVars.length} {srvVars.length === 1 ? 'var.' : 'vars.'}
+                            </span>
+                          )}
+                          {srv.es_tercerizado && (
+                            <span className="badge badge-warning" style={{ fontSize: 9 }}>Tercerizado</span>
+                          )}
+                        </div>
                       </div>
-                    )}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: 6, borderTop: '1px dashed var(--border)' }}>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        {srv.tiempo_estimado ? `⏱ ${srv.tiempo_estimado}` : formatProductUnit(srv)}
-                      </span>
-                      <span style={{ fontWeight: 800, color: 'var(--accent)', fontSize: 14 }}>
-                        {formatCurrency(srv.precio_base)} <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 400 }}>/{formatProductUnit(srv)}</span>
-                      </span>
+                      <div style={{ fontWeight: 700, fontSize: 14, marginTop: 2, marginBottom: 4 }}>
+                        {srv.nombre}
+                      </div>
+                      {cleanProductDescription(srv.descripcion) && (
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, lineClamp: 2, display: '-webkit-box', WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                          {cleanProductDescription(srv.descripcion)}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: 6, borderTop: '1px dashed var(--border)' }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                          {srv.tiempo_estimado ? `⏱ ${srv.tiempo_estimado}` : formatProductUnit(srv)}
+                        </span>
+                        <span style={{ fontWeight: 800, color: 'var(--accent)', fontSize: 14 }}>
+                          {formatCurrency(srv.precio_base)} <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 400 }}>/{formatProductUnit(srv)}</span>
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
 
@@ -1037,14 +1119,13 @@ export default function PedidosPage() {
                           <span>{item.nombre}</span>
                           <span style={{ color: 'var(--accent)' }}>{formatCurrency(item.subtotal)}</span>
                         </div>
-                        {(item.medida || item.material || item.acabado || item.descripcion || item.no_afectar_stock) && (
+                        {(item.medida || item.material || item.acabado || item.descripcion) && (
                           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                             {[
                               item.medida,
                               item.material,
                               item.acabado,
-                              item.descripcion ? `📝 ${item.descripcion.slice(0, 45)}${item.descripcion.length > 45 ? '...' : ''}` : null,
-                              item.no_afectar_stock ? '🚫 No afecta stock' : null
+                              item.descripcion ? `📝 ${item.descripcion.slice(0, 45)}${item.descripcion.length > 45 ? '...' : ''}` : null
                             ].filter(Boolean).join(' • ')}
                           </div>
                         )}
@@ -1706,20 +1787,104 @@ export default function PedidosPage() {
                   </div>
                 )}
 
-                {/* Tipo de Precio: Total del Lote o Unitario */}
-                {!selectedServicio && (
-                  <div className="form-group" style={{ marginBottom: 8 }}>
-                    <label>Tipo de Precio</label>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button type="button" className={`btn btn-sm ${itemPrecioEsTotal ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setItemPrecioEsTotal(true)}>
-                        💰 Precio Total del Lote
-                      </button>
-                      <button type="button" className={`btn btn-sm ${!itemPrecioEsTotal ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setItemPrecioEsTotal(false)}>
-                        📦 Precio por Unidad
-                      </button>
+                {/* Selector de Ramificación / Variables del Servicio */}
+                {selectedServicio && availableVariantes.length > 0 && (
+                  <div style={{ marginBottom: 16, background: 'var(--bg-hover)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>🌿 Seleccionar Variable / Terminación:</span>
                     </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: (selectedVariable?.escalas && selectedVariable.escalas.length > 0) ? 12 : 0 }}>
+                      {availableVariantes.map((v, vIdx) => {
+                        const isSelected = selectedVariable?.nombre === v.nombre
+                        return (
+                          <button
+                            key={vIdx}
+                            type="button"
+                            onClick={() => handleSelectVariable(v)}
+                            className={`btn btn-sm ${isSelected ? 'btn-primary' : 'btn-secondary'}`}
+                            style={{
+                              borderRadius: 20,
+                              fontWeight: isSelected ? 700 : 500,
+                              fontSize: 12,
+                              padding: '5px 12px',
+                              boxShadow: isSelected ? '0 2px 8px rgba(20, 155, 142, 0.25)' : 'none',
+                              border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border)'
+                            }}
+                          >
+                            {isSelected && <span style={{ marginRight: 4 }}>✓</span>}
+                            {v.nombre}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {/* Escala de Tirada / Cantidades y Precios de la variable seleccionada */}
+                    {selectedVariable && selectedVariable.escalas && selectedVariable.escalas.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
+                          <span>📦 Tiradas y Precios de "{selectedVariable.nombre}":</span>
+                          <span style={{ fontSize: 10 }}>Clic para seleccionar lote</span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(115px, 1fr))', gap: 8 }}>
+                          {selectedVariable.escalas.map((esc, escIdx) => {
+                            const isEscalaActive = selectedEscala === esc || (itemCantidad === esc.cantidad && itemPrecioUnitario === esc.precio && itemPrecioEsTotal)
+                            const unitPrice = esc.cantidad > 0 ? Math.round((esc.precio / esc.cantidad) * 100) / 100 : 0
+                            return (
+                              <button
+                                key={escIdx}
+                                type="button"
+                                onClick={() => handleSelectEscala(esc)}
+                                style={{
+                                  textAlign: 'left',
+                                  padding: '8px 10px',
+                                  borderRadius: 8,
+                                  background: isEscalaActive ? 'rgba(20, 155, 142, 0.12)' : 'var(--bg-card)',
+                                  border: isEscalaActive ? '2px solid var(--accent)' : '1px solid var(--border)',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  justifyContent: 'space-between'
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontSize: 13, fontWeight: 700, color: isEscalaActive ? 'var(--accent)' : 'var(--text-primary)' }}>
+                                    {esc.cantidad.toLocaleString('es-UY')} <span style={{ fontSize: 10, fontWeight: 500 }}>u</span>
+                                  </span>
+                                  {isEscalaActive && <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 800 }}>✓</span>}
+                                </div>
+                                <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent)', marginTop: 2 }}>
+                                  ${esc.precio.toLocaleString('es-UY')}
+                                </div>
+                                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                                  ${unitPrice.toLocaleString('es-UY')} c/u
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
+
+                {/* Tipo de Precio: Total del Lote o Unitario */}
+                <div className="form-group" style={{ marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <label style={{ margin: 0 }}>Modo de Precio</label>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      {itemPrecioEsTotal ? 'El monto ingresado es por la tirada entera' : 'El monto ingresado se multiplica por la cantidad'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button type="button" className={`btn btn-sm ${itemPrecioEsTotal ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setItemPrecioEsTotal(true)}>
+                      💰 Precio Total del Lote
+                    </button>
+                    <button type="button" className={`btn btn-sm ${!itemPrecioEsTotal ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setItemPrecioEsTotal(false)}>
+                      📦 Precio por Unidad
+                    </button>
+                  </div>
+                </div>
 
                 <div className="form-grid">
                   <div className="form-group">
@@ -1789,23 +1954,6 @@ export default function PedidosPage() {
                   </span>
                 </div>
 
-                {/* Checkbox: No Afectar Stock */}
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                  background: 'var(--bg-hover)', borderRadius: 8, border: '1px solid var(--border)',
-                  marginBottom: 14
-                }}>
-                  <input
-                    type="checkbox"
-                    id="no_stock"
-                    checked={itemNoAfectarStock}
-                    onChange={e => setItemNoAfectarStock(e.target.checked)}
-                    style={{ width: 16, height: 16, cursor: 'pointer' }}
-                  />
-                  <label htmlFor="no_stock" style={{ margin: 0, cursor: 'pointer', textTransform: 'none', fontSize: 13, fontWeight: 600 }}>
-                    🚫 No afectar stock de inventario para este trabajo
-                  </label>
-                </div>
 
                 <div style={{ background: 'var(--bg-hover)', padding: 12, borderRadius: 8, textAlign: 'right' }}>
                   <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{itemPrecioEsTotal ? 'Total del lote:' : 'Subtotal calculado:'} </span>
