@@ -3,12 +3,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
-import { CajaMovimiento, Cliente, Pedido } from '@/lib/types'
+import { CajaMovimiento, Cliente, Pedido, Proveedor } from '@/lib/types'
 import { formatCurrency, formatDateTime, formatDate, CATEGORIAS_GASTO, getTodayStr } from '@/lib/helpers'
 import {
   Plus, ArrowUpCircle, ArrowDownCircle, Wallet, TrendingUp, TrendingDown,
   Edit2, Trash2, User, CreditCard, Receipt, FileText, CheckCircle2, XCircle,
-  Search, X, Calendar, ArrowLeft, ArrowRight, Layers, ListFilter, ExternalLink
+  Search, X, Calendar, ArrowLeft, ArrowRight, Layers, ListFilter, ExternalLink,
+  HelpCircle, Building2
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -28,6 +29,7 @@ export interface CajaDiariaResumen {
 export default function CajaPage() {
   const [allMovimientos, setAllMovimientos] = useState<CajaMovimiento[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
+  const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editingMov, setEditingMov] = useState<CajaMovimiento | null>(null)
@@ -39,10 +41,18 @@ export default function CajaPage() {
   const [filterMetodo, setFilterMetodo] = useState<'todos' | 'efectivo' | 'transferencia' | 'tarjeta' | 'cuenta_corriente'>('todos')
   const [filterTipoMov, setFilterTipoMov] = useState<'todos' | 'ingreso' | 'egreso'>('todos')
 
-  // Search client state in modal
+  // Search client state in modal (para ingresos)
   const [clienteSearch, setClienteSearch] = useState('')
   const [showClienteDropdown, setShowClienteDropdown] = useState(false)
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
+
+  // Search proveedor state in modal (para egresos)
+  const [proveedorSearch, setProveedorSearch] = useState('')
+  const [showProveedorDropdown, setShowProveedorDropdown] = useState(false)
+  const [selectedProveedor, setSelectedProveedor] = useState<Proveedor | null>(null)
+
+  // Ayuda interactiva para Facturado con RUT
+  const [showFacturadoInfo, setShowFacturadoInfo] = useState(false)
 
   const [form, setForm] = useState({
     tipo: 'ingreso' as 'ingreso' | 'egreso',
@@ -91,7 +101,7 @@ export default function CajaPage() {
   const loadData = async () => {
     setLoading(true)
     try {
-      const [{ data: movs, error: mErr }, { data: peds }, { data: clts }] = await Promise.all([
+      const [{ data: movs, error: mErr }, { data: peds }, { data: clts }, { data: provs }] = await Promise.all([
         supabase
           .from('caja_movimientos')
           .select('*')
@@ -104,6 +114,7 @@ export default function CajaPage() {
           .order('created_at', { ascending: false })
           .limit(500),
         supabase.from('clientes').select('id, nombre, rut, telefono, email').order('nombre'),
+        supabase.from('proveedores').select('id, nombre, rubro, telefono, email, es_tercerizado').order('nombre'),
       ])
 
       if (mErr) toast.error('Error al cargar caja: ' + mErr.message)
@@ -156,6 +167,7 @@ export default function CajaPage() {
 
       setAllMovimientos(rawMovs)
       if (clts) setClientes(clts)
+      if (provs) setProveedores(provs)
 
       if (typeof window !== 'undefined' && !new URLSearchParams(window.location.search).get('fecha')) {
         const todayStr = getTodayStr()
@@ -181,14 +193,17 @@ export default function CajaPage() {
       return
     }
 
-    const clientNameFinal = selectedCliente ? selectedCliente.nombre : (clienteSearch.trim() || 'Consumidor Final')
+    const isEgreso = form.tipo === 'egreso'
+    const clientNameFinal = isEgreso
+      ? (selectedProveedor ? selectedProveedor.nombre : (proveedorSearch.trim() || 'Proveedor / Varios'))
+      : (selectedCliente ? selectedCliente.nombre : (clienteSearch.trim() || 'Consumidor Final'))
     const catEgresoFinal = form.categoria_egreso === 'OTRO' ? (form.otraCategoriaEgreso.trim() || 'Otros') : form.categoria_egreso
 
     let payload: any = {
       tipo: form.tipo,
       monto: Number(form.monto),
       concepto: form.concepto.trim(),
-      cliente_id: selectedCliente?.id || null,
+      cliente_id: isEgreso ? null : (selectedCliente?.id || null),
       cliente_nombre: clientNameFinal,
       metodo_pago: form.metodo_pago || 'efectivo',
       facturado: !!form.facturado,
@@ -202,7 +217,7 @@ export default function CajaPage() {
         const cleanPayload = {
           tipo: form.tipo,
           monto: Number(form.monto),
-          concepto: `${form.concepto.trim()} [Cliente: ${clientNameFinal} | Pago: ${form.metodo_pago || 'efectivo'}${form.facturado ? ' | Facturado' : ''}]`,
+          concepto: `${form.concepto.trim()} [${isEgreso ? 'Proveedor' : 'Cliente'}: ${clientNameFinal} | Pago: ${form.metodo_pago || 'efectivo'}${form.facturado ? ' | Facturado' : ''}]`,
         }
         const res = await supabase.from('caja_movimientos').update(cleanPayload).eq('id', editingMov.id)
         error = res.error
@@ -216,6 +231,7 @@ export default function CajaPage() {
           monto: form.monto,
           concepto: form.concepto,
           categoria: catEgresoFinal,
+          proveedor_id: selectedProveedor?.id || null
         }).eq('id', editingMov.referencia_id)
       }
 
@@ -223,7 +239,7 @@ export default function CajaPage() {
     } else {
       let refId: string | null = null
 
-      // Si es un egreso de caja, crear también el registro en gastos
+      // Si es un egreso de caja, crear también el registro en gastos vinculando al proveedor
       if (form.tipo === 'egreso') {
         const { data: newGasto } = await supabase.from('gastos').insert({
           concepto: `Salida de Caja: ${form.concepto.trim()}`,
@@ -231,7 +247,8 @@ export default function CajaPage() {
           categoria: catEgresoFinal,
           fecha: filterDate,
           estado_pago: 'pagado',
-          notas: `Registrado desde Caja Diaria por cliente/proveedor: ${clientNameFinal}`
+          notas: `Registrado desde Caja Diaria para proveedor: ${clientNameFinal}`,
+          proveedor_id: selectedProveedor?.id || null
         }).select().single()
 
         if (newGasto) refId = newGasto.id
@@ -250,7 +267,7 @@ export default function CajaPage() {
         const cleanInsert = {
           tipo: form.tipo,
           monto: Number(form.monto),
-          concepto: `${form.concepto.trim()} [Cliente: ${clientNameFinal} | Pago: ${form.metodo_pago || 'efectivo'}${form.facturado ? ' | Facturado' : ''}]`,
+          concepto: `${form.concepto.trim()} [${isEgreso ? 'Proveedor' : 'Cliente'}: ${clientNameFinal} | Pago: ${form.metodo_pago || 'efectivo'}${form.facturado ? ' | Facturado' : ''}]`,
           referencia_id: refId,
           fecha: `${filterDate}T${new Date().toISOString().split('T')[1] || '12:00:00.000Z'}`
         }
@@ -259,7 +276,7 @@ export default function CajaPage() {
       }
 
       if (error) { toast.error('Error al registrar movimiento: ' + error.message); return }
-      toast.success(form.tipo === 'ingreso' ? 'Entrada registrada en caja' : 'Salida de caja registrada y reflejada en Gastos')
+      toast.success(form.tipo === 'ingreso' ? 'Entrada registrada en caja' : 'Salida de caja registrada y reflejada en Gastos con su Proveedor')
     }
 
     closeModal()
@@ -298,6 +315,9 @@ export default function CajaPage() {
     setEditingMov(null)
     setSelectedCliente(null)
     setClienteSearch('')
+    setSelectedProveedor(null)
+    setProveedorSearch('')
+    setShowFacturadoInfo(false)
     setForm({
       tipo: 'ingreso',
       monto: 0,
@@ -317,19 +337,25 @@ export default function CajaPage() {
     let metodo = mov.metodo_pago || 'efectivo'
     let isFact = !!mov.facturado
 
-    if (conceptoLimpio.includes('[Cliente:')) {
-      const match = conceptoLimpio.match(/\[Cliente:\s*(.*?)\s*\|\s*Pago:\s*(.*?)\s*(\|\s*Facturado)?\]/)
+    if (conceptoLimpio.includes('[Cliente:') || conceptoLimpio.includes('[Proveedor:')) {
+      const match = conceptoLimpio.match(/\[(Cliente|Proveedor):\s*(.*?)\s*\|\s*Pago:\s*(.*?)\s*(\|\s*Facturado)?\]/)
       if (match) {
-        if (!clientName) clientName = match[1]
-        if (!metodo) metodo = match[2] as any
-        if (match[3]) isFact = true
+        if (!clientName) clientName = match[2]
+        if (!metodo) metodo = match[3] as any
+        if (match[4]) isFact = true
       }
-      conceptoLimpio = conceptoLimpio.replace(/\[Cliente:.*?\]/, '').trim()
+      conceptoLimpio = conceptoLimpio.replace(/\[(Cliente|Proveedor):.*?\]/, '').trim()
     }
 
     const matchClient = clientes.find(c => c.id === mov.cliente_id || c.nombre === clientName)
     setSelectedCliente(matchClient || null)
     setClienteSearch(clientName)
+
+    const matchProv = proveedores.find(p => p.nombre === clientName)
+    setSelectedProveedor(matchProv || null)
+    setProveedorSearch(clientName)
+    setShowFacturadoInfo(false)
+
     setForm({
       tipo: mov.tipo,
       monto: Number(mov.monto),
@@ -347,15 +373,28 @@ export default function CajaPage() {
     setEditingMov(null)
     setSelectedCliente(null)
     setClienteSearch('')
+    setSelectedProveedor(null)
+    setProveedorSearch('')
+    setShowFacturadoInfo(false)
   }
 
-  // Búsqueda de clientes por Nombre, Teléfono o RUT
+  // Búsqueda de clientes por Nombre, Teléfono o RUT (para ingresos)
   const filteredClientesModal = clientes.filter(c => {
     const q = clienteSearch.toLowerCase()
     return (
       c.nombre.toLowerCase().includes(q) ||
       c.telefono?.toLowerCase().includes(q) ||
       c.rut?.toLowerCase().includes(q)
+    )
+  })
+
+  // Búsqueda de proveedores por Nombre, Rubro o Teléfono (para egresos)
+  const filteredProveedoresModal = proveedores.filter(p => {
+    const q = proveedorSearch.toLowerCase()
+    return (
+      p.nombre.toLowerCase().includes(q) ||
+      p.rubro?.toLowerCase().includes(q) ||
+      p.telefono?.toLowerCase().includes(q)
     )
   })
 
@@ -1126,76 +1165,162 @@ export default function CajaPage() {
                     </div>
                   </div>
 
-                  {/* Search Bar for Client by RUT, Phone, or Name */}
-                  <div className="form-group" style={{ position: 'relative', marginBottom: 12 }}>
-                    <label style={{ marginBottom: 4 }}>Cliente / Empresa (Buscar por RUT, Teléfono o Nombre)</label>
-                    <div style={{ position: 'relative' }}>
-                      <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                      <input
-                        className="input"
-                        placeholder="Buscar por RUT, Teléfono o Nombre..."
-                        value={selectedCliente ? `${selectedCliente.nombre} ${selectedCliente.rut ? `(RUT: ${selectedCliente.rut})` : ''}` : clienteSearch}
-                        onChange={e => {
-                          setClienteSearch(e.target.value)
-                          setSelectedCliente(null)
-                          setShowClienteDropdown(true)
-                        }}
-                        onFocus={() => setShowClienteDropdown(true)}
-                        style={{ paddingLeft: 30 }}
-                      />
-                      {selectedCliente && (
-                        <button
-                          type="button"
-                          onClick={() => { setSelectedCliente(null); setClienteSearch('') }}
-                          style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
-                        >
-                          <X size={14} />
-                        </button>
-                      )}
-                    </div>
-
-                    {showClienteDropdown && (clienteSearch || filteredClientesModal.length > 0) && !selectedCliente && (
-                      <div style={{
-                        position: 'absolute', top: '100%', left: 0, right: 0,
-                        background: 'var(--bg-card)', border: '1px solid var(--border-light)',
-                        borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto',
-                        zIndex: 30, boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-                      }}>
-                        <div
-                          onClick={() => {
+                  {/* Si es Entrada / Ingreso: Buscar Cliente */}
+                  {form.tipo === 'ingreso' && (
+                    <div className="form-group" style={{ position: 'relative', marginBottom: 12 }}>
+                      <label style={{ marginBottom: 4 }}>Cliente / Empresa (Buscar por RUT, Teléfono o Nombre)</label>
+                      <div style={{ position: 'relative' }}>
+                        <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <input
+                          className="input"
+                          placeholder="Buscar por RUT, Teléfono o Nombre..."
+                          value={selectedCliente ? `${selectedCliente.nombre} ${selectedCliente.rut ? `(RUT: ${selectedCliente.rut})` : ''}` : clienteSearch}
+                          onChange={e => {
+                            setClienteSearch(e.target.value)
                             setSelectedCliente(null)
-                            setShowClienteDropdown(false)
+                            setShowClienteDropdown(true)
                           }}
-                          style={{
-                            padding: '8px 12px', borderBottom: '1px solid var(--border)',
-                            cursor: 'pointer', fontSize: 12.5, color: 'var(--text-muted)'
-                          }}
-                        >
-                          Consumidor Final / Sin cliente registrado
-                        </div>
-                        {filteredClientesModal.slice(0, 6).map(c => (
+                          onFocus={() => setShowClienteDropdown(true)}
+                          style={{ paddingLeft: 30 }}
+                        />
+                        {selectedCliente && (
+                          <button
+                            type="button"
+                            onClick={() => { setSelectedCliente(null); setClienteSearch('') }}
+                            style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                          >
+                            <X size={14} />
+                          </button>
+                        )}
+                      </div>
+
+                      {showClienteDropdown && (clienteSearch || filteredClientesModal.length > 0) && !selectedCliente && (
+                        <div style={{
+                          position: 'absolute', top: '100%', left: 0, right: 0,
+                          background: 'var(--bg-card)', border: '1px solid var(--border-light)',
+                          borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto',
+                          zIndex: 30, boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                        }}>
                           <div
-                            key={c.id}
                             onClick={() => {
-                              setSelectedCliente(c)
-                              setClienteSearch('')
+                              setSelectedCliente(null)
                               setShowClienteDropdown(false)
                             }}
                             style={{
                               padding: '8px 12px', borderBottom: '1px solid var(--border)',
-                              cursor: 'pointer', fontSize: 12.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                              cursor: 'pointer', fontSize: 12.5, color: 'var(--text-muted)'
                             }}
                           >
-                            <div>
-                              <strong>{c.nombre}</strong>
-                              {c.rut && <div style={{ fontSize: 11, color: 'var(--accent)' }}>RUT: {c.rut}</div>}
-                            </div>
-                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{c.telefono}</span>
+                            Consumidor Final / Sin cliente registrado
                           </div>
-                        ))}
+                          {filteredClientesModal.slice(0, 6).map(c => (
+                            <div
+                              key={c.id}
+                              onClick={() => {
+                                setSelectedCliente(c)
+                                setClienteSearch('')
+                                setShowClienteDropdown(false)
+                              }}
+                              style={{
+                                padding: '8px 12px', borderBottom: '1px solid var(--border)',
+                                cursor: 'pointer', fontSize: 12.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                              }}
+                            >
+                              <div>
+                                <strong>{c.nombre}</strong>
+                                {c.rut && <div style={{ fontSize: 11, color: 'var(--accent)' }}>RUT: {c.rut}</div>}
+                              </div>
+                              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{c.telefono}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Si es Salida / Egreso: Buscar Proveedor */}
+                  {form.tipo === 'egreso' && (
+                    <div className="form-group" style={{ position: 'relative', marginBottom: 12 }}>
+                      <label style={{ marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <Building2 size={15} style={{ color: 'var(--danger)' }} />
+                          <strong>Proveedor / Beneficiario de la Salida *</strong>
+                        </span>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                          ({proveedores.length} proveedores registrados)
+                        </span>
+                      </label>
+                      <div style={{ position: 'relative' }}>
+                        <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <input
+                          className="input"
+                          placeholder="Buscar proveedor por nombre, rubro o teléfono..."
+                          value={selectedProveedor ? `${selectedProveedor.nombre} (${selectedProveedor.rubro || 'General'})` : proveedorSearch}
+                          onChange={e => {
+                            setProveedorSearch(e.target.value)
+                            setSelectedProveedor(null)
+                            setShowProveedorDropdown(true)
+                          }}
+                          onFocus={() => setShowProveedorDropdown(true)}
+                          style={{ paddingLeft: 30 }}
+                        />
+                        {selectedProveedor && (
+                          <button
+                            type="button"
+                            onClick={() => { setSelectedProveedor(null); setProveedorSearch('') }}
+                            style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                          >
+                            <X size={14} />
+                          </button>
+                        )}
                       </div>
-                    )}
-                  </div>
+
+                      {showProveedorDropdown && (proveedorSearch || filteredProveedoresModal.length > 0) && !selectedProveedor && (
+                        <div style={{
+                          position: 'absolute', top: '100%', left: 0, right: 0,
+                          background: 'var(--bg-card)', border: '1px solid var(--border-light)',
+                          borderRadius: 8, marginTop: 4, maxHeight: 200, overflowY: 'auto',
+                          zIndex: 30, boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                        }}>
+                          <div
+                            onClick={() => {
+                              setSelectedProveedor(null)
+                              setShowProveedorDropdown(false)
+                            }}
+                            style={{
+                              padding: '8px 12px', borderBottom: '1px solid var(--border)',
+                              cursor: 'pointer', fontSize: 12.5, color: 'var(--text-muted)'
+                            }}
+                          >
+                            Gasto general / Proveedor ocasional no registrado
+                          </div>
+                          {filteredProveedoresModal.slice(0, 8).map(p => (
+                            <div
+                              key={p.id}
+                              onClick={() => {
+                                setSelectedProveedor(p)
+                                setProveedorSearch(p.nombre)
+                                setShowProveedorDropdown(false)
+                                if (!form.concepto.trim()) {
+                                  setForm(f => ({ ...f, concepto: `Pago a ${p.nombre} (${p.rubro || 'Insumos'})` }))
+                                }
+                              }}
+                              style={{
+                                padding: '8px 12px', borderBottom: '1px solid var(--border)',
+                                cursor: 'pointer', fontSize: 12.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                              }}
+                            >
+                              <div>
+                                <strong>{p.nombre}</strong>
+                                <span className="badge badge-info" style={{ marginLeft: 6, fontSize: 10 }}>{p.rubro || 'General'}</span>
+                              </div>
+                              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{p.telefono || ''}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Si es Salida / Egreso, seleccionar Motivo/Categoría igual que en Gastos */}
                   {form.tipo === 'egreso' && (
@@ -1232,7 +1357,7 @@ export default function CajaPage() {
                     <label>Descripción / Concepto *</label>
                     <input
                       className="input"
-                      placeholder="ej. Cobro seña impresiones / Compra cambio"
+                      placeholder={form.tipo === 'egreso' ? 'ej. Compra resmas de papel / Pago taller offset' : 'ej. Cobro seña impresiones / Venta mostrador'}
                       value={form.concepto}
                       onChange={e => setForm({ ...form, concepto: e.target.value })}
                       required
@@ -1269,22 +1394,52 @@ export default function CajaPage() {
                     </div>
                   </div>
 
-                  {/* Checkbox Facturado */}
+                  {/* Checkbox Facturado con RUT e Información Explicativa */}
                   <div style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                    padding: '10px 12px',
                     background: 'var(--bg-hover)', borderRadius: 8, border: '1px solid var(--border)',
                     marginBottom: 12
                   }}>
-                    <input
-                      type="checkbox"
-                      id="facturado_chk"
-                      checked={form.facturado}
-                      onChange={e => setForm({ ...form, facturado: e.target.checked })}
-                      style={{ width: 16, height: 16, cursor: 'pointer' }}
-                    />
-                    <label htmlFor="facturado_chk" style={{ margin: 0, cursor: 'pointer', textTransform: 'none', fontSize: 13, fontWeight: 600 }}>
-                      📄 Facturado con RUT / Factura Oficial
-                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <input
+                          type="checkbox"
+                          id="facturado_chk"
+                          checked={form.facturado}
+                          onChange={e => setForm({ ...form, facturado: e.target.checked })}
+                          style={{ width: 16, height: 16, cursor: 'pointer' }}
+                        />
+                        <label htmlFor="facturado_chk" style={{ margin: 0, cursor: 'pointer', textTransform: 'none', fontSize: 13, fontWeight: 600 }}>
+                          📄 Facturado con RUT / Factura Oficial (DGI)
+                        </label>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowFacturadoInfo(!showFacturadoInfo)}
+                        style={{
+                          background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer',
+                          fontSize: 11.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4
+                        }}
+                      >
+                        <HelpCircle size={13} />
+                        <span>{showFacturadoInfo ? 'Cerrar explicación' : '¿Qué función cumple?'}</span>
+                      </button>
+                    </div>
+
+                    {showFacturadoInfo && (
+                      <div style={{
+                        marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)',
+                        fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55
+                      }}>
+                        💡 <strong>Función fiscal y contable:</strong>
+                        <div style={{ marginTop: 4 }}>
+                          • <strong>En Salidas / Compras:</strong> Si compraste insumos o pagaste un taller y te entregaron factura oficial con RUT, el comprobante permite deducir el <strong>crédito fiscal del IVA</strong> ante DGI y registrar el gasto formal en el balance mensual de tu contador.
+                        </div>
+                        <div style={{ marginTop: 4 }}>
+                          • <strong>En Entradas / Ingresos:</strong> Indica que al cliente se le emitió una <strong>e-Factura con RUT</strong> con <strong>débito fiscal de IVA</strong> que debe liquidarse formalmente, distinguiéndolo de boletas simples de mostrador o pagos en efectivo no facturados.
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                 </div>

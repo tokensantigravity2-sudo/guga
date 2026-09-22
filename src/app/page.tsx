@@ -13,8 +13,8 @@ import Link from 'next/link'
 export default function DashboardPage() {
   const [ventas, setVentas] = useState<Pedido[]>([])
   const [ventasMes, setVentasMes] = useState<{ total: number; estado?: string }[]>([])
-  const [gastos, setGastos] = useState<{ monto: number }[]>([])
-  const [cajaEgresosMes, setCajaEgresosMes] = useState<{ monto: number; referencia_id?: string | null }[]>([])
+  const [gastos, setGastos] = useState<{ monto: number; fecha?: string }[]>([])
+  const [cajaEgresosMes, setCajaEgresosMes] = useState<{ monto: number; referencia_id?: string | null; fecha?: string }[]>([])
   const [stockBajo, setStockBajo] = useState<StockItem[]>([])
   const [pedidosActivos, setPedidosActivos] = useState(0)
   const [proximasEntregas, setProximasEntregas] = useState<Pedido[]>([])
@@ -57,13 +57,14 @@ export default function DashboardPage() {
       try {
         const [ventasRes, gastosRes, stockRes, activosRes, entregasRes, tareasRes, ventasMesRes, cajaEgresosRes] = await Promise.all([
           supabase.from('pedidos').select('*').gte('created_at', today + 'T00:00:00').not('estado', 'eq', 'cancelado').order('created_at', { ascending: false }),
-          supabase.from('gastos').select('monto').gte('fecha', startOfMonth),
+          supabase.from('gastos').select('monto, fecha').gte('fecha', startOfMonth),
           supabase.from('stock').select('*').eq('activo', true),
           supabase.from('pedidos').select('id', { count: 'exact', head: true }).in('estado', ['aprobado', 'en_produccion']),
-          supabase.from('pedidos').select('*').not('fecha_entrega', 'is', null).not('estado', 'in', '("entregado","cancelado")').order('fecha_entrega', { ascending: true }).limit(5),
+          // Filtrar estrictamente fechas de entrega a partir de HOY para excluir trabajos pasados que quedaron sin retirar
+          supabase.from('pedidos').select('*').gte('fecha_entrega', today).not('estado', 'in', '("entregado","cancelado")').order('fecha_entrega', { ascending: true }).limit(10),
           supabase.from('tareas').select('*').eq('completada', false).order('created_at', { ascending: false }).limit(4),
           supabase.from('pedidos').select('total, estado').gte('created_at', startOfMonth + 'T00:00:00').not('estado', 'in', '("presupuesto","cancelado")'),
-          supabase.from('caja_movimientos').select('monto, referencia_id').eq('tipo', 'egreso').gte('fecha', startOfMonth + 'T00:00:00'),
+          supabase.from('caja_movimientos').select('monto, referencia_id, fecha').eq('tipo', 'egreso').gte('fecha', startOfMonth + 'T00:00:00'),
         ])
 
         const newVentas = ventasRes.data || []
@@ -104,20 +105,39 @@ export default function DashboardPage() {
     fetchData()
   }, [])
 
+  const todayStr = getTodayStr()
+
   // Pedidos confirmados hoy (excluyendo presupuestos y cancelados)
   const pedidosConfirmadosHoy = ventas.filter(v => v.estado !== 'presupuesto' && v.estado !== 'cancelado')
   const presupuestosHoy = ventas.filter(v => v.estado === 'presupuesto')
   const totalVentasHoy = pedidosConfirmadosHoy.reduce((s, v) => s + Number(v.total), 0)
 
-  // Ventas del mes (excluyendo presupuestos y cancelados) y Ganancia Real
-  const totalVentasMes = ventasMes.reduce((s, v) => s + Number(v.total), 0)
-  const totalGastosTabla = gastos.reduce((s, g) => s + Number(g.monto), 0)
-  // Egresos de caja que NO están ya duplicados en la tabla gastos
-  const totalEgresosCajaSolos = cajaEgresosMes
-    .filter(e => !e.referencia_id)
+  // Gastos de HOY (al día de la fecha, NO del mes)
+  const totalGastosTablaHoy = gastos
+    .filter(g => (g.fecha || '').substring(0, 10) === todayStr)
+    .reduce((s, g) => s + Number(g.monto), 0)
+
+  const totalEgresosCajaHoy = cajaEgresosMes
+    .filter(e => {
+      const f = (e.fecha || '').substring(0, 10)
+      return f === todayStr && !e.referencia_id
+    })
     .reduce((s, e) => s + Number(e.monto), 0)
-  const totalGastosMes = totalGastosTabla + totalEgresosCajaSolos
-  const ganancia = totalVentasMes - totalGastosMes
+
+  const totalGastosHoy = totalGastosTablaHoy + totalEgresosCajaHoy
+  const gananciaHoy = totalVentasHoy - totalGastosHoy
+
+  // Entregas programadas estrictamente para HOY (excluyendo pasadas y terminadas ya retiradas)
+  const entregasHoy = proximasEntregas.filter(p => {
+    const f = (p.fecha_entrega || '').substring(0, 10)
+    return f === todayStr && p.estado !== 'entregado' && p.estado !== 'cancelado'
+  })
+
+  // Próximas entregas futuras (a partir de mañana)
+  const entregasFuturas = proximasEntregas.filter(p => {
+    const f = (p.fecha_entrega || '').substring(0, 10)
+    return f > todayStr && p.estado !== 'entregado' && p.estado !== 'cancelado'
+  })
 
   // Pedidos recientes (todos los del día)
   const pedidosRecientes = ventas.slice(0, 8)
@@ -233,20 +253,20 @@ export default function DashboardPage() {
             sub="pedidos activos"
           />
           <StatCard
-            icon={<TrendingDown size={20} />}
-            iconBg="var(--danger-muted)"
-            iconColor="var(--danger)"
-            label="Gastos del Mes"
-            value={formatCurrency(totalGastosMes)}
-            sub={`${gastos.length} gasto${gastos.length !== 1 ? 's' : ''}`}
+            icon={<Truck size={20} />}
+            iconBg="rgba(20, 155, 142, 0.12)"
+            iconColor="var(--accent)"
+            label="Entregas para Hoy"
+            value={String(entregasHoy.length)}
+            sub={entregasHoy.length === 1 ? '1 pedido para entregar hoy' : `${entregasHoy.length} pedidos para hoy`}
           />
           <StatCard
             icon={<TrendingUp size={20} />}
-            iconBg={ganancia >= 0 ? 'var(--success-muted)' : 'var(--danger-muted)'}
-            iconColor={ganancia >= 0 ? 'var(--success)' : 'var(--danger)'}
-            label="Ganancia Neta (Mes)"
-            value={formatCurrency(ganancia)}
-            sub={`${formatCurrency(totalVentasMes)} ventas − ${formatCurrency(totalGastosMes)} gastos`}
+            iconBg={gananciaHoy >= 0 ? 'var(--success-muted)' : 'var(--danger-muted)'}
+            iconColor={gananciaHoy >= 0 ? 'var(--success)' : 'var(--danger)'}
+            label="Ganancia Neta (Hoy)"
+            value={formatCurrency(gananciaHoy)}
+            sub={`${formatCurrency(totalVentasHoy)} ventas hoy − ${formatCurrency(totalGastosHoy)} gastos`}
           />
         </div>
 
@@ -254,21 +274,21 @@ export default function DashboardPage() {
           {/* Main content column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-            {/* Próximas Entregas Compromisos */}
+            {/* Entregas del Día (Hoy) */}
             <div className="card">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <CalendarIcon size={18} style={{ color: 'var(--accent)' }} />
-                  <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>🚚 Próximas Fechas de Entrega</h3>
+                  <Truck size={18} style={{ color: 'var(--accent)' }} />
+                  <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>🚚 Entregas del Día ({entregasHoy.length})</h3>
                 </div>
                 <Link href="/calendario" style={{ fontSize: 12.5, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', fontWeight: 600 }}>
                   Ver Calendario →
                 </Link>
               </div>
 
-              {proximasEntregas.length > 0 ? (
+              {entregasHoy.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {proximasEntregas.map(p => (
+                  {entregasHoy.map(p => (
                     <div key={p.id} style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       padding: '10px 12px', background: 'var(--bg-hover)', borderRadius: 10,
@@ -283,10 +303,8 @@ export default function DashboardPage() {
                         </div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <span className={`badge ${
-                          p.fecha_entrega === getTodayStr() ? 'badge-danger' : 'badge-warning'
-                        }`}>
-                          {p.fecha_entrega === getTodayStr() ? '¡ENTREGA HOY!' : `Entrega: ${formatDate(p.fecha_entrega!)}`}
+                        <span className="badge badge-danger" style={{ fontWeight: 700 }}>
+                          ¡ENTREGA HOY!
                         </span>
                         <div style={{ marginTop: 2 }}>
                           <span className={`badge ${getEstadoBadge(p.estado)}`} style={{ fontSize: 10 }}>
@@ -299,7 +317,28 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '16px 0' }}>
-                  Sin entregas programadas pendientes
+                  ✓ Sin entregas pendientes programadas para el día de hoy
+                </div>
+              )}
+
+              {/* Próximas entregas a futuro (siguientes días, sin incluir pasadas) */}
+              {entregasFuturas.length > 0 && (
+                <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8, letterSpacing: '0.05em' }}>
+                    Próximas entregas de los siguientes días:
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {entregasFuturas.slice(0, 4).map(p => (
+                      <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '7px 10px', background: 'var(--bg-hover)', borderRadius: 6 }}>
+                        <div>
+                          <strong>#{p.numero}</strong> — {p.cliente_nombre || 'Consumidor Final'}
+                        </div>
+                        <span className="badge badge-warning" style={{ fontSize: 11 }}>
+                          {formatDate(p.fecha_entrega!)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

@@ -5,8 +5,19 @@ import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { Proveedor, Gasto, ItemListaPrecio, StockItem } from '@/lib/types'
 import { formatCurrency, formatDate, getInitials } from '@/lib/helpers'
-import { Search, Plus, Phone, Mail, MapPin, Edit2, Trash2, Package, Tag, FileText, List, Layers, ChevronDown, MessageCircle } from 'lucide-react'
+import { Search, Plus, Phone, Mail, MapPin, Edit2, Trash2, Package, Tag, FileText, List, Layers, ChevronDown, MessageCircle, X, Settings } from 'lucide-react'
 import toast from 'react-hot-toast'
+
+const DEFAULT_RUBROS = [
+  'Papel',
+  'Vinilo',
+  'Tintas',
+  'Imprenta Tercerizada',
+  'Troquelado & Acabados',
+  'Encuadernacion',
+  'Máquinas',
+  'General',
+]
 
 export default function ProveedoresPage() {
   const [proveedores, setProveedores] = useState<Proveedor[]>([])
@@ -18,6 +29,13 @@ export default function ProveedoresPage() {
   const [showModal, setShowModal] = useState(false)
   const [editingProveedor, setEditingProveedor] = useState<Proveedor | null>(null)
   const [proveedorStats, setProveedorStats] = useState<Map<string, number>>(new Map())
+
+  // Gestión dinámica de Rubros (abiertos para agregar o eliminar)
+  const [rubros, setRubros] = useState<string[]>(DEFAULT_RUBROS)
+  const [showRubrosModal, setShowRubrosModal] = useState(false)
+  const [nuevoRubro, setNuevoRubro] = useState('')
+  const [inlineNuevoRubro, setInlineNuevoRubro] = useState('')
+  const [showInlineAddRubro, setShowInlineAddRubro] = useState(false)
 
   // Historial drawer state
   const [selectedProveedorHistory, setSelectedProveedorHistory] = useState<Proveedor | null>(null)
@@ -72,8 +90,57 @@ export default function ProveedoresPage() {
   })
 
   useEffect(() => {
+    // Cargar rubros guardados en localStorage si existen
+    try {
+      const savedRubros = localStorage.getItem('guga_rubros_proveedores')
+      if (savedRubros) {
+        const parsed = JSON.parse(savedRubros)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setRubros(parsed)
+        }
+      }
+    } catch {}
     loadData()
   }, [])
+
+  const handleAddRubro = (nombreRubro: string) => {
+    const trimmed = nombreRubro.trim()
+    if (!trimmed) {
+      toast.error('Ingresá el nombre del rubro')
+      return
+    }
+    if (rubros.some(r => r.toLowerCase() === trimmed.toLowerCase())) {
+      toast.error('Ese rubro ya existe')
+      return
+    }
+    const updated = [...rubros, trimmed]
+    setRubros(updated)
+    try {
+      localStorage.setItem('guga_rubros_proveedores', JSON.stringify(updated))
+    } catch {}
+    setForm(f => ({ ...f, rubro: trimmed }))
+    setNuevoRubro('')
+    setInlineNuevoRubro('')
+    setShowInlineAddRubro(false)
+    toast.success(`Rubro "${trimmed}" agregado`)
+  }
+
+  const handleDeleteRubro = (rubroToDelete: string) => {
+    const cantUso = proveedores.filter(p => p.rubro?.includes(rubroToDelete)).length
+    if (cantUso > 0) {
+      if (!confirm(`Hay ${cantUso} proveedor(es) con el rubro "${rubroToDelete}". ¿Seguro que querés eliminarlo de la lista?`)) {
+        return
+      }
+    }
+    const updated = rubros.filter(r => r !== rubroToDelete)
+    setRubros(updated)
+    try {
+      localStorage.setItem('guga_rubros_proveedores', JSON.stringify(updated))
+    } catch {}
+    if (filterRubro === rubroToDelete) setFilterRubro('')
+    if (form.rubro === rubroToDelete) setForm(f => ({ ...f, rubro: updated[0] || 'General' }))
+    toast.success(`Rubro "${rubroToDelete}" eliminado`)
+  }
 
   const loadData = async () => {
     const [{ data: provs, error: pErr }, { data: gastos }] = await Promise.all([
@@ -82,7 +149,15 @@ export default function ProveedoresPage() {
     ])
 
     if (pErr) toast.error('Error al cargar proveedores: ' + pErr.message)
-    if (provs) setProveedores(provs)
+    if (provs) {
+      setProveedores(provs)
+      // Unificar rubros con los de la base de datos
+      setRubros(prev => {
+        const provRubros = provs.map(p => p.rubro?.replace(' (Tercerizado)', '').trim()).filter(Boolean) as string[]
+        const merged = Array.from(new Set([...prev, ...provRubros]))
+        return merged
+      })
+    }
 
     if (gastos) {
       const stats = new Map<string, number>()
@@ -307,18 +382,28 @@ export default function ProveedoresPage() {
               />
             </div>
 
-            {/* LISTA DESPLEGABLE DE RUBROS */}
-            <div style={{ width: 170 }}>
+            {/* LISTA DESPLEGABLE DE RUBROS + BOTÓN GESTIÓN */}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <select
                 className="input"
                 value={filterRubro}
                 onChange={e => setFilterRubro(e.target.value)}
+                style={{ width: 170 }}
               >
-                <option value="">Todos los Rubros</option>
-                {rubrosUnicos.map(r => (
+                <option value="">Todos los Rubros ({rubros.length})</option>
+                {rubros.map(r => (
                   <option key={r} value={r}>{r}</option>
                 ))}
               </select>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setShowRubrosModal(true)}
+                title="Administrar y editar Rubros"
+                style={{ whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5 }}
+              >
+                <Settings size={14} /> Rubros
+              </button>
             </div>
 
             {/* Botones de tipo */}
@@ -645,17 +730,65 @@ export default function ProveedoresPage() {
                       />
                     </div>
                     <div className="form-group">
-                      <label>Rubro Principal</label>
-                      <select className="input" value={form.rubro} onChange={e => setForm({ ...form, rubro: e.target.value })}>
-                        <option value="Papel">Papel / Cartulina</option>
-                        <option value="Vinilo">Vinilos / Lonas</option>
-                        <option value="Tintas">Tintas / Tóner</option>
-                        <option value="Imprenta Tercerizada">Imprenta Tercerizada (Offset/Digital)</option>
-                        <option value="Troquelado & Acabados">Troquelado & Acabados</option>
-                        <option value="Encuadernacion">Encuadernación / Anillados</option>
-                        <option value="Máquinas">Maquinaria / Repuestos</option>
-                        <option value="General">General</option>
-                      </select>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                        <label style={{ margin: 0 }}>Rubro Principal</label>
+                        <button
+                          type="button"
+                          onClick={() => setShowInlineAddRubro(!showInlineAddRubro)}
+                          style={{
+                            background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer',
+                            fontSize: 11.5, fontWeight: 600, padding: 0
+                          }}
+                        >
+                          {showInlineAddRubro ? 'Cancelar' : '+ Agregar Rubro'}
+                        </button>
+                      </div>
+
+                      {showInlineAddRubro ? (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <input
+                            className="input"
+                            placeholder="Nombre del nuevo rubro..."
+                            value={inlineNuevoRubro}
+                            onChange={e => setInlineNuevoRubro(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                handleAddRubro(inlineNuevoRubro)
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            onClick={() => handleAddRubro(inlineNuevoRubro)}
+                          >
+                            Guardar
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <select
+                            className="input"
+                            value={form.rubro}
+                            onChange={e => setForm({ ...form, rubro: e.target.value })}
+                            style={{ flex: 1 }}
+                          >
+                            {rubros.map(r => (
+                              <option key={r} value={r}>{r}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => setShowRubrosModal(true)}
+                            title="Administrar Rubros (Agregar / Eliminar)"
+                          >
+                            ⚙️
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -725,6 +858,93 @@ export default function ProveedoresPage() {
                   <button type="submit" className="btn btn-primary">{editingProveedor ? 'Guardar Cambios' : 'Crear Proveedor'}</button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Administrar Rubros */}
+        {showRubrosModal && (
+          <div className="modal-backdrop" onClick={() => setShowRubrosModal(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+              <div className="modal-header">
+                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 17, fontWeight: 700 }}>
+                  🏷️ Administrar Rubros de Proveedores
+                </h3>
+                <button type="button" onClick={() => setShowRubrosModal(false)} className="btn btn-ghost btn-sm">
+                  ✕
+                </button>
+              </div>
+
+              <div className="modal-body">
+                <p style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 14 }}>
+                  Podés agregar nuevos rubros a medida que los necesites o eliminar los que ya no utilices.
+                </p>
+
+                {/* Input para agregar nuevo rubro */}
+                <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                  <input
+                    className="input"
+                    placeholder="Escribir nuevo rubro (ej. Serigrafía / Remeras / Flete)..."
+                    value={nuevoRubro}
+                    onChange={e => setNuevoRubro(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        handleAddRubro(nuevoRubro)
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => handleAddRubro(nuevoRubro)}
+                    style={{ whiteSpace: 'nowrap' }}
+                  >
+                    <Plus size={15} /> Agregar
+                  </button>
+                </div>
+
+                {/* Lista de rubros disponibles */}
+                <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {rubros.map(r => {
+                    const cant = proveedores.filter(p => p.rubro?.includes(r)).length
+                    return (
+                      <div
+                        key={r}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '8px 12px', background: 'var(--bg-hover)', borderRadius: 8,
+                          border: '1px solid var(--border)'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontWeight: 600, fontSize: 13 }}>{r}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                            ({cant} {cant === 1 ? 'proveedor' : 'proveedores'})
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRubro(r)}
+                          style={{
+                            background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer',
+                            padding: 4, display: 'flex', alignItems: 'center', borderRadius: 4
+                          }}
+                          title="Eliminar este rubro"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" className="btn btn-primary" onClick={() => setShowRubrosModal(false)}>
+                  Listo
+                </button>
+              </div>
             </div>
           </div>
         )}

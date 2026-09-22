@@ -3,12 +3,13 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
-import { formatCurrency, formatDate } from '@/lib/helpers'
+import { formatCurrency, formatDate, getTodayStr } from '@/lib/helpers'
 import { Pedido, Gasto, StockItem, Cliente, CajaMovimiento } from '@/lib/types'
 import {
   BarChart3, TrendingUp, TrendingDown, DollarSign, ShoppingCart,
   PieChart as PieChartIcon, Percent, Boxes, Users, Calendar,
-  ArrowUpRight, ArrowDownRight, Layers, CreditCard, Filter, Wallet
+  ArrowUpRight, ArrowDownRight, Layers, CreditCard, Filter, Wallet,
+  Clock, AlertTriangle, AlertCircle, CheckCircle2
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -45,6 +46,7 @@ interface ClienteRankingData {
   nombre: string
   pedidos: number
   total: number
+  porcentaje?: number
 }
 
 interface MetodoPagoData {
@@ -63,6 +65,9 @@ interface PedidoCobradoDetalle {
   is100Cobrado: boolean
   estadoPedido: string
   metodoPago: string
+  fechaEntrega?: string
+  tipoSaldo?: 'sena' | 'cuenta_corriente' | 'saldado'
+  estadoVencimiento?: 'vencido' | 'hoy' | 'a_vencer' | 'sin_fecha'
   items?: any[]
 }
 
@@ -99,6 +104,12 @@ export default function ReportesPage() {
     ingresosPagosCompletos: 0,
     cajaIngresosDirectos: 0,
     saldoPorCobrar: 0,
+    saldoSenas: 0,
+    saldoCuentasCorrientes: 0,
+    saldoVencido: 0,
+    saldoVenceHoy: 0,
+    saldoAVencer: 0,
+    pedidosVencidosCount: 0,
     gastos: 0,
     gastosTabla: 0,
     egresosCaja: 0,
@@ -114,6 +125,17 @@ export default function ReportesPage() {
     inventarioValor: 0,
     cajaSaldo: 0,
   })
+
+  // Ganancia Neta al día de la fecha (HOY)
+  const [gananciaNetaHoy, setGananciaNetaHoy] = useState(0)
+  const [ingresosHoy, setIngresosHoy] = useState(0)
+  const [gastosHoy, setGastosHoy] = useState(0)
+  const [ventasHoy, setVentasHoy] = useState(0)
+
+  // Saldos pendientes detallados (señas y cuentas corrientes a vencimiento)
+  const [saldosPendientesList, setSaldosPendientesList] = useState<PedidoCobradoDetalle[]>([])
+  const [filtroSaldos, setFiltroSaldos] = useState<'todos' | 'senas' | 'cuentas_corrientes' | 'vencidos'>('todos')
+  const [searchSaldo, setSearchSaldo] = useState('')
 
   const [pedidosCobradosDetalle, setPedidosCobradosDetalle] = useState<PedidoCobradoDetalle[]>([])
   const [cajaDirectaList, setCajaDirectaList] = useState<CajaMovimiento[]>([])
@@ -232,7 +254,104 @@ export default function ReportesPage() {
     const montoEgresosCaja = egresosCajaFiltrados.reduce((sum, c) => sum + Number(c.monto), 0)
     const totalGastos = montoGastosTabla + montoEgresosCaja
 
-    // 1. Identificar pedidos confirmados y cobros en el período
+    const todayStr = getTodayStr()
+
+    // 1. Ganancia Neta al día de la fecha (HOY)
+    const ingrHoy = cajaRaw
+      .filter(c => (c.fecha || c.created_at || '').substring(0, 10) === todayStr && c.tipo === 'ingreso')
+      .reduce((sum, c) => sum + Number(c.monto || 0), 0)
+
+    const gastTablaHoy = gastosRaw
+      .filter(g => (g.fecha || g.created_at || '').substring(0, 10) === todayStr)
+      .reduce((sum, g) => sum + Number(g.monto || 0), 0)
+
+    const egrCajaHoy = cajaRaw
+      .filter(c => {
+        const f = (c.fecha || c.created_at || '').substring(0, 10)
+        return f === todayStr && c.tipo === 'egreso' && (!c.referencia_id || !gastosRaw.some(g => g.id === c.referencia_id))
+      })
+      .reduce((sum, c) => sum + Number(c.monto || 0), 0)
+
+    const totGastosHoy = gastTablaHoy + egrCajaHoy
+    const pedsHoy = pedidosRaw.filter(p => (p.created_at || '').substring(0, 10) === todayStr && p.estado !== 'cancelado' && p.estado !== 'presupuesto')
+    const vtsHoy = pedsHoy.reduce((sum, p) => sum + Number(p.total || 0), 0)
+
+    const netHoy = (ingrHoy > 0 || totGastosHoy > 0) ? (ingrHoy - totGastosHoy) : (vtsHoy - totGastosHoy)
+
+    setIngresosHoy(ingrHoy)
+    setGastosHoy(totGastosHoy)
+    setVentasHoy(vtsHoy)
+    setGananciaNetaHoy(netHoy)
+
+    // 2. Saldos pendientes a cobrar globales (Señas y Cuentas Corrientes con vencimiento / fecha_entrega)
+    const todosSaldosPendientes: PedidoCobradoDetalle[] = []
+    let globalSaldoSenas = 0
+    let globalSaldoCtaCte = 0
+    let globalSaldoVencido = 0
+    let globalSaldoVenceHoy = 0
+    let globalSaldoAVencer = 0
+    let globalPedidosVencidos = 0
+
+    pedidosRaw.forEach(p => {
+      if (p.estado === 'cancelado' || p.estado === 'presupuesto') return
+      const isCobradoFlag = p.cobrado === true || (p.notas || '').includes('[COBRADO:true]')
+      if (isCobradoFlag) return
+
+      const allMovsPedido = cajaRaw.filter(c => c.referencia_id === p.id && c.tipo === 'ingreso')
+      const totalHistoricoCaja = allMovsPedido.reduce((sum, c) => sum + Number(c.monto), 0)
+      const totalP = Number(p.total) || 0
+      const saldoPend = Math.max(0, totalP - totalHistoricoCaja)
+
+      if (saldoPend > 0) {
+        const fechaEnt = p.fecha_entrega ? p.fecha_entrega.substring(0, 10) : ''
+        let estVenc: 'vencido' | 'hoy' | 'a_vencer' | 'sin_fecha' = 'sin_fecha'
+        if (fechaEnt) {
+          if (fechaEnt < todayStr) {
+            estVenc = 'vencido'
+            globalSaldoVencido += saldoPend
+            globalPedidosVencidos++
+          } else if (fechaEnt === todayStr) {
+            estVenc = 'hoy'
+            globalSaldoVenceHoy += saldoPend
+          } else {
+            estVenc = 'a_vencer'
+            globalSaldoAVencer += saldoPend
+          }
+        }
+
+        const isCtaCte = p.metodo_pago === 'cuenta_corriente' || totalHistoricoCaja === 0
+        const tipoSald: 'sena' | 'cuenta_corriente' = (!isCtaCte && totalHistoricoCaja > 0) ? 'sena' : 'cuenta_corriente'
+        if (tipoSald === 'sena') globalSaldoSenas += saldoPend
+        else globalSaldoCtaCte += saldoPend
+
+        todosSaldosPendientes.push({
+          id: p.id,
+          numero: p.numero,
+          cliente_nombre: p.cliente_nombre || 'Consumidor Final',
+          fecha: p.created_at || '',
+          totalPedido: totalP,
+          montoCobrado: totalHistoricoCaja,
+          saldoPendiente: saldoPend,
+          is100Cobrado: false,
+          estadoPedido: p.estado || 'aprobado',
+          metodoPago: p.metodo_pago || 'efectivo',
+          fechaEntrega: p.fecha_entrega,
+          tipoSaldo: tipoSald,
+          estadoVencimiento: estVenc,
+          items: p.items || []
+        })
+      }
+    })
+
+    // Ordenar saldos pendientes: primero vencidos, luego por fecha más antigua
+    todosSaldosPendientes.sort((a, b) => {
+      if (a.estadoVencimiento === 'vencido' && b.estadoVencimiento !== 'vencido') return -1
+      if (a.estadoVencimiento !== 'vencido' && b.estadoVencimiento === 'vencido') return 1
+      return new Date(a.fechaEntrega || a.fecha || 0).getTime() - new Date(b.fechaEntrega || b.fecha || 0).getTime()
+    })
+    setSaldosPendientesList(todosSaldosPendientes)
+
+    // 3. Identificar pedidos confirmados y cobros en el período
     const pedidosReporteList: PedidoCobradoDetalle[] = []
     let totalVentasFacturadas = 0
     let totalCobradoEnPeriodo = 0
@@ -278,6 +397,17 @@ export default function ReportesPage() {
           else totalSenas += montoCobradoPeriodo
         }
 
+        const fechaEnt = p.fecha_entrega ? p.fecha_entrega.substring(0, 10) : ''
+        let estVenc: 'vencido' | 'hoy' | 'a_vencer' | 'sin_fecha' = 'sin_fecha'
+        if (fechaEnt) {
+          if (fechaEnt < todayStr) estVenc = 'vencido'
+          else if (fechaEnt === todayStr) estVenc = 'hoy'
+          else estVenc = 'a_vencer'
+        }
+
+        const isCtaCte = p.metodo_pago === 'cuenta_corriente' || totalHistoricoCaja === 0
+        const tipoSald: 'sena' | 'cuenta_corriente' | 'saldado' = is100 ? 'saldado' : ((!isCtaCte && totalHistoricoCaja > 0) ? 'sena' : 'cuenta_corriente')
+
         pedidosReporteList.push({
           id: p.id,
           numero: p.numero,
@@ -289,6 +419,9 @@ export default function ReportesPage() {
           is100Cobrado: is100,
           estadoPedido: p.estado || 'aprobado',
           metodoPago: p.metodo_pago || (movsEnPeriodo[0] ? extractMetodoPago(movsEnPeriodo[0]) : 'efectivo'),
+          fechaEntrega: p.fecha_entrega,
+          tipoSaldo: tipoSald,
+          estadoVencimiento: estVenc,
           items: p.items || []
         })
       }
@@ -323,7 +456,13 @@ export default function ReportesPage() {
       ingresosSenas: totalSenas,
       ingresosPagosCompletos: totalPagosCompletos,
       cajaIngresosDirectos,
-      saldoPorCobrar: saldoPorCobrarTotal,
+      saldoPorCobrar: globalSaldoSenas + globalSaldoCtaCte,
+      saldoSenas: globalSaldoSenas,
+      saldoCuentasCorrientes: globalSaldoCtaCte,
+      saldoVencido: globalSaldoVencido,
+      saldoVenceHoy: globalSaldoVenceHoy,
+      saldoAVencer: globalSaldoAVencer,
+      pedidosVencidosCount: globalPedidosVencidos,
       gastos: totalGastos,
       gastosTabla: montoGastosTabla,
       egresosCaja: montoEgresosCaja,
@@ -564,19 +703,6 @@ export default function ReportesPage() {
         {/* KPIs Grid */}
         <div className="grid-stats" style={{ marginBottom: 24 }}>
           <div className="stat-card">
-            <div className="stat-icon" style={{ background: 'rgba(20, 155, 142, 0.12)', color: 'var(--accent)' }}>
-              <ShoppingCart size={22} />
-            </div>
-            <div>
-              <div className="stat-label">Ventas Confirmadas</div>
-              <div className="stat-value" style={{ color: 'var(--accent)' }}>{formatCurrency(resumen.ventasFacturadas)}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                {resumen.pedidosCount} pedidos confirmados (excluye presupuestos)
-              </div>
-            </div>
-          </div>
-
-          <div className="stat-card">
             <div className="stat-icon" style={{ background: 'var(--success-muted)', color: 'var(--success)' }}>
               <TrendingUp size={22} />
             </div>
@@ -594,10 +720,13 @@ export default function ReportesPage() {
               <CreditCard size={22} />
             </div>
             <div>
-              <div className="stat-label">Saldo Pendiente por Cobrar</div>
+              <div className="stat-label">Saldo Pendiente a Cobrar</div>
               <div className="stat-value" style={{ color: '#d97706' }}>{formatCurrency(resumen.saldoPorCobrar)}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                {resumen.pedidosPendientesCount} pedidos pendientes · Flujo neto: {formatCurrency(resumen.gananciaCaja)}
+                {formatCurrency(resumen.saldoSenas)} en señas · {formatCurrency(resumen.saldoCuentasCorrientes)} ctas. corrientes
+              </div>
+              <div style={{ fontSize: 11, color: resumen.saldoVencido > 0 ? '#dc2626' : 'var(--success)', marginTop: 2, fontWeight: 600 }}>
+                {resumen.saldoVencido > 0 ? `⚠️ ${formatCurrency(resumen.saldoVencido)} vencido a la fecha` : '✓ Sin saldos vencidos'}
               </div>
             </div>
           </div>
@@ -617,143 +746,180 @@ export default function ReportesPage() {
 
           <div className="stat-card">
             <div className="stat-icon" style={{
-              background: resumen.ganancia >= 0 ? 'rgba(22, 163, 74, 0.1)' : 'rgba(220, 38, 38, 0.1)',
-              color: resumen.ganancia >= 0 ? 'var(--success)' : 'var(--danger)'
+              background: gananciaNetaHoy >= 0 ? 'rgba(22, 163, 74, 0.1)' : 'rgba(220, 38, 38, 0.1)',
+              color: gananciaNetaHoy >= 0 ? 'var(--success)' : 'var(--danger)'
             }}>
               <DollarSign size={22} />
             </div>
             <div>
-              <div className="stat-label">Ganancia Neta</div>
-              <div className="stat-value" style={{ color: resumen.ganancia >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                {formatCurrency(resumen.ganancia)}
+              <div className="stat-label">Ganancia Neta (Hoy)</div>
+              <div className="stat-value" style={{ color: gananciaNetaHoy >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                {formatCurrency(gananciaNetaHoy)}
               </div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                Ventas menos gastos ({resumen.margen}% margen)
+                Al día de la fecha · {formatCurrency(ingresosHoy)} cobros hoy − {formatCurrency(gastosHoy)} gastos
               </div>
             </div>
           </div>
         </div>
 
-        {/* Desglose explicativo de Ganancia Neta */}
-        <div style={{
-          background: 'var(--bg-card)',
-          borderRadius: 12,
-          border: '1px solid var(--border)',
-          padding: '16px 20px',
-          marginBottom: 24,
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: 18,
-          alignItems: 'center'
-        }}>
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em', marginBottom: 4 }}>
-              📐 FÓRMULA DE GANANCIA NETA (FACTURACIÓN)
-            </div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <span style={{ color: 'var(--accent)' }}>Ventas ({formatCurrency(resumen.ventasFacturadas)})</span>
-              <span style={{ color: 'var(--text-muted)' }}>−</span>
-              <span style={{ color: 'var(--danger)' }}>Gastos Totales ({formatCurrency(resumen.gastos)})</span>
-              <span style={{ color: 'var(--text-muted)' }}>=</span>
-              <span style={{ color: resumen.ganancia >= 0 ? 'var(--success)' : 'var(--danger)', fontSize: 17 }}>
-                {formatCurrency(resumen.ganancia)}
-              </span>
-            </div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 4 }}>
-              Margen de ganancia: <strong>{resumen.margen}%</strong> sobre el total vendido en el período.
-            </div>
-          </div>
-
-          <div style={{ borderLeft: '1px solid var(--border)', paddingLeft: 18 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em', marginBottom: 4 }}>
-              💵 GANANCIA NETA EN CAJA (DINERO COBRADO REAL)
-            </div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <span style={{ color: '#0d9488' }}>Cobrado Real ({formatCurrency(resumen.ingresos)})</span>
-              <span style={{ color: 'var(--text-muted)' }}>−</span>
-              <span style={{ color: 'var(--danger)' }}>Egresos ({formatCurrency(resumen.gastos)})</span>
-              <span style={{ color: 'var(--text-muted)' }}>=</span>
-              <span style={{ color: resumen.gananciaCaja >= 0 ? 'var(--success)' : 'var(--danger)', fontSize: 17 }}>
-                {formatCurrency(resumen.gananciaCaja)}
-              </span>
-            </div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 4 }}>
-              Saldo pendiente por cobrar: <strong style={{ color: '#d97706' }}>{formatCurrency(resumen.saldoPorCobrar)}</strong> ({resumen.pedidosPendientesCount + resumen.pedidosSenaCount} pedidos con saldo pendiente).
-            </div>
-          </div>
-        </div>
-
-        {/* Charts Row 1 */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', gap: 20, marginBottom: 24 }}>
-          {/* Main Bar Chart: Ingresos vs Gastos vs Ganancia */}
-          <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div>
-                <h3 style={{ fontSize: 16, fontWeight: 700 }}>📊 Evolución Financiera Mensual</h3>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Comparativa de Facturación + Caja vs Egresos</p>
+        {/* TABLA DETALLADA: SALDOS PENDIENTES POR COBRAR (SEÑAS Y CUENTAS CORRIENTES A VENCIMIENTO) */}
+        <div className="card" style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+            <div>
+              <div className="section-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <CreditCard size={18} style={{ color: '#d97706' }} />
+                <span>Saldos Pendientes a Cobrar ({saldosPendientesList.length})</span>
               </div>
+              <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
+                Desglose de saldos de señas y cuentas corrientes clasificadas por fecha de vencimiento / entrega.
+              </p>
             </div>
 
-            <div style={{ height: 320, width: '100%' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={mesesData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                  <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 11 }} tickFormatter={val => `$${val}`} />
-                  <Tooltip
-                    formatter={(val: any) => [formatCurrency(Number(val)), '']}
-                    contentStyle={{ background: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)' }}
-                  />
-                  <Legend />
-                  <Bar dataKey="ingresos" name="Ingresos Totales ($)" fill="#149b8e" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="gastos" name="Gastos ($)" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="ganancia" name="Ganancia Neta ($)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+            {/* Badges de resumen rápido */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.12)', color: '#b45309', border: '1px solid #f59e0b', fontSize: 12 }}>
+                ⏳ Señas: <strong>{formatCurrency(resumen.saldoSenas)}</strong>
+              </span>
+              <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.12)', color: '#1d4ed8', border: '1px solid #3b82f6', fontSize: 12 }}>
+                📝 Ctas. Corrientes: <strong>{formatCurrency(resumen.saldoCuentasCorrientes)}</strong>
+              </span>
+              {resumen.saldoVencido > 0 && (
+                <span className="badge badge-danger" style={{ fontSize: 12 }}>
+                  🔴 Vencido: <strong>{formatCurrency(resumen.saldoVencido)}</strong> ({resumen.pedidosVencidosCount} ped.)
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Donut Chart: Gastos por Categoría */}
-          <div className="card">
-            <div style={{ marginBottom: 16 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700 }}>🍩 Distribución de Gastos</h3>
-              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Desglose por rubros y proveedores</p>
+          {/* Filtros de saldos y búsqueda */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className={`btn btn-sm ${filtroSaldos === 'todos' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setFiltroSaldos('todos')}
+              >
+                Todos ({saldosPendientesList.length})
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${filtroSaldos === 'senas' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setFiltroSaldos('senas')}
+              >
+                ⏳ Solo Señas ({saldosPendientesList.filter(s => s.tipoSaldo === 'sena').length})
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${filtroSaldos === 'cuentas_corrientes' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setFiltroSaldos('cuentas_corrientes')}
+              >
+                📝 Solo Cuentas Corrientes ({saldosPendientesList.filter(s => s.tipoSaldo === 'cuenta_corriente').length})
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${filtroSaldos === 'vencidos' ? 'btn-danger' : 'btn-secondary'}`}
+                onClick={() => setFiltroSaldos('vencidos')}
+              >
+                🔴 Vencidos ({saldosPendientesList.filter(s => s.estadoVencimiento === 'vencido').length})
+              </button>
             </div>
 
-            <div style={{ height: 230, width: '100%' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={gastosPorCategoria}
-                    dataKey="total"
-                    nameKey="nombre"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={85}
-                    paddingAngle={3}
-                  >
-                    {gastosPorCategoria.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+            <div style={{ minWidth: 220 }}>
+              <input
+                className="input"
+                placeholder="Buscar cliente o pedido #..."
+                value={searchSaldo}
+                onChange={e => setSearchSaldo(e.target.value)}
+                style={{ fontSize: 12.5 }}
+              />
+            </div>
+          </div>
+
+          {/* Tabla de Saldos a Cobrar */}
+          {saldosPendientesList.length === 0 ? (
+            <div style={{ padding: '28px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13.5 }}>
+              ✓ ¡Excelente! No hay saldos pendientes por cobrar registrados.
+            </div>
+          ) : (
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Pedido</th>
+                    <th>Cliente</th>
+                    <th>Tipo de Saldo</th>
+                    <th>Total</th>
+                    <th>Cobrado (Seña)</th>
+                    <th>Saldo a Cobrar</th>
+                    <th>Vencimiento / Entrega</th>
+                    <th>Estado Pedido</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {saldosPendientesList
+                    .filter(s => {
+                      if (filtroSaldos === 'senas' && s.tipoSaldo !== 'sena') return false
+                      if (filtroSaldos === 'cuentas_corrientes' && s.tipoSaldo !== 'cuenta_corriente') return false
+                      if (filtroSaldos === 'vencidos' && s.estadoVencimiento !== 'vencido') return false
+                      if (searchSaldo.trim()) {
+                        const q = searchSaldo.toLowerCase()
+                        return s.cliente_nombre.toLowerCase().includes(q) || s.numero.toLowerCase().includes(q)
+                      }
+                      return true
+                    })
+                    .map(s => (
+                      <tr key={s.id}>
+                        <td><strong>#{s.numero}</strong></td>
+                        <td><strong>{s.cliente_nombre}</strong></td>
+                        <td>
+                          {s.tipoSaldo === 'sena' ? (
+                            <span className="badge" style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#b45309', border: '1px solid #f59e0b' }}>
+                              ⏳ Saldo de Seña
+                            </span>
+                          ) : (
+                            <span className="badge" style={{ backgroundColor: 'rgba(59, 130, 246, 0.12)', color: '#1d4ed8', border: '1px solid #3b82f6' }}>
+                              📝 Cta. Corriente
+                            </span>
+                          )}
+                        </td>
+                        <td>{formatCurrency(s.totalPedido)}</td>
+                        <td>
+                          {s.montoCobrado > 0 ? (
+                            <span style={{ color: 'var(--success)', fontWeight: 600 }}>{formatCurrency(s.montoCobrado)}</span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>$0</span>
+                          )}
+                        </td>
+                        <td>
+                          <strong style={{ color: '#d97706', fontSize: 14 }}>{formatCurrency(s.saldoPendiente)}</strong>
+                        </td>
+                        <td>
+                          {s.estadoVencimiento === 'vencido' ? (
+                            <span className="badge badge-danger" style={{ fontWeight: 700 }}>
+                              ⚠️ Vencido ({s.fechaEntrega ? formatDate(s.fechaEntrega) : 'Pasado'})
+                            </span>
+                          ) : s.estadoVencimiento === 'hoy' ? (
+                            <span className="badge badge-warning" style={{ fontWeight: 700 }}>
+                              ¡Vence Hoy!
+                            </span>
+                          ) : s.estadoVencimiento === 'a_vencer' ? (
+                            <span className="badge badge-success">
+                              Vence {s.fechaEntrega ? formatDate(s.fechaEntrega) : ''}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Sin fecha asignada</span>
+                          )}
+                        </td>
+                        <td>
+                          <span className="badge badge-neutral">{s.estadoPedido.replace('_', ' ')}</span>
+                        </td>
+                      </tr>
                     ))}
-                  </Pie>
-                  <Tooltip formatter={(val: any) => [formatCurrency(Number(val)), 'Total']} />
-                </PieChart>
-              </ResponsiveContainer>
+                </tbody>
+              </table>
             </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 110, overflowY: 'auto' }}>
-              {gastosPorCategoria.map((cat, idx) => (
-                <div key={cat.nombre} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: 3, background: COLORS[idx % COLORS.length] }} />
-                    <span>{cat.nombre}</span>
-                  </div>
-                  <strong>{formatCurrency(cat.total)} ({cat.porcentaje}%)</strong>
-                </div>
-              ))}
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Detailed Table por Meses */}
@@ -986,6 +1152,82 @@ export default function ReportesPage() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+
+        {/* GRÁFICAS AL FINAL DE LA PÁGINA */}
+        <div style={{ marginTop: 24, marginBottom: 20 }}>
+          <div className="section-title" style={{ marginBottom: 14 }}>📊 Gráficas y Evolución Financiera</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', gap: 20 }}>
+            {/* Main Bar Chart: Ingresos vs Gastos vs Ganancia */}
+            <div className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div>
+                  <h3 style={{ fontSize: 16, fontWeight: 700 }}>📊 Evolución Financiera Mensual</h3>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Comparativa de Cobros + Caja vs Egresos</p>
+                </div>
+              </div>
+
+              <div style={{ height: 320, width: '100%' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={mesesData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                    <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={val => `$${val}`} />
+                    <Tooltip
+                      formatter={(val: any) => [formatCurrency(Number(val)), '']}
+                      contentStyle={{ background: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)' }}
+                    />
+                    <Legend />
+                    <Bar dataKey="ingresos" name="Ingresos Totales ($)" fill="#149b8e" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="gastos" name="Gastos ($)" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="ganancia" name="Ganancia Neta ($)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Donut Chart: Gastos por Categoría */}
+            <div className="card">
+              <div style={{ marginBottom: 16 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700 }}>🍩 Distribución de Gastos</h3>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Desglose por rubros y categorías</p>
+              </div>
+
+              <div style={{ height: 230, width: '100%' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={gastosPorCategoria}
+                      dataKey="total"
+                      nameKey="nombre"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={85}
+                      paddingAngle={3}
+                    >
+                      {gastosPorCategoria.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(val: any) => [formatCurrency(Number(val)), 'Total']} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 110, overflowY: 'auto' }}>
+                {gastosPorCategoria.map((cat, idx) => (
+                  <div key={cat.nombre} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ width: 10, height: 10, borderRadius: 3, background: COLORS[idx % COLORS.length] }} />
+                      <span>{cat.nombre}</span>
+                    </div>
+                    <strong>{formatCurrency(cat.total)} ({cat.porcentaje}%)</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </main>
