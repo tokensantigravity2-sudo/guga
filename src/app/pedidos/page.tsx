@@ -634,7 +634,7 @@ export default function PedidosPage() {
     }
 
     // SI SE MARCA COMO COBRADO (ON): Registrar saldo pendiente en la Caja Diaria
-    if (newCobrado && pedido.metodo_pago !== 'cuenta_corriente') {
+    if (newCobrado) {
       const saldoPendiente = Math.max(0, totalPedido - totalYaIngresado)
 
       if (saldoPendiente > 0) {
