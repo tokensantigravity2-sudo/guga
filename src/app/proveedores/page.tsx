@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -15,7 +15,7 @@ const DEFAULT_RUBROS = [
   'Imprenta Tercerizada',
   'Troquelado & Acabados',
   'Encuadernacion',
-  'Máquinas',
+  'MÃ¡quinas',
   'General',
 ]
 
@@ -30,7 +30,7 @@ export default function ProveedoresPage() {
   const [editingProveedor, setEditingProveedor] = useState<Proveedor | null>(null)
   const [proveedorStats, setProveedorStats] = useState<Map<string, number>>(new Map())
 
-  // Gestión dinámica de Rubros (abiertos para agregar o eliminar)
+  // GestiÃ³n dinÃ¡mica de Rubros (abiertos para agregar o eliminar)
   const [rubros, setRubros] = useState<string[]>(DEFAULT_RUBROS)
   const [showRubrosModal, setShowRubrosModal] = useState(false)
   const [nuevoRubro, setNuevoRubro] = useState('')
@@ -106,7 +106,7 @@ export default function ProveedoresPage() {
   const handleAddRubro = (nombreRubro: string) => {
     const trimmed = nombreRubro.trim()
     if (!trimmed) {
-      toast.error('Ingresá el nombre del rubro')
+      toast.error('IngresÃ¡ el nombre del rubro')
       return
     }
     if (rubros.some(r => r.toLowerCase() === trimmed.toLowerCase())) {
@@ -128,7 +128,7 @@ export default function ProveedoresPage() {
   const handleDeleteRubro = (rubroToDelete: string) => {
     const cantUso = proveedores.filter(p => p.rubro?.includes(rubroToDelete)).length
     if (cantUso > 0) {
-      if (!confirm(`Hay ${cantUso} proveedor(es) con el rubro "${rubroToDelete}". ¿Seguro que querés eliminarlo de la lista?`)) {
+      if (!confirm(`Hay ${cantUso} proveedor(es) con el rubro "${rubroToDelete}". Â¿Seguro que querÃ©s eliminarlo de la lista?`)) {
         return
       }
     }
@@ -200,7 +200,7 @@ export default function ProveedoresPage() {
 
   const handleAddPriceItem = () => {
     if (!newPriceItem.producto.trim() || newPriceItem.precio <= 0) {
-      toast.error('Completá producto y precio mayor a 0')
+      toast.error('CompletÃ¡ producto y precio mayor a 0')
       return
     }
     const updated = [...priceList, { ...newPriceItem, id: Date.now().toString() }]
@@ -280,7 +280,7 @@ export default function ProveedoresPage() {
       }
 
       if (error) { toast.error('Error al crear proveedor: ' + error.message); return }
-      toast.success('Proveedor creado con éxito')
+      toast.success('Proveedor creado con Ã©xito')
     }
 
     closeModal()
@@ -288,7 +288,7 @@ export default function ProveedoresPage() {
   }
 
   const handleDelete = async (id: string, nombre: string) => {
-    if (!confirm(`¿Eliminar al proveedor "${nombre}"?`)) return
+    if (!confirm(`Â¿Eliminar al proveedor "${nombre}"?`)) return
     const { error } = await supabase.from('proveedores').delete().eq('id', id)
     if (error) {
       toast.error('No se pudo eliminar: ' + error.message)
@@ -340,7 +340,7 @@ export default function ProveedoresPage() {
 
   return (
     <>
-      <Header title="Proveedores & Tercerizados" subtitle="Gestión de proveedores con lista desplegable y listas de precios" />
+      <Header title="Proveedores & Tercerizados" subtitle="GestiÃ³n de proveedores con lista desplegable y listas de precios" />
       <main style={{ padding: '28px', flex: 1 }}>
 
         {/* Top Control Bar with Dropdowns */}
@@ -361,16 +361,16 @@ export default function ProveedoresPage() {
                 }}
                 style={{ fontWeight: 600, borderColor: 'var(--accent)' }}
               >
-                <option value="">📋 Seleccionar Proveedor (Lista Desplegable)...</option>
+                <option value="">ðŸ“‹ Seleccionar Proveedor (Lista Desplegable)...</option>
                 {proveedores.map(p => (
                   <option key={p.id} value={p.id}>
-                    {(p.es_tercerizado || p.rubro?.includes('Tercerizado')) ? '🏭' : '📦'} {p.nombre} ({p.rubro || 'General'})
+                    {(p.es_tercerizado || p.rubro?.includes('Tercerizado')) ? 'ðŸ­' : 'ðŸ“¦'} {p.nombre} ({p.rubro || 'General'})
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* Búsqueda por texto */}
+            {/* BÃºsqueda por texto */}
             <div style={{ position: 'relative', width: 220 }}>
               <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
               <input
@@ -382,7 +382,7 @@ export default function ProveedoresPage() {
               />
             </div>
 
-            {/* LISTA DESPLEGABLE DE RUBROS + BOTÓN GESTIÓN */}
+            {/* LISTA DESPLEGABLE DE RUBROS + BOTÃ“N GESTIÃ“N */}
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <select
                 className="input"
@@ -418,13 +418,13 @@ export default function ProveedoresPage() {
                 className={`btn btn-sm ${filterTipo === 'insumos' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setFilterTipo('insumos')}
               >
-                📦 Insumos
+                ðŸ“¦ Insumos
               </button>
               <button
                 className={`btn btn-sm ${filterTipo === 'tercerizados' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setFilterTipo('tercerizados')}
               >
-                🏭 Tercerizados
+                ðŸ­ Tercerizados
               </button>
             </div>
           </div>
@@ -443,7 +443,7 @@ export default function ProveedoresPage() {
                 <th>Tipo & Rubro</th>
                 <th>Lista de Precios</th>
                 <th>Total Gastado</th>
-                <th>Dirección</th>
+                <th>DirecciÃ³n</th>
                 <th style={{ width: 140 }}>Acciones</th>
               </tr>
             </thead>
@@ -467,7 +467,7 @@ export default function ProveedoresPage() {
                           <strong>{p.nombre}</strong>
                           {isTerc && (
                             <div style={{ fontSize: 11, color: 'var(--warning)', fontWeight: 600 }}>
-                              🏭 Servicio Tercerizado
+                              ðŸ­ Servicio Tercerizado
                             </div>
                           )}
                         </div>
@@ -518,7 +518,7 @@ export default function ProveedoresPage() {
                       </button>
                     </td>
                     <td><strong style={{ color: 'var(--danger)' }}>{formatCurrency(proveedorStats.get(p.id) || 0)}</strong></td>
-                    <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{p.direccion || '—'}</td>
+                    <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{p.direccion || 'â€”'}</td>
                     <td>
                       <div style={{ display: 'flex', gap: 4 }}>
                         <button className="btn btn-sm btn-ghost" onClick={() => openHistory(p)} title="Ver Historial de Compras">
@@ -551,10 +551,10 @@ export default function ProveedoresPage() {
             <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
               <div className="modal-header">
                 <div>
-                  <h2 style={{ fontSize: 16, fontWeight: 700 }}>🏷️ Lista de Precios Pactados</h2>
+                  <h2 style={{ fontSize: 16, fontWeight: 700 }}>ðŸ·ï¸ Lista de Precios Pactados</h2>
                   <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>{selectedProveedorPriceList.nombre}</p>
                 </div>
-                <button className="btn btn-ghost btn-sm" onClick={() => setShowPriceListModal(false)}>✕</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setShowPriceListModal(false)}>âœ•</button>
               </div>
               <div className="modal-body">
                 {/* Form to add item */}
@@ -636,7 +636,7 @@ export default function ProveedoresPage() {
                   ) : (
                     <div className="empty-state" style={{ padding: 20 }}>
                       <List size={24} />
-                      <p style={{ fontSize: 12 }}>Sin ítems en la lista de precios</p>
+                      <p style={{ fontSize: 12 }}>Sin Ã­tems en la lista de precios</p>
                     </div>
                   )}
                 </div>
@@ -655,10 +655,10 @@ export default function ProveedoresPage() {
             <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 650 }}>
               <div className="modal-header">
                 <div>
-                  <h2 style={{ fontSize: 16, fontWeight: 700 }}>📜 Historial de Proveedor</h2>
+                  <h2 style={{ fontSize: 16, fontWeight: 700 }}>ðŸ“œ Historial de Proveedor</h2>
                   <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>{selectedProveedorHistory.nombre}</p>
                 </div>
-                <button className="btn btn-ghost btn-sm" onClick={() => setSelectedProveedorHistory(null)}>✕</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setSelectedProveedorHistory(null)}>âœ•</button>
               </div>
               <div className="modal-body">
                 {loadingHistory ? (
@@ -675,7 +675,7 @@ export default function ProveedoresPage() {
                           }}>
                             <div>
                               <strong>{g.concepto}</strong>
-                              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{g.fecha ? formatDate(g.fecha) : ''} • {g.categoria}</div>
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{g.fecha ? formatDate(g.fecha) : ''} â€¢ {g.categoria}</div>
                             </div>
                             <strong style={{ color: 'var(--danger)', fontSize: 14 }}>{formatCurrency(g.monto)}</strong>
                           </div>
@@ -714,7 +714,7 @@ export default function ProveedoresPage() {
             <div className="modal" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
                 <h2>{editingProveedor ? 'Editar Proveedor' : 'Nuevo Proveedor / Tercerizado'}</h2>
-                <button className="btn btn-ghost btn-sm" onClick={closeModal}>✕</button>
+                <button className="btn btn-ghost btn-sm" onClick={closeModal}>âœ•</button>
               </div>
               <form onSubmit={handleSubmit}>
                 <div className="modal-body">
@@ -785,7 +785,7 @@ export default function ProveedoresPage() {
                             onClick={() => setShowRubrosModal(true)}
                             title="Administrar Rubros (Agregar / Eliminar)"
                           >
-                            ⚙️
+                            âš™ï¸
                           </button>
                         </div>
                       )}
@@ -806,13 +806,13 @@ export default function ProveedoresPage() {
                       style={{ width: 16, height: 16, cursor: 'pointer' }}
                     />
                     <label htmlFor="tercerizado_chk" style={{ margin: 0, cursor: 'pointer', textTransform: 'none', fontSize: 13, fontWeight: 600 }}>
-                      🏭 Es un taller o proveedor de SERVICIOS TERCERIZADOS
+                      ðŸ­ Es un taller o proveedor de SERVICIOS TERCERIZADOS
                     </label>
                   </div>
 
                   <div className="form-grid">
                     <div className="form-group">
-                      <label>Teléfono</label>
+                      <label>TelÃ©fono</label>
                       <input
                         className="input"
                         placeholder="ej. 2400 1234"
@@ -833,7 +833,7 @@ export default function ProveedoresPage() {
                   </div>
 
                   <div className="form-group">
-                    <label>Dirección</label>
+                    <label>DirecciÃ³n</label>
                     <input
                       className="input"
                       placeholder="ej. Av. Italia 5678"
@@ -847,7 +847,7 @@ export default function ProveedoresPage() {
                     <textarea
                       className="input"
                       style={{ minHeight: 60 }}
-                      placeholder="Días de despacho, condiciones de crédito..."
+                      placeholder="DÃ­as de despacho, condiciones de crÃ©dito..."
                       value={form.notas}
                       onChange={e => setForm({ ...form, notas: e.target.value })}
                     />
@@ -868,23 +868,23 @@ export default function ProveedoresPage() {
             <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
               <div className="modal-header">
                 <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 17, fontWeight: 700 }}>
-                  🏷️ Administrar Rubros de Proveedores
+                  ðŸ·ï¸ Administrar Rubros de Proveedores
                 </h3>
                 <button type="button" onClick={() => setShowRubrosModal(false)} className="btn btn-ghost btn-sm">
-                  ✕
+                  âœ•
                 </button>
               </div>
 
               <div className="modal-body">
                 <p style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 14 }}>
-                  Podés agregar nuevos rubros a medida que los necesites o eliminar los que ya no utilices.
+                  PodÃ©s agregar nuevos rubros a medida que los necesites o eliminar los que ya no utilices.
                 </p>
 
                 {/* Input para agregar nuevo rubro */}
                 <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
                   <input
                     className="input"
-                    placeholder="Escribir nuevo rubro (ej. Serigrafía / Remeras / Flete)..."
+                    placeholder="Escribir nuevo rubro (ej. SerigrafÃ­a / Remeras / Flete)..."
                     value={nuevoRubro}
                     onChange={e => setNuevoRubro(e.target.value)}
                     onKeyDown={e => {

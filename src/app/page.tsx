@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
@@ -14,7 +14,7 @@ export default function DashboardPage() {
   const [ventas, setVentas] = useState<Pedido[]>([])
   const [ventasMes, setVentasMes] = useState<{ total: number; estado?: string }[]>([])
   const [gastos, setGastos] = useState<{ monto: number; fecha?: string }[]>([])
-  const [cajaEgresosMes, setCajaEgresosMes] = useState<{ monto: number; referencia_id?: string | null; fecha?: string }[]>([])
+  const [cajaMovsMes, setCajaMovsMes] = useState<{ tipo: string; monto: number; referencia_id?: string | null; fecha?: string; created_at?: string }[]>([])
   const [stockBajo, setStockBajo] = useState<StockItem[]>([])
   const [pedidosActivos, setPedidosActivos] = useState(0)
   const [proximasEntregas, setProximasEntregas] = useState<Pedido[]>([])
@@ -27,7 +27,7 @@ export default function DashboardPage() {
       const cachedVentas = sessionStorage.getItem('guga_cache_dashboard_ventas')
       const cachedVentasMes = sessionStorage.getItem('guga_cache_dashboard_ventas_mes')
       const cachedGastos = sessionStorage.getItem('guga_cache_dashboard_gastos')
-      const cachedCajaEgresos = sessionStorage.getItem('guga_cache_dashboard_caja_egresos')
+      const cachedCajaMovs = sessionStorage.getItem('guga_cache_dashboard_caja_movs')
       const cachedActivos = sessionStorage.getItem('guga_cache_dashboard_activos')
       const cachedEntregas = sessionStorage.getItem('guga_cache_dashboard_entregas')
       const cachedTareas = sessionStorage.getItem('guga_cache_dashboard_tareas')
@@ -36,7 +36,7 @@ export default function DashboardPage() {
       if (cachedVentas) setVentas(JSON.parse(cachedVentas))
       if (cachedVentasMes) setVentasMes(JSON.parse(cachedVentasMes))
       if (cachedGastos) setGastos(JSON.parse(cachedGastos))
-      if (cachedCajaEgresos) setCajaEgresosMes(JSON.parse(cachedCajaEgresos))
+      if (cachedCajaMovs) setCajaMovsMes(JSON.parse(cachedCajaMovs))
       if (cachedActivos) setPedidosActivos(Number(cachedActivos))
       if (cachedEntregas) setProximasEntregas(JSON.parse(cachedEntregas))
       if (cachedTareas) setTareasPendientes(JSON.parse(cachedTareas))
@@ -64,13 +64,13 @@ export default function DashboardPage() {
           supabase.from('pedidos').select('*').gte('fecha_entrega', today).not('estado', 'in', '("entregado","cancelado")').order('fecha_entrega', { ascending: true }).limit(10),
           supabase.from('tareas').select('*').eq('completada', false).order('created_at', { ascending: false }).limit(4),
           supabase.from('pedidos').select('total, estado').gte('created_at', startOfMonth + 'T00:00:00').not('estado', 'in', '("presupuesto","cancelado")'),
-          supabase.from('caja_movimientos').select('monto, referencia_id, fecha').eq('tipo', 'egreso').gte('fecha', startOfMonth + 'T00:00:00'),
+          supabase.from('caja_movimientos').select('tipo, monto, referencia_id, fecha, created_at').gte('fecha', startOfMonth + 'T00:00:00'),
         ])
 
         const newVentas = ventasRes.data || []
         const newVentasMes = ventasMesRes.data || []
         const newGastos = gastosRes.data || []
-        const newCajaEgresos = cajaEgresosRes.data || []
+        const newCajaMovs = cajaEgresosRes.data || []
         const newActivos = activosRes.count || 0
         const newEntregas = entregasRes.data || []
         const newTareas = tareasRes.data || []
@@ -80,7 +80,7 @@ export default function DashboardPage() {
         setVentas(newVentas)
         setVentasMes(newVentasMes)
         setGastos(newGastos)
-        setCajaEgresosMes(newCajaEgresos)
+        setCajaMovsMes(newCajaMovs)
         setPedidosActivos(newActivos)
         setProximasEntregas(newEntregas)
         setTareasPendientes(newTareas)
@@ -90,7 +90,7 @@ export default function DashboardPage() {
           sessionStorage.setItem('guga_cache_dashboard_ventas', JSON.stringify(newVentas))
           sessionStorage.setItem('guga_cache_dashboard_ventas_mes', JSON.stringify(newVentasMes))
           sessionStorage.setItem('guga_cache_dashboard_gastos', JSON.stringify(newGastos))
-          sessionStorage.setItem('guga_cache_dashboard_caja_egresos', JSON.stringify(newCajaEgresos))
+          sessionStorage.setItem('guga_cache_dashboard_caja_movs', JSON.stringify(newCajaMovs))
           sessionStorage.setItem('guga_cache_dashboard_activos', String(newActivos))
           sessionStorage.setItem('guga_cache_dashboard_entregas', JSON.stringify(newEntregas))
           sessionStorage.setItem('guga_cache_dashboard_tareas', JSON.stringify(newTareas))
@@ -112,20 +112,24 @@ export default function DashboardPage() {
   const presupuestosHoy = ventas.filter(v => v.estado === 'presupuesto')
   const totalVentasHoy = pedidosConfirmadosHoy.reduce((s, v) => s + Number(v.total), 0)
 
-  // Gastos de HOY (al día de la fecha, NO del mes)
+  // Gastos de HOY (al dÃ­a de la fecha, NO del mes)
   const totalGastosTablaHoy = gastos
     .filter(g => (g.fecha || '').substring(0, 10) === todayStr)
     .reduce((s, g) => s + Number(g.monto), 0)
 
-  const totalEgresosCajaHoy = cajaEgresosMes
+  const totalEgresosCajaHoy = cajaMovsMes
     .filter(e => {
       const f = (e.fecha || '').substring(0, 10)
-      return f === todayStr && !e.referencia_id
+      return f === todayStr && e.tipo === 'egreso' && !e.referencia_id
     })
     .reduce((s, e) => s + Number(e.monto), 0)
 
+  const totalIngresosCajaHoy = cajaMovsMes
+    .filter(m => m.tipo === 'ingreso' && (m.fecha || m.created_at || '').substring(0, 10) === todayStr)
+    .reduce((s, m) => s + Number(m.monto), 0)
+
   const totalGastosHoy = totalGastosTablaHoy + totalEgresosCajaHoy
-  const gananciaHoy = totalVentasHoy - totalGastosHoy
+  const gananciaHoy = totalIngresosCajaHoy - totalGastosHoy
 
   // Entregas programadas estrictamente para HOY (excluyendo pasadas y terminadas ya retiradas)
   const entregasHoy = proximasEntregas.filter(p => {
@@ -133,13 +137,13 @@ export default function DashboardPage() {
     return f === todayStr && p.estado !== 'entregado' && p.estado !== 'cancelado'
   })
 
-  // Próximas entregas futuras (a partir de mañana)
+  // PrÃ³ximas entregas futuras (a partir de maÃ±ana)
   const entregasFuturas = proximasEntregas.filter(p => {
     const f = (p.fecha_entrega || '').substring(0, 10)
     return f > todayStr && p.estado !== 'entregado' && p.estado !== 'cancelado'
   })
 
-  // Pedidos recientes (todos los del día)
+  // Pedidos recientes (todos los del dÃ­a)
   const pedidosRecientes = ventas.slice(0, 8)
 
   if (loading) {
@@ -166,7 +170,7 @@ export default function DashboardPage() {
     switch (estado) {
       case 'presupuesto': return 'Presupuesto'
       case 'aprobado': return 'Aprobado'
-      case 'en_produccion': return 'En Producción'
+      case 'en_produccion': return 'En ProducciÃ³n'
       case 'terminado': return 'Terminado'
       case 'entregado': return 'Entregado'
       case 'cancelado': return 'Cancelado'
@@ -176,7 +180,7 @@ export default function DashboardPage() {
 
   return (
     <>
-      <Header title="Dashboard" subtitle="Resumen del día en tiempo real" />
+      <Header title="Dashboard" subtitle="Resumen del dÃ­a en tiempo real" />
       <main style={{ padding: '28px', flex: 1, maxWidth: '1440px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
 
         {/* Top Actions & Quick Access Bar */}
@@ -186,7 +190,7 @@ export default function DashboardPage() {
               Panel de Control
             </h2>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '3px 0 0' }}>
-              Métricas clave, producción y accesos directos
+              MÃ©tricas clave, producciÃ³n y accesos directos
             </p>
           </div>
 
@@ -242,13 +246,13 @@ export default function DashboardPage() {
             iconColor="var(--accent)"
             label="Pedidos Hoy"
             value={String(pedidosConfirmadosHoy.length)}
-            sub={`${formatCurrency(totalVentasHoy)} facturado${presupuestosHoy.length > 0 ? ` · (${presupuestosHoy.length} ppto${presupuestosHoy.length > 1 ? 's' : ''})` : ''}`}
+            sub={`${formatCurrency(totalVentasHoy)} facturado${presupuestosHoy.length > 0 ? ` Â· (${presupuestosHoy.length} ppto${presupuestosHoy.length > 1 ? 's' : ''})` : ''}`}
           />
           <StatCard
             icon={<Printer size={20} />}
             iconBg="var(--warning-muted)"
             iconColor="var(--warning)"
-            label="En Producción"
+            label="En ProducciÃ³n"
             value={String(pedidosActivos)}
             sub="pedidos activos"
           />
@@ -266,7 +270,7 @@ export default function DashboardPage() {
             iconColor={gananciaHoy >= 0 ? 'var(--success)' : 'var(--danger)'}
             label="Ganancia Neta (Hoy)"
             value={formatCurrency(gananciaHoy)}
-            sub={`${formatCurrency(totalVentasHoy)} ventas hoy − ${formatCurrency(totalGastosHoy)} gastos`}
+            sub={`${formatCurrency(totalIngresosCajaHoy)} cobrado - ${formatCurrency(totalGastosHoy)} gastos`}
           />
         </div>
 
@@ -274,15 +278,15 @@ export default function DashboardPage() {
           {/* Main content column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-            {/* Entregas del Día (Hoy) */}
+            {/* Entregas del DÃ­a (Hoy) */}
             <div className="card">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Truck size={18} style={{ color: 'var(--accent)' }} />
-                  <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>🚚 Entregas del Día ({entregasHoy.length})</h3>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>ðŸšš Entregas del DÃ­a ({entregasHoy.length})</h3>
                 </div>
                 <Link href="/calendario" style={{ fontSize: 12.5, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', fontWeight: 600 }}>
-                  Ver Calendario →
+                  Ver Calendario â†’
                 </Link>
               </div>
 
@@ -296,15 +300,15 @@ export default function DashboardPage() {
                     }}>
                       <div>
                         <div style={{ fontWeight: 700 }}>
-                          Pedido #{p.numero} — {p.cliente_nombre || 'Consumidor Final'}
+                          Pedido #{p.numero} â€” {p.cliente_nombre || 'Consumidor Final'}
                         </div>
                         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                          Total: {formatCurrency(p.total)} • Pago: {p.metodo_pago || 'efectivo'}
+                          Total: {formatCurrency(p.total)} â€¢ Pago: {p.metodo_pago || 'efectivo'}
                         </div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         <span className="badge badge-danger" style={{ fontWeight: 700 }}>
-                          ¡ENTREGA HOY!
+                          Â¡ENTREGA HOY!
                         </span>
                         <div style={{ marginTop: 2 }}>
                           <span className={`badge ${getEstadoBadge(p.estado)}`} style={{ fontSize: 10 }}>
@@ -317,21 +321,21 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '16px 0' }}>
-                  ✓ Sin entregas pendientes programadas para el día de hoy
+                  âœ“ Sin entregas pendientes programadas para el dÃ­a de hoy
                 </div>
               )}
 
-              {/* Próximas entregas a futuro (siguientes días, sin incluir pasadas) */}
+              {/* PrÃ³ximas entregas a futuro (siguientes dÃ­as, sin incluir pasadas) */}
               {entregasFuturas.length > 0 && (
                 <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
                   <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8, letterSpacing: '0.05em' }}>
-                    Próximas entregas de los siguientes días:
+                    PrÃ³ximas entregas de los siguientes dÃ­as:
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {entregasFuturas.slice(0, 4).map(p => (
                       <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '7px 10px', background: 'var(--bg-hover)', borderRadius: 6 }}>
                         <div>
-                          <strong>#{p.numero}</strong> — {p.cliente_nombre || 'Consumidor Final'}
+                          <strong>#{p.numero}</strong> â€” {p.cliente_nombre || 'Consumidor Final'}
                         </div>
                         <span className="badge badge-warning" style={{ fontSize: 11 }}>
                           {formatDate(p.fecha_entrega!)}
@@ -343,10 +347,10 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* Últimos Pedidos */}
+            {/* Ãšltimos Pedidos */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <div className="section-title" style={{ margin: 0 }}>Últimos Pedidos</div>
+                <div className="section-title" style={{ margin: 0 }}>Ãšltimos Pedidos</div>
                 <Link href="/pedidos" style={{ fontSize: 12.5, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', fontWeight: 500 }}>
                   Ver todos <ArrowRight size={12} />
                 </Link>
@@ -355,13 +359,13 @@ export default function DashboardPage() {
                 {pedidosRecientes.length === 0 ? (
                   <div className="empty-state" style={{ padding: 40 }}>
                     <ShoppingCart size={32} />
-                    <p>Sin pedidos hoy todavía</p>
+                    <p>Sin pedidos hoy todavÃ­a</p>
                   </div>
                 ) : (
                   <table>
                     <thead>
                       <tr>
-                        <th>N°</th>
+                        <th>NÂ°</th>
                         <th>Cliente</th>
                         <th>Estado</th>
                         <th>Pago</th>
@@ -397,14 +401,14 @@ export default function DashboardPage() {
 
           {/* Sidebar derecho */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {/* Tareas Pendientes Rápido */}
+            {/* Tareas Pendientes RÃ¡pido */}
             <div className="card">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 14 }}>
                   <CheckSquare size={16} style={{ color: 'var(--accent)' }} />
                   Pendientes & Ideas
                 </div>
-                <Link href="/pendientes" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>Ver todo →</Link>
+                <Link href="/pendientes" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>Ver todo â†’</Link>
               </div>
 
               {tareasPendientes.length > 0 ? (
@@ -423,7 +427,7 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div style={{ fontSize: 12, color: 'var(--success)', textAlign: 'center', padding: '10px 0' }}>
-                  ✓ Sin tareas pendientes
+                  âœ“ Sin tareas pendientes
                 </div>
               )}
             </div>
@@ -431,12 +435,12 @@ export default function DashboardPage() {
             {/* Stock Bajo */}
             <div className="card">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <div className="section-title" style={{ margin: 0 }}>⚠ Materiales Bajo Stock</div>
-                <Link href="/stock" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none' }}>Ver stock →</Link>
+                <div className="section-title" style={{ margin: 0 }}>âš  Materiales Bajo Stock</div>
+                <Link href="/stock" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none' }}>Ver stock â†’</Link>
               </div>
               {stockBajo.length === 0 ? (
                 <div style={{ fontSize: 13, color: 'var(--success)', textAlign: 'center', padding: '16px 0' }}>
-                  ✓ Todo el stock está OK
+                  âœ“ Todo el stock estÃ¡ OK
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -459,9 +463,9 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* Acceso Rápido */}
+            {/* Acceso RÃ¡pido */}
             <div className="card">
-              <div className="section-title">Acceso Rápido</div>
+              <div className="section-title">Acceso RÃ¡pido</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <Link href="/pedidos" className="btn btn-primary" style={{ justifyContent: 'center' }}>
                   <ShoppingCart size={15} /> Nuevo Pedido

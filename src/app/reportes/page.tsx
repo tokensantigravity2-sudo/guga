@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -126,13 +126,13 @@ export default function ReportesPage() {
     cajaSaldo: 0,
   })
 
-  // Ganancia Neta al día de la fecha (HOY)
+  // Ganancia Neta al dÃ­a de la fecha (HOY)
   const [gananciaNetaHoy, setGananciaNetaHoy] = useState(0)
   const [ingresosHoy, setIngresosHoy] = useState(0)
   const [gastosHoy, setGastosHoy] = useState(0)
   const [ventasHoy, setVentasHoy] = useState(0)
 
-  // Saldos pendientes detallados (señas y cuentas corrientes a vencimiento)
+  // Saldos pendientes detallados (seÃ±as y cuentas corrientes a vencimiento)
   const [saldosPendientesList, setSaldosPendientesList] = useState<PedidoCobradoDetalle[]>([])
   const [filtroSaldos, setFiltroSaldos] = useState<'todos' | 'senas' | 'cuentas_corrientes' | 'vencidos'>('todos')
   const [searchSaldo, setSearchSaldo] = useState('')
@@ -243,7 +243,7 @@ export default function ReportesPage() {
       return true
     })
 
-    // Egresos de caja en el período (insumos/talleres pagados desde mostrador)
+    // Egresos de caja en el perÃ­odo (insumos/talleres pagados desde mostrador)
     const egresosCajaFiltrados = cajaFiltrada.filter(c => {
       if (c.tipo !== 'egreso') return false
       if (c.referencia_id && gastosRaw.some(g => g.id === c.referencia_id)) return false
@@ -256,7 +256,7 @@ export default function ReportesPage() {
 
     const todayStr = getTodayStr()
 
-    // 1. Ganancia Neta al día de la fecha (HOY)
+    // 1. Ganancia Neta al dÃ­a de la fecha (HOY)
     const ingrHoy = cajaRaw
       .filter(c => (c.fecha || c.created_at || '').substring(0, 10) === todayStr && c.tipo === 'ingreso')
       .reduce((sum, c) => sum + Number(c.monto || 0), 0)
@@ -283,7 +283,7 @@ export default function ReportesPage() {
     setVentasHoy(vtsHoy)
     setGananciaNetaHoy(netHoy)
 
-    // 2. Saldos pendientes a cobrar globales (Señas y Cuentas Corrientes con vencimiento / fecha_entrega)
+    // 2. Saldos pendientes a cobrar globales (SeÃ±as y Cuentas Corrientes con vencimiento / fecha_entrega)
     const todosSaldosPendientes: PedidoCobradoDetalle[] = []
     let globalSaldoSenas = 0
     let globalSaldoCtaCte = 0
@@ -343,7 +343,7 @@ export default function ReportesPage() {
       }
     })
 
-    // Ordenar saldos pendientes: primero vencidos, luego por fecha más antigua
+    // Ordenar saldos pendientes: primero vencidos, luego por fecha mÃ¡s antigua
     todosSaldosPendientes.sort((a, b) => {
       if (a.estadoVencimiento === 'vencido' && b.estadoVencimiento !== 'vencido') return -1
       if (a.estadoVencimiento !== 'vencido' && b.estadoVencimiento === 'vencido') return 1
@@ -351,7 +351,7 @@ export default function ReportesPage() {
     })
     setSaldosPendientesList(todosSaldosPendientes)
 
-    // 3. Identificar pedidos confirmados y cobros en el período
+    // 3. Identificar pedidos confirmados y cobros en el perÃ­odo
     const pedidosReporteList: PedidoCobradoDetalle[] = []
     let totalVentasFacturadas = 0
     let totalCobradoEnPeriodo = 0
@@ -359,30 +359,30 @@ export default function ReportesPage() {
     let totalPagosCompletos = 0
 
     pedidosRaw.forEach(p => {
-      // Excluir cancelados y presupuestos pendientes (¡NUNCA cuentan como venta!)
+      // Excluir cancelados y presupuestos pendientes (Â¡NUNCA cuentan como venta!)
       if (p.estado === 'cancelado' || p.estado === 'presupuesto') return
 
       const pDate = parseFechaLocal(p.created_at)
       const creadoEnPeriodo = (!startDate || pDate >= startDate) && (!endDate || pDate <= endDate)
 
-      // Movimientos de ingreso en caja registrados en el período actual
+      // Movimientos de ingreso en caja registrados en el perÃ­odo actual
       const movsEnPeriodo = cajaFiltrada.filter(c => c.referencia_id === p.id && c.tipo === 'ingreso')
       const montoCajaPeriodo = movsEnPeriodo.reduce((sum, c) => sum + Number(c.monto), 0)
 
-      // Total histórico de movimientos en caja para este pedido
+      // Total histÃ³rico de movimientos en caja para este pedido
       const allMovsPedido = cajaRaw.filter(c => c.referencia_id === p.id && c.tipo === 'ingreso')
       const totalHistoricoCaja = allMovsPedido.reduce((sum, c) => sum + Number(c.monto), 0)
 
       const isCobradoFlag = p.cobrado === true || (p.notas || '').includes('[COBRADO:true]')
       const totalP = Number(p.total) || 0
 
-      // Si fue marcado como cobrado pero no tiene movimientos explícitos en caja
+      // Si fue marcado como cobrado pero no tiene movimientos explÃ­citos en caja
       let montoCobradoPeriodo = montoCajaPeriodo
       if (montoCobradoPeriodo === 0 && isCobradoFlag && creadoEnPeriodo) {
         montoCobradoPeriodo = totalP
       }
 
-      // El pedido entra al reporte si fue creado en el período O si tuvo un cobro en el período
+      // El pedido entra al reporte si fue creado en el perÃ­odo O si tuvo un cobro en el perÃ­odo
       if (creadoEnPeriodo || montoCobradoPeriodo > 0) {
         if (creadoEnPeriodo) {
           totalVentasFacturadas += totalP
@@ -427,11 +427,11 @@ export default function ReportesPage() {
       }
     })
 
-    // Ordenar pedidos por fecha más reciente
+    // Ordenar pedidos por fecha mÃ¡s reciente
     pedidosReporteList.sort((a, b) => new Date(b.fecha || 0).getTime() - new Date(a.fecha || 0).getTime())
     setPedidosCobradosDetalle(pedidosReporteList)
 
-    // Movimientos directos de caja (mostrador que no están asociados a un pedido)
+    // Movimientos directos de caja (mostrador que no estÃ¡n asociados a un pedido)
     const directosCaja = cajaFiltrada.filter(c => c.tipo === 'ingreso' && !c.referencia_id)
     setCajaDirectaList(directosCaja)
     const cajaIngresosDirectos = directosCaja.reduce((sum, c) => sum + Number(c.monto), 0)
@@ -479,7 +479,7 @@ export default function ReportesPage() {
       cajaSaldo: cajaSaldoTotal,
     })
 
-    // 2. Gráfico por Meses (Evolución de Ingresos Cobrados vs Egresos)
+    // 2. GrÃ¡fico por Meses (EvoluciÃ³n de Ingresos Cobrados vs Egresos)
     const mesesMap = new Map<string, { ingresos: number; gastos: number; count: number }>()
 
     pedidosReporteList.forEach(p => {
@@ -525,7 +525,7 @@ export default function ReportesPage() {
 
     setMesesData(mesesList)
 
-    // 3. Gastos por Categoría
+    // 3. Gastos por CategorÃ­a
     const catMap = new Map<string, number>()
     gastosFiltrados.forEach(g => {
       catMap.set(g.categoria, (catMap.get(g.categoria) || 0) + Number(g.monto))
@@ -541,7 +541,7 @@ export default function ReportesPage() {
 
     setGastosPorCategoria(catList)
 
-    // 4. Ranking de Servicios más Vendidos
+    // 4. Ranking de Servicios mÃ¡s Vendidos
     const srvMap = new Map<string, { cantidad: number; total: number }>()
 
     pedidosReporteList.forEach(p => {
@@ -568,7 +568,7 @@ export default function ReportesPage() {
 
     setTopServicios(srvList)
 
-    // 5. Ranking de Clientes (Clientes con pedidos en el período)
+    // 5. Ranking de Clientes (Clientes con pedidos en el perÃ­odo)
     const cliMap = new Map<string, { pedidos: number; total: number }>()
     pedidosReporteList.forEach(p => {
       const key = p.cliente_nombre || 'Consumidor Final'
@@ -583,7 +583,7 @@ export default function ReportesPage() {
 
     setTopClientes(cliList)
 
-    // 6. Distribución por Método de Pago (Basado en el dinero real cobrado en caja)
+    // 6. DistribuciÃ³n por MÃ©todo de Pago (Basado en el dinero real cobrado en caja)
     const pagoMap = new Map<string, number>()
     cajaFiltrada.filter(c => c.tipo === 'ingreso').forEach(c => {
       const key = extractMetodoPago(c)
@@ -601,15 +601,15 @@ export default function ReportesPage() {
 
   return (
     <>
-      <Header title="Reportes & Análisis Financiero" subtitle="Estadísticas de facturación, caja diaria, egresos y servicios más vendidos" />
+      <Header title="Reportes & AnÃ¡lisis Financiero" subtitle="EstadÃ­sticas de facturaciÃ³n, caja diaria, egresos y servicios mÃ¡s vendidos" />
       <main style={{ padding: '28px', flex: 1 }}>
 
-        {/* Filtros de Período y Fecha Personalizable */}
+        {/* Filtros de PerÃ­odo y Fecha Personalizable */}
         <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Calendar size={18} style={{ color: 'var(--accent)' }} />
-              <strong style={{ fontSize: 14 }}>Período de Análisis:</strong>
+              <strong style={{ fontSize: 14 }}>PerÃ­odo de AnÃ¡lisis:</strong>
             </div>
 
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -617,13 +617,13 @@ export default function ReportesPage() {
                 className={`btn btn-sm ${periodo === 'hoy' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setPeriodo('hoy')}
               >
-                📅 Hoy
+                ðŸ“… Hoy
               </button>
               <button
                 className={`btn btn-sm ${periodo === 'semana' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setPeriodo('semana')}
               >
-                📅 Esta Semana
+                ðŸ“… Esta Semana
               </button>
               <button
                 className={`btn btn-sm ${periodo === 'este_mes' ? 'btn-primary' : 'btn-secondary'}`}
@@ -641,31 +641,31 @@ export default function ReportesPage() {
                 className={`btn btn-sm ${periodo === '3_meses' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setPeriodo('3_meses')}
               >
-                Últimos 3 Meses
+                Ãšltimos 3 Meses
               </button>
               <button
                 className={`btn btn-sm ${periodo === '6_meses' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setPeriodo('6_meses')}
               >
-                Últimos 6 Meses
+                Ãšltimos 6 Meses
               </button>
               <button
                 className={`btn btn-sm ${periodo === 'este_ano' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setPeriodo('este_ano')}
               >
-                Este Año
+                Este AÃ±o
               </button>
               <button
                 className={`btn btn-sm ${periodo === 'personalizado' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setPeriodo('personalizado')}
               >
-                📅 Rango Personalizado
+                ðŸ“… Rango Personalizado
               </button>
               <button
                 className={`btn btn-sm ${periodo === 'todo' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setPeriodo('todo')}
               >
-                Histórico Completo
+                HistÃ³rico Completo
               </button>
             </div>
           </div>
@@ -710,7 +710,7 @@ export default function ReportesPage() {
               <div className="stat-label">Dinero Cobrado en Caja</div>
               <div className="stat-value" style={{ color: 'var(--success)' }}>{formatCurrency(resumen.ingresos)}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                {formatCurrency(resumen.ingresosPagosCompletos)} cobros 100% · {formatCurrency(resumen.ingresosSenas)} señas · {formatCurrency(resumen.cajaIngresosDirectos)} mostrador
+                {formatCurrency(resumen.ingresosPagosCompletos)} cobros 100% Â· {formatCurrency(resumen.ingresosSenas)} seÃ±as Â· {formatCurrency(resumen.cajaIngresosDirectos)} mostrador
               </div>
             </div>
           </div>
@@ -723,10 +723,10 @@ export default function ReportesPage() {
               <div className="stat-label">Saldo Pendiente a Cobrar</div>
               <div className="stat-value" style={{ color: '#d97706' }}>{formatCurrency(resumen.saldoPorCobrar)}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                {formatCurrency(resumen.saldoSenas)} en señas · {formatCurrency(resumen.saldoCuentasCorrientes)} ctas. corrientes
+                {formatCurrency(resumen.saldoSenas)} en seÃ±as Â· {formatCurrency(resumen.saldoCuentasCorrientes)} ctas. corrientes
               </div>
               <div style={{ fontSize: 11, color: resumen.saldoVencido > 0 ? '#dc2626' : 'var(--success)', marginTop: 2, fontWeight: 600 }}>
-                {resumen.saldoVencido > 0 ? `⚠️ ${formatCurrency(resumen.saldoVencido)} vencido a la fecha` : '✓ Sin saldos vencidos'}
+                {resumen.saldoVencido > 0 ? `âš ï¸ ${formatCurrency(resumen.saldoVencido)} vencido a la fecha` : 'âœ“ Sin saldos vencidos'}
               </div>
             </div>
           </div>
@@ -746,24 +746,24 @@ export default function ReportesPage() {
 
           <div className="stat-card">
             <div className="stat-icon" style={{
-              background: gananciaNetaHoy >= 0 ? 'rgba(22, 163, 74, 0.1)' : 'rgba(220, 38, 38, 0.1)',
-              color: gananciaNetaHoy >= 0 ? 'var(--success)' : 'var(--danger)'
+              background: resumen.gananciaCaja >= 0 ? 'rgba(22, 163, 74, 0.1)' : 'rgba(220, 38, 38, 0.1)',
+              color: resumen.gananciaCaja >= 0 ? 'var(--success)' : 'var(--danger)'
             }}>
               <DollarSign size={22} />
             </div>
             <div>
-              <div className="stat-label">Ganancia Neta (Hoy)</div>
-              <div className="stat-value" style={{ color: gananciaNetaHoy >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                {formatCurrency(gananciaNetaHoy)}
+              <div className="stat-label">Ganancia Neta</div>
+              <div className="stat-value" style={{ color: resumen.gananciaCaja >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                {formatCurrency(resumen.gananciaCaja)}
               </div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                Al día de la fecha · {formatCurrency(ingresosHoy)} cobros hoy − {formatCurrency(gastosHoy)} gastos
+                Cobrado ({formatCurrency(resumen.ingresos)}) − Gastos ({formatCurrency(resumen.gastos)})
               </div>
             </div>
           </div>
         </div>
 
-        {/* TABLA DETALLADA: SALDOS PENDIENTES POR COBRAR (SEÑAS Y CUENTAS CORRIENTES A VENCIMIENTO) */}
+        {/* TABLA DETALLADA: SALDOS PENDIENTES POR COBRAR (SEÃ‘AS Y CUENTAS CORRIENTES A VENCIMIENTO) */}
         <div className="card" style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
             <div>
@@ -772,27 +772,27 @@ export default function ReportesPage() {
                 <span>Saldos Pendientes a Cobrar ({saldosPendientesList.length})</span>
               </div>
               <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
-                Desglose de saldos de señas y cuentas corrientes clasificadas por fecha de vencimiento / entrega.
+                Desglose de saldos de seÃ±as y cuentas corrientes clasificadas por fecha de vencimiento / entrega.
               </p>
             </div>
 
-            {/* Badges de resumen rápido */}
+            {/* Badges de resumen rÃ¡pido */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.12)', color: '#b45309', border: '1px solid #f59e0b', fontSize: 12 }}>
-                ⏳ Señas: <strong>{formatCurrency(resumen.saldoSenas)}</strong>
+                â³ SeÃ±as: <strong>{formatCurrency(resumen.saldoSenas)}</strong>
               </span>
               <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.12)', color: '#1d4ed8', border: '1px solid #3b82f6', fontSize: 12 }}>
-                📝 Ctas. Corrientes: <strong>{formatCurrency(resumen.saldoCuentasCorrientes)}</strong>
+                ðŸ“ Ctas. Corrientes: <strong>{formatCurrency(resumen.saldoCuentasCorrientes)}</strong>
               </span>
               {resumen.saldoVencido > 0 && (
                 <span className="badge badge-danger" style={{ fontSize: 12 }}>
-                  🔴 Vencido: <strong>{formatCurrency(resumen.saldoVencido)}</strong> ({resumen.pedidosVencidosCount} ped.)
+                  ðŸ”´ Vencido: <strong>{formatCurrency(resumen.saldoVencido)}</strong> ({resumen.pedidosVencidosCount} ped.)
                 </span>
               )}
             </div>
           </div>
 
-          {/* Filtros de saldos y búsqueda */}
+          {/* Filtros de saldos y bÃºsqueda */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <button
@@ -807,21 +807,21 @@ export default function ReportesPage() {
                 className={`btn btn-sm ${filtroSaldos === 'senas' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setFiltroSaldos('senas')}
               >
-                ⏳ Solo Señas ({saldosPendientesList.filter(s => s.tipoSaldo === 'sena').length})
+                â³ Solo SeÃ±as ({saldosPendientesList.filter(s => s.tipoSaldo === 'sena').length})
               </button>
               <button
                 type="button"
                 className={`btn btn-sm ${filtroSaldos === 'cuentas_corrientes' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setFiltroSaldos('cuentas_corrientes')}
               >
-                📝 Solo Cuentas Corrientes ({saldosPendientesList.filter(s => s.tipoSaldo === 'cuenta_corriente').length})
+                ðŸ“ Solo Cuentas Corrientes ({saldosPendientesList.filter(s => s.tipoSaldo === 'cuenta_corriente').length})
               </button>
               <button
                 type="button"
                 className={`btn btn-sm ${filtroSaldos === 'vencidos' ? 'btn-danger' : 'btn-secondary'}`}
                 onClick={() => setFiltroSaldos('vencidos')}
               >
-                🔴 Vencidos ({saldosPendientesList.filter(s => s.estadoVencimiento === 'vencido').length})
+                ðŸ”´ Vencidos ({saldosPendientesList.filter(s => s.estadoVencimiento === 'vencido').length})
               </button>
             </div>
 
@@ -839,7 +839,7 @@ export default function ReportesPage() {
           {/* Tabla de Saldos a Cobrar */}
           {saldosPendientesList.length === 0 ? (
             <div style={{ padding: '28px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13.5 }}>
-              ✓ ¡Excelente! No hay saldos pendientes por cobrar registrados.
+              âœ“ Â¡Excelente! No hay saldos pendientes por cobrar registrados.
             </div>
           ) : (
             <div className="table-wrapper">
@@ -850,7 +850,7 @@ export default function ReportesPage() {
                     <th>Cliente</th>
                     <th>Tipo de Saldo</th>
                     <th>Total</th>
-                    <th>Cobrado (Seña)</th>
+                    <th>Cobrado (SeÃ±a)</th>
                     <th>Saldo a Cobrar</th>
                     <th>Vencimiento / Entrega</th>
                     <th>Estado Pedido</th>
@@ -875,11 +875,11 @@ export default function ReportesPage() {
                         <td>
                           {s.tipoSaldo === 'sena' ? (
                             <span className="badge" style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#b45309', border: '1px solid #f59e0b' }}>
-                              ⏳ Saldo de Seña
+                              â³ Saldo de SeÃ±a
                             </span>
                           ) : (
                             <span className="badge" style={{ backgroundColor: 'rgba(59, 130, 246, 0.12)', color: '#1d4ed8', border: '1px solid #3b82f6' }}>
-                              📝 Cta. Corriente
+                              ðŸ“ Cta. Corriente
                             </span>
                           )}
                         </td>
@@ -897,11 +897,11 @@ export default function ReportesPage() {
                         <td>
                           {s.estadoVencimiento === 'vencido' ? (
                             <span className="badge badge-danger" style={{ fontWeight: 700 }}>
-                              ⚠️ Vencido ({s.fechaEntrega ? formatDate(s.fechaEntrega) : 'Pasado'})
+                              âš ï¸ Vencido ({s.fechaEntrega ? formatDate(s.fechaEntrega) : 'Pasado'})
                             </span>
                           ) : s.estadoVencimiento === 'hoy' ? (
                             <span className="badge badge-warning" style={{ fontWeight: 700 }}>
-                              ¡Vence Hoy!
+                              Â¡Vence Hoy!
                             </span>
                           ) : s.estadoVencimiento === 'a_vencer' ? (
                             <span className="badge badge-success">
@@ -924,13 +924,13 @@ export default function ReportesPage() {
 
         {/* Detailed Table por Meses */}
         <div className="card" style={{ marginBottom: 24 }}>
-          <div className="section-title">📋 Resumen Tabular por Meses</div>
+          <div className="section-title">ðŸ“‹ Resumen Tabular por Meses</div>
 
           <div className="table-wrapper">
             <table>
               <thead>
                 <tr>
-                  <th>Mes / Período</th>
+                  <th>Mes / PerÃ­odo</th>
                   <th>Pedidos Cobrados</th>
                   <th>Dinero Cobrado + Mostrador</th>
                   <th>Gastos / Egresos</th>
@@ -961,13 +961,13 @@ export default function ReportesPage() {
           </div>
         </div>
 
-        {/* TABLA PRINCIPAL: Pedidos Cobrados & Señas Recibidas */}
+        {/* TABLA PRINCIPAL: Pedidos Cobrados & SeÃ±as Recibidas */}
         <div className="card" style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
             <div>
-              <div className="section-title" style={{ margin: 0 }}>📋 Pedidos Confirmados del Período ({pedidosCobradosDetalle.length})</div>
+              <div className="section-title" style={{ margin: 0 }}>ðŸ“‹ Pedidos Confirmados del PerÃ­odo ({pedidosCobradosDetalle.length})</div>
               <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
-                Pedidos aprobados, en producción o entregados en este período. Los presupuestos no confirmados quedan excluidos.
+                Pedidos aprobados, en producciÃ³n o entregados en este perÃ­odo. Los presupuestos no confirmados quedan excluidos.
               </p>
             </div>
 
@@ -984,28 +984,28 @@ export default function ReportesPage() {
                 className={`btn btn-sm ${filtroTipoCobro === '100' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setFiltroTipoCobro('100')}
               >
-                ✓ 100% Cobrados ({resumen.pedidos100Count})
+                âœ“ 100% Cobrados ({resumen.pedidos100Count})
               </button>
               <button
                 type="button"
                 className={`btn btn-sm ${filtroTipoCobro === 'senas' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setFiltroTipoCobro('senas')}
               >
-                ⏳ Señas ({resumen.pedidosSenaCount})
+                â³ SeÃ±as ({resumen.pedidosSenaCount})
               </button>
               <button
                 type="button"
                 className={`btn btn-sm ${filtroTipoCobro === 'pendientes' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setFiltroTipoCobro('pendientes')}
               >
-                🔴 Pendientes ({resumen.pedidosPendientesCount})
+                ðŸ”´ Pendientes ({resumen.pedidosPendientesCount})
               </button>
             </div>
           </div>
 
           {pedidosCobradosDetalle.length === 0 ? (
             <div style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13.5 }}>
-              No se registraron pedidos en el período seleccionado.
+              No se registraron pedidos en el perÃ­odo seleccionado.
             </div>
           ) : (
             <div className="table-wrapper">
@@ -1016,11 +1016,11 @@ export default function ReportesPage() {
                     <th>Cliente</th>
                     <th>Fecha</th>
                     <th>Total Pedido</th>
-                    <th>Cobrado en Período</th>
+                    <th>Cobrado en PerÃ­odo</th>
                     <th>Saldo Pendiente</th>
                     <th>Estado de Pago</th>
                     <th>Estado Pedido</th>
-                    <th>Método de Pago</th>
+                    <th>MÃ©todo de Pago</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1053,14 +1053,14 @@ export default function ReportesPage() {
                         </td>
                         <td>
                           {p.is100Cobrado ? (
-                            <span className="badge badge-success">✓ 100% Cobrado</span>
+                            <span className="badge badge-success">âœ“ 100% Cobrado</span>
                           ) : p.montoCobrado > 0 ? (
                             <span className="badge" style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#b45309', border: '1px solid #f59e0b' }}>
-                              ⏳ Seña Recibida
+                              â³ SeÃ±a Recibida
                             </span>
                           ) : (
                             <span className="badge" style={{ backgroundColor: 'rgba(239, 68, 68, 0.12)', color: '#dc2626', border: '1px solid #ef4444' }}>
-                              🔴 Pendiente
+                              ðŸ”´ Pendiente
                             </span>
                           )}
                         </td>
@@ -1083,7 +1083,7 @@ export default function ReportesPage() {
         {/* Ingresos directos en caja (Mostrador) */}
         {cajaDirectaList.length > 0 && (
           <div className="card" style={{ marginBottom: 24 }}>
-            <div className="section-title">🏪 Ingresos Directos de Caja / Mostrador ({cajaDirectaList.length})</div>
+            <div className="section-title">ðŸª Ingresos Directos de Caja / Mostrador ({cajaDirectaList.length})</div>
             <p style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 14 }}>
               Movimientos de dinero que entraron a caja directamente (mostrador, fotocopias, servicios menores sin pedido formal).
             </p>
@@ -1093,7 +1093,7 @@ export default function ReportesPage() {
                   <tr>
                     <th>Fecha</th>
                     <th>Concepto</th>
-                    <th>Método de Pago</th>
+                    <th>MÃ©todo de Pago</th>
                     <th>Monto Ingresado</th>
                   </tr>
                 </thead>
@@ -1116,9 +1116,9 @@ export default function ReportesPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
           {/* Top Servicios */}
           <div className="card">
-            <div className="section-title">🏆 Servicios Más Vendidos (Cobrados)</div>
+            <div className="section-title">ðŸ† Servicios MÃ¡s Vendidos (Cobrados)</div>
             {topServicios.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No hay datos en el período.</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No hay datos en el perÃ­odo.</p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {topServicios.map((srv, idx) => (
@@ -1136,9 +1136,9 @@ export default function ReportesPage() {
 
           {/* Top Clientes */}
           <div className="card">
-            <div className="section-title">👥 Clientes con Mayor Aporte</div>
+            <div className="section-title">ðŸ‘¥ Clientes con Mayor Aporte</div>
             {topClientes.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No hay datos en el período.</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No hay datos en el perÃ­odo.</p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {topClientes.map((cli, idx) => (
@@ -1155,15 +1155,15 @@ export default function ReportesPage() {
           </div>
         </div>
 
-        {/* GRÁFICAS AL FINAL DE LA PÁGINA */}
+        {/* GRÃFICAS AL FINAL DE LA PÃGINA */}
         <div style={{ marginTop: 24, marginBottom: 20 }}>
-          <div className="section-title" style={{ marginBottom: 14 }}>📊 Gráficas y Evolución Financiera</div>
+          <div className="section-title" style={{ marginBottom: 14 }}>ðŸ“Š GrÃ¡ficas y EvoluciÃ³n Financiera</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', gap: 20 }}>
             {/* Main Bar Chart: Ingresos vs Gastos vs Ganancia */}
             <div className="card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <div>
-                  <h3 style={{ fontSize: 16, fontWeight: 700 }}>📊 Evolución Financiera Mensual</h3>
+                  <h3 style={{ fontSize: 16, fontWeight: 700 }}>ðŸ“Š EvoluciÃ³n Financiera Mensual</h3>
                   <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Comparativa de Cobros + Caja vs Egresos</p>
                 </div>
               </div>
@@ -1187,11 +1187,11 @@ export default function ReportesPage() {
               </div>
             </div>
 
-            {/* Donut Chart: Gastos por Categoría */}
+            {/* Donut Chart: Gastos por CategorÃ­a */}
             <div className="card">
               <div style={{ marginBottom: 16 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 700 }}>🍩 Distribución de Gastos</h3>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Desglose por rubros y categorías</p>
+                <h3 style={{ fontSize: 16, fontWeight: 700 }}>ðŸ© DistribuciÃ³n de Gastos</h3>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Desglose por rubros y categorÃ­as</p>
               </div>
 
               <div style={{ height: 230, width: '100%' }}>
