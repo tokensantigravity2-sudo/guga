@@ -472,6 +472,35 @@ tbody td {
   flex-shrink: 0;
 }
 
+/* Botones del encabezado (Explorar, Carrito, Pedidos, Cuenta): ícono y texto centrados en la misma línea */
+.store-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.store-action-btn svg {
+  flex-shrink: 0;
+}
+
+.store-action-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1);
+}
+
+.store-action-btn:active {
+  transform: translateY(0);
+}
+
+.store-action-btn:focus-visible {
+  outline: 2px solid #149b8e;
+  outline-offset: 2px;
+}
+
 .store-header-search-mobile {
   display: none;
   width: 100%;

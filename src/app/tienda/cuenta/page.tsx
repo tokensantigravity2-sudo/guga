@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Pedido } from '@/lib/types'
-import { formatCurrency, formatDate } from '@/lib/helpers'
+import { formatCurrency, formatDate, completarPedidoTienda } from '@/lib/helpers'
 import WhatsAppIcon from '@/components/WhatsAppIcon'
 import WhatsAppWidget from '@/components/WhatsAppWidget'
 import PresupuestoPDFModal from '@/components/PresupuestoPDFModal'
@@ -70,7 +70,7 @@ export default function TiendaCuentaPage() {
         .limit(80)
 
       if (!error && allPeds) {
-        const filtered = allPeds.filter(p => {
+        const filtered = allPeds.map(completarPedidoTienda).filter(p => {
           const pPhone = (p.cliente_telefono || '').replace(/\D/g, '')
           const pName = (p.cliente_nombre || '').toLowerCase()
           const pNotes = (p.notas || '').toLowerCase()

@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Servicio, Pedido } from '@/lib/types'
-import { formatCurrency, generateNumeroEcommerce, formatWhatsAppMessage, LINEAS_IMPRENTA, formatProductUnit, cleanProductDescription } from '@/lib/helpers'
+import { formatCurrency, generateNumeroEcommerce, formatWhatsAppMessage, LINEAS_IMPRENTA, formatProductUnit, cleanProductDescription, completarPedidoTienda, LOGO_URL } from '@/lib/helpers'
 import {
   Search, ShoppingCart, Truck, User, Plus, Minus, Trash2,
   X, Check, Phone, MapPin,
@@ -573,21 +573,28 @@ export default function TiendaPage() {
         notas: formattedNotas,
       }
 
-      // 4. Inserción con reintento seguro
-      let { error: pedidoError } = await supabase
-        .from('pedidos')
-        .insert([newPedidoPayload])
-        .select()
-        .single()
+      // 4. Inserción con reintento seguro: si la tabla no tiene alguna columna opcional
+      // (cliente_telefono, cliente_direccion, origen...) se quita y se reintenta; el dato ya va en notas
+      let pedidoError: { code?: string; message: string } | null = null
+      for (let intento = 0; intento < 8; intento++) {
+        const { error } = await supabase.from('pedidos').insert([newPedidoPayload])
+        pedidoError = error
+        if (!error) break
+
+        const columnaFaltante = error.code === 'PGRST204' ? error.message.match(/'([^']+)' column/)?.[1] : undefined
+        if (columnaFaltante && columnaFaltante in newPedidoPayload) {
+          delete newPedidoPayload[columnaFaltante]
+        } else if ('cliente_id' in newPedidoPayload) {
+          console.warn('Insert attempt failed, trying fallback without cliente_id:', error)
+          delete newPedidoPayload.cliente_id
+        } else {
+          break
+        }
+      }
 
       if (pedidoError) {
-        console.warn('First insert attempt failed, trying fallback without cliente_id:', pedidoError)
-        delete newPedidoPayload.cliente_id
-        const { error: fbErr } = await supabase.from('pedidos').insert([newPedidoPayload])
-        if (fbErr) {
-          console.error('Fallback insert also failed:', fbErr)
-          throw new Error('No se pudo guardar el pedido en la base de datos: ' + fbErr.message)
-        }
+        console.error('Order insert failed:', pedidoError)
+        throw new Error('No se pudo guardar el pedido en la base de datos: ' + pedidoError.message)
       }
 
       // Save customer details in localStorage
@@ -655,12 +662,13 @@ export default function TiendaPage() {
       if (q.toUpperCase().startsWith('ECO-') || q.toUpperCase().startsWith('P-')) {
         query = query.eq('numero', q.toUpperCase())
       } else {
-        query = query.or(`cliente_telefono.ilike.%${q}%,notas.ilike.%${q}%`)
+        // Los pedidos de la tienda llevan el teléfono dentro de notas
+        query = query.ilike('notas', `%${q}%`)
       }
 
       const { data, error } = await query.order('created_at', { ascending: false }).limit(10)
       if (error) throw error
-      setTrackedOrders(data || [])
+      setTrackedOrders((data || []).map(completarPedidoTienda))
       if (!data || data.length === 0) {
         toast('No se encontraron pedidos con ese dato')
       }
@@ -1710,7 +1718,7 @@ export default function TiendaPage() {
               marginBottom: '14px'
             }}>
               <img
-                src="/logo.png"
+                src={LOGO_URL}
                 alt="GUGA Imprenta & Gráfica"
                 style={{ height: '46px', maxWidth: '170px', width: 'auto', display: 'block', objectFit: 'contain' }}
               />

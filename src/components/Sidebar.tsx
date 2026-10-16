@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { LOGO_URL } from '@/lib/helpers';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -90,7 +91,7 @@ export default function Sidebar() {
       }}>
         <Link href="/" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', textDecoration: 'none' }} title="Ir al Panel Principal">
           <img
-            src="/logo.png"
+            src={LOGO_URL}
             alt="GUGA IMPRENTA & GRÁFICA"
             style={{
               height: '54px',

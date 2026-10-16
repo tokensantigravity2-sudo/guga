@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { LOGO_URL } from '@/lib/helpers';
 
 export interface TicketData {
   numero: string;
@@ -69,7 +70,7 @@ export default function TicketImpresion({ ticket, onClose }: TicketImpresionProp
           </head>
           <body>
             <div class="center" style="margin-bottom: 6px;">
-              <img src="/logo.png" alt="GUGA IMPRENTA" style="max-height: 38px; max-width: 140px; display: block; margin: 0 auto; object-fit: contain;" />
+              <img src="${LOGO_URL}" alt="GUGA IMPRENTA" style="max-height: 62px; max-width: 190px; display: block; margin: 0 auto; object-fit: contain;" />
             </div>
             <div class="center bold">GUGA IMPRENTA & GRÁFICA</div>
             <div class="center">Imprenta & Diseño</div>
@@ -191,9 +192,9 @@ export default function TicketImpresion({ ticket, onClose }: TicketImpresionProp
           >
             <div style={{ textAlign: 'center', marginBottom: '8px' }}>
               <img
-                src="/logo.png"
+                src={LOGO_URL}
                 alt="GUGA"
-                style={{ maxHeight: '38px', maxWidth: '140px', margin: '0 auto', display: 'block', objectFit: 'contain' }}
+                style={{ maxHeight: '62px', maxWidth: '190px', margin: '0 auto', display: 'block', objectFit: 'contain' }}
               />
             </div>
             <div style={{ textAlign: 'center', fontWeight: 'bold' }}>GUGA IMPRENTA & GRÁFICA</div>

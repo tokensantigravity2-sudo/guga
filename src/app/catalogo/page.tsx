@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { Servicio, Proveedor, VariableServicio, EscalaPrecio } from '@/lib/types'
-import { formatCurrency, CATEGORIAS_SERVICIO } from '@/lib/helpers'
-import { Search, Plus, Edit2, Trash2, X, Printer, Check, Factory, Home, Layers, Sparkles } from 'lucide-react'
+import { formatCurrency, CATEGORIAS_SERVICIO, stripServicioTags, parseVariantesTag } from '@/lib/helpers'
+import { Search, Plus, Edit2, Trash2, X, Printer, Check, Factory, Home, Layers, Sparkles, Settings } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function CatalogoPage() {
@@ -17,6 +17,13 @@ export default function CatalogoPage() {
   const [editingServicio, setEditingServicio] = useState<Servicio | null>(null)
   const [categoriaFilter, setCategoriaFilter] = useState('')
   const [isDraggingImage, setIsDraggingImage] = useState(false)
+
+  // Gestión de categorías (crear, renombrar, eliminar)
+  const [categoriasGuardadas, setCategoriasGuardadas] = useState<string[]>(CATEGORIAS_SERVICIO)
+  const [showCategoriasModal, setShowCategoriasModal] = useState(false)
+  const [nuevaCategoriaNombre, setNuevaCategoriaNombre] = useState('')
+  const [editingCategoria, setEditingCategoria] = useState<{ original: string; nombre: string } | null>(null)
+  const [deletingCategoria, setDeletingCategoria] = useState<{ nombre: string; destino: string } | null>(null)
 
   const [form, setForm] = useState({
     nombre: '',
@@ -35,8 +42,115 @@ export default function CatalogoPage() {
   })
 
   useEffect(() => {
+    // Cargar categorías guardadas en localStorage si existen
+    try {
+      const savedCategorias = localStorage.getItem('guga_categorias_servicio')
+      if (savedCategorias) {
+        const parsed = JSON.parse(savedCategorias)
+        if (Array.isArray(parsed)) setCategoriasGuardadas(parsed)
+      }
+    } catch {}
     loadServicios()
   }, [])
+
+  // Las categorías que ya usan los servicios aparecen siempre, aunque no estén en la lista guardada
+  const categorias = Array.from(new Set([...categoriasGuardadas, ...servicios.map(s => s.categoria).filter(Boolean)]))
+
+  const guardarCategorias = (lista: string[]) => {
+    setCategoriasGuardadas(lista)
+    try {
+      localStorage.setItem('guga_categorias_servicio', JSON.stringify(lista))
+    } catch {}
+  }
+
+  const handleAddCategoria = () => {
+    const nombre = nuevaCategoriaNombre.trim()
+    if (!nombre) {
+      toast.error('Ingresá el nombre de la categoría')
+      return
+    }
+    if (categorias.some(c => c.toLowerCase() === nombre.toLowerCase())) {
+      toast.error('Esa categoría ya existe')
+      return
+    }
+    guardarCategorias([...categorias, nombre])
+    setNuevaCategoriaNombre('')
+    toast.success(`Categoría "${nombre}" creada`)
+  }
+
+  const handleRenameCategoria = async () => {
+    if (!editingCategoria) return
+    const { original } = editingCategoria
+    const nombre = editingCategoria.nombre.trim()
+    if (!nombre) {
+      toast.error('Ingresá el nombre de la categoría')
+      return
+    }
+    if (nombre === original) {
+      setEditingCategoria(null)
+      return
+    }
+    if (categorias.some(c => c !== original && c.toLowerCase() === nombre.toLowerCase())) {
+      toast.error('Esa categoría ya existe')
+      return
+    }
+
+    const enUso = servicios.some(s => s.categoria === original)
+    if (enUso) {
+      const { error } = await supabase.from('servicios').update({ categoria: nombre }).eq('categoria', original)
+      if (error) {
+        toast.error('Error al renombrar categoría: ' + error.message)
+        return
+      }
+    }
+
+    guardarCategorias(categorias.map(c => c === original ? nombre : c))
+    if (categoriaFilter === original) setCategoriaFilter(nombre)
+    setEditingCategoria(null)
+    toast.success(`Categoría renombrada a "${nombre}"`)
+    if (enUso) await loadServicios()
+  }
+
+  const handleDeleteCategoria = async (cat: string, destino?: string) => {
+    const enUso = servicios.some(s => s.categoria === cat)
+    if (enUso) {
+      if (!destino) return
+      const { error } = await supabase.from('servicios').update({ categoria: destino }).eq('categoria', cat)
+      if (error) {
+        toast.error('Error al mover los servicios: ' + error.message)
+        return
+      }
+    } else if (!confirm(`¿Eliminar la categoría "${cat}"?`)) {
+      return
+    }
+
+    guardarCategorias(categorias.filter(c => c !== cat))
+    if (categoriaFilter === cat) setCategoriaFilter('')
+    setDeletingCategoria(null)
+    toast.success(`Categoría "${cat}" eliminada`)
+    if (enUso) await loadServicios()
+  }
+
+  const startDeleteCategoria = (cat: string) => {
+    setEditingCategoria(null)
+    if (!servicios.some(s => s.categoria === cat)) {
+      handleDeleteCategoria(cat)
+      return
+    }
+    const destino = categorias.find(c => c !== cat)
+    if (!destino) {
+      toast.error('Creá otra categoría para mover sus servicios antes de eliminarla')
+      return
+    }
+    setDeletingCategoria({ nombre: cat, destino })
+  }
+
+  const closeCategoriasModal = () => {
+    setShowCategoriasModal(false)
+    setEditingCategoria(null)
+    setDeletingCategoria(null)
+    setNuevaCategoriaNombre('')
+  }
 
   const loadServicios = async () => {
     const [{ data, error }, { data: provs }] = await Promise.all([
@@ -61,15 +175,8 @@ export default function CatalogoPage() {
 
     if (Array.isArray(srv.variantes) && srv.variantes.length > 0) {
       variantes = srv.variantes
-    } else if ((srv.descripcion || '').includes('[VARIANTES:')) {
-      const vMatch = (srv.descripcion || '').match(/\[VARIANTES:([\s\S]*?)\]/)
-      if (vMatch) {
-        try {
-          variantes = JSON.parse(vMatch[1])
-        } catch (err) {
-          console.error('Error parsing variantes JSON', err)
-        }
-      }
+    } else {
+      variantes = parseVariantesTag(srv.descripcion)
     }
 
     if ((srv.descripcion || '').includes('[TERCERIZADO:')) {
@@ -81,10 +188,7 @@ export default function CatalogoPage() {
       }
     }
 
-    let descLimpia = (srv.descripcion || '')
-      .replace(/\[VARIANTES:[\s\S]*?\]/g, '')
-      .replace(/\[TERCERIZADO:[\s\S]*?\]/g, '')
-      .trim()
+    const descLimpia = stripServicioTags(srv.descripcion)
 
     return { esTerc, provId, costo, descLimpia, variantes }
   }
@@ -248,6 +352,7 @@ export default function CatalogoPage() {
     }
 
     const catFinal = form.categoria === 'OTRO' ? (form.nuevaCategoria.trim() || 'General') : form.categoria
+    if (!categorias.includes(catFinal)) guardarCategorias([...categorias, catFinal])
 
     const cleanVariantes = (form.variantes || [])
       .map(v => ({
@@ -259,10 +364,7 @@ export default function CatalogoPage() {
       }))
       .filter(v => v.nombre.length > 0)
 
-    let descClean = form.descripcion
-      .replace(/\[VARIANTES:[\s\S]*?\]/g, '')
-      .replace(/\[TERCERIZADO:[\s\S]*?\]/g, '')
-      .trim()
+    const descClean = stripServicioTags(form.descripcion)
 
     let descFinal = descClean
     if (form.es_tercerizado) {
@@ -367,7 +469,7 @@ export default function CatalogoPage() {
       nombre: '',
       descripcion: '',
       precio_base: 0,
-      categoria: categoriaFilter || 'Folletos',
+      categoria: categoriaFilter || categorias[0] || 'OTRO',
       nuevaCategoria: '',
       unidad: 'unidad',
       tiempo_estimado: '2-3 días',
@@ -383,7 +485,7 @@ export default function CatalogoPage() {
 
   const openEdit = (srv: Servicio) => {
     setEditingServicio(srv)
-    const isStandardCat = CATEGORIAS_SERVICIO.includes(srv.categoria)
+    const isStandardCat = categorias.includes(srv.categoria)
     const { esTerc, provId, costo, descLimpia, variantes } = parseServicioInfo(srv)
     setForm({
       nombre: srv.nombre,
@@ -439,7 +541,7 @@ export default function CatalogoPage() {
             >
               Todos ({servicios.length})
             </button>
-            {CATEGORIAS_SERVICIO.map(cat => (
+            {categorias.map(cat => (
               <button
                 key={cat}
                 className={`btn btn-sm ${categoriaFilter === cat ? 'btn-primary' : 'btn-secondary'}`}
@@ -448,6 +550,13 @@ export default function CatalogoPage() {
                 {cat}
               </button>
             ))}
+            <button
+              className="btn btn-sm btn-ghost"
+              onClick={() => setShowCategoriasModal(true)}
+              title="Crear, renombrar o eliminar categorías"
+            >
+              <Settings size={14} /> Categorías
+            </button>
           </div>
 
           <button className="btn btn-primary" onClick={openNewModal}>
@@ -658,7 +767,7 @@ export default function CatalogoPage() {
                         value={form.categoria}
                         onChange={e => setForm({ ...form, categoria: e.target.value })}
                       >
-                        {CATEGORIAS_SERVICIO.map(c => (
+                        {categorias.map(c => (
                           <option key={c} value={c}>{c}</option>
                         ))}
                         <option value="OTRO">➕ Otra Categoría Personalizada...</option>
@@ -983,6 +1092,143 @@ export default function CatalogoPage() {
                   <button type="submit" className="btn btn-primary">{editingServicio ? 'Guardar Cambios' : 'Crear Servicio'}</button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Administrar Categorías */}
+        {showCategoriasModal && (
+          <div className="modal-backdrop" onClick={closeCategoriasModal}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+              <div className="modal-header">
+                <h2>Categorías de Servicios</h2>
+                <button className="btn btn-ghost btn-sm" onClick={closeCategoriasModal}>✕</button>
+              </div>
+
+              <div className="modal-body">
+                <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                  <input
+                    className="input"
+                    placeholder="Nueva categoría (ej. Gigantografías / Sellos)"
+                    value={nuevaCategoriaNombre}
+                    onChange={e => setNuevaCategoriaNombre(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        handleAddCategoria()
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleAddCategoria}
+                    style={{ whiteSpace: 'nowrap' }}
+                  >
+                    <Plus size={15} /> Agregar
+                  </button>
+                </div>
+
+                <div style={{ maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {categorias.map(cat => {
+                    const cant = servicios.filter(s => s.categoria === cat).length
+                    const isEditing = editingCategoria?.original === cat
+                    const isDeleting = deletingCategoria?.nombre === cat
+                    return (
+                      <div
+                        key={cat}
+                        style={{ padding: '8px 12px', background: 'var(--bg-hover)', borderRadius: 8, border: '1px solid var(--border)' }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                          {isEditing ? (
+                            <input
+                              className="input"
+                              autoFocus
+                              value={editingCategoria?.nombre ?? ''}
+                              onChange={e => setEditingCategoria({ original: cat, nombre: e.target.value })}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  handleRenameCategoria()
+                                } else if (e.key === 'Escape') {
+                                  setEditingCategoria(null)
+                                }
+                              }}
+                              style={{ padding: '5px 8px', fontSize: 13 }}
+                            />
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontWeight: 600, fontSize: 13 }}>{cat}</span>
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                                ({cant} {cant === 1 ? 'servicio' : 'servicios'})
+                              </span>
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                            {isEditing ? (
+                              <>
+                                <button type="button" className="btn btn-sm btn-success" onClick={handleRenameCategoria} title="Guardar nombre">
+                                  <Check size={13} />
+                                </button>
+                                <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditingCategoria(null)} title="Cancelar">
+                                  <X size={13} />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-secondary"
+                                  onClick={() => { setDeletingCategoria(null); setEditingCategoria({ original: cat, nombre: cat }) }}
+                                  title="Renombrar categoría"
+                                >
+                                  <Edit2 size={13} />
+                                </button>
+                                <button type="button" className="btn btn-sm btn-danger" onClick={() => startDeleteCategoria(cat)} title="Eliminar categoría">
+                                  <Trash2 size={13} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {isDeleting && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                              Mover {cant} {cant === 1 ? 'servicio' : 'servicios'} a:
+                            </span>
+                            <select
+                              className="input"
+                              value={deletingCategoria?.destino ?? ''}
+                              onChange={e => setDeletingCategoria({ nombre: cat, destino: e.target.value })}
+                              style={{ flex: 1, minWidth: 120, padding: '5px 8px', fontSize: 13 }}
+                            >
+                              {categorias.filter(c => c !== cat).map(c => (
+                                <option key={c} value={c}>{c}</option>
+                              ))}
+                            </select>
+                            <button type="button" className="btn btn-sm btn-danger" onClick={() => handleDeleteCategoria(cat, deletingCategoria?.destino)}>
+                              Mover y eliminar
+                            </button>
+                            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setDeletingCategoria(null)}>
+                              Cancelar
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                {categorias.length === 0 && (
+                  <div className="empty-state">
+                    <p>Sin categorías. Creá la primera arriba.</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={closeCategoriasModal}>Cerrar</button>
+              </div>
             </div>
           </div>
         )}

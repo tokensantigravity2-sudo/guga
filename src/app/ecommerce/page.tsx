@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { Pedido, Servicio, Cliente } from '@/lib/types'
-import { formatCurrency, formatDateTime, formatDate, ESTADOS_PEDIDO, CATEGORIAS_TIENDA, formatProductUnit, cleanProductDescription } from '@/lib/helpers'
+import { formatCurrency, formatDateTime, formatDate, ESTADOS_PEDIDO, CATEGORIAS_TIENDA, formatProductUnit, cleanProductDescription, completarPedidoTienda } from '@/lib/helpers'
 import CategoryIcon, { AVAILABLE_VECTOR_ICONS, DEFAULT_CATEGORY_VECTOR_MAP } from '@/components/CategoryIcon'
 import {
   Store, ShoppingBag, Truck, CheckCircle2, Clock, AlertCircle,
@@ -168,7 +168,7 @@ export default function EcommerceAdminPage() {
     if (errPds) {
       toast.error('Error cargando pedidos: ' + errPds.message)
     } else if (pds) {
-      setPedidos(pds)
+      setPedidos(pds.map(completarPedidoTienda))
     }
 
     if (errSrvs) {

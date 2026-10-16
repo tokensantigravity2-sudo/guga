@@ -5,6 +5,17 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEX
 
 export const supabase = createClient(supabaseUrl, supabaseKey)
 
+// Consulta la configuración pública de Auth: indica si un proveedor (ej. 'google') está activado en el proyecto
+export const isAuthProviderEnabled = async (provider: string): Promise<boolean> => {
+  try {
+    const res = await fetch(`${supabaseUrl}/auth/v1/settings`, { headers: { apikey: supabaseKey } })
+    const settings = await res.json()
+    return settings?.external?.[provider] !== false
+  } catch {
+    return true
+  }
+}
+
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 export const supabaseAdmin = serviceRoleKey
   ? createClient(supabaseUrl, serviceRoleKey, {

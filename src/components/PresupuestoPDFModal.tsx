@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Pedido, Cliente } from '@/lib/types';
-import { formatCurrency, formatDate } from '@/lib/helpers';
+import { formatCurrency, formatDate, cleanProductDescription, LOGO_URL } from '@/lib/helpers';
 import { Download, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -101,26 +101,10 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
     const matchedService = findServiceForItem(it);
 
     // 1. Limpiar descripción técnica del servicio si existe
-    const cleanSrvDesc = (matchedService?.descripcion || '')
-      .replace(/\[TERCERIZADO:[^\]]*\]/gi, '')
-      .replace(/\[COBRADO:[^\]]*\]/gi, '')
-      .replace(/\[STOCK:[^\]]*\]/gi, '')
-      .replace(/\[Desc:[^\]]*\]/gi, '')
-      .replace(/\[Adicional:[^\]]*\]/gi, '')
-      .replace(/\[\+IVA[^\]]*\]/gi, '')
-      .replace(/\[.*?\]/g, '')
-      .trim();
+    const cleanSrvDesc = cleanProductDescription(matchedService?.descripcion);
 
     // 2. Limpiar descripción o detalles guardados en el ítem
-    const rawItemDesc = (it.descripcion || it.detalles || '')
-      .replace(/\[TERCERIZADO:[^\]]*\]/gi, '')
-      .replace(/\[COBRADO:[^\]]*\]/gi, '')
-      .replace(/\[STOCK:[^\]]*\]/gi, '')
-      .replace(/\[Desc:[^\]]*\]/gi, '')
-      .replace(/\[Adicional:[^\]]*\]/gi, '')
-      .replace(/\[\+IVA[^\]]*\]/gi, '')
-      .replace(/\[.*?\]/g, '')
-      .trim();
+    const rawItemDesc = cleanProductDescription(it.descripcion || it.detalles);
 
     // Determinar descripción final
     let descripcionFinal = rawItemDesc;
@@ -356,7 +340,7 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #e2e8f0', paddingBottom: 16, marginBottom: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <img
-              src="/logo.png"
+              src={LOGO_URL}
               alt="GUGA IMPRENTA & GRÁFICA"
               style={{ height: 82, maxWidth: 290, objectFit: 'contain' }}
               onError={(e) => {

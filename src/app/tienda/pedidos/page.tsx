@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Pedido } from '@/lib/types'
-import { formatCurrency, formatDate } from '@/lib/helpers'
+import { formatCurrency, formatDate, completarPedidoTienda } from '@/lib/helpers'
 import {
   Truck, Search, ArrowLeft, Package, Clock,
   CheckCircle2, MapPin, Phone, X,
@@ -107,7 +107,7 @@ export default function TiendaPedidosPage() {
           .limit(20)
 
         if (!dirErr && directOrders && directOrders.length > 0) {
-          setTrackedOrders(directOrders)
+          setTrackedOrders(directOrders.map(completarPedidoTienda))
           setIsLoading(false)
           return
         }
@@ -126,7 +126,7 @@ export default function TiendaPedidosPage() {
 
       if (allPeds) {
         const qLower = q.toLowerCase()
-        const filtered = allPeds.filter(p => {
+        const filtered = allPeds.map(completarPedidoTienda).filter(p => {
           const pNum = (p.numero || '').toLowerCase()
           const pName = (p.cliente_nombre || '').toLowerCase()
           const pPhone = (p.cliente_telefono || '').replace(/\D/g, '')

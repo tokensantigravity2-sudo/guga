@@ -86,7 +86,8 @@ export default function WhatsAppWidget({
           position: 'fixed',
           bottom: '24px',
           right: '24px',
-          zIndex: 9999,
+          // Debajo del carrito, checkout y modales de la tienda (zIndex 100 en adelante)
+          zIndex: 90,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',

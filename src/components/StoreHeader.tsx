@@ -5,7 +5,8 @@ import {
   Search, ShoppingCart, Truck, User, X,
   ChevronDown, LogIn, LogOut
 } from 'lucide-react'
-import { formatCurrency } from '@/lib/helpers'
+import { formatCurrency, LOGO_URL } from '@/lib/helpers'
+import { supabase } from '@/lib/supabase'
 import CustomerAuthModal from '@/components/CustomerAuthModal'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
@@ -77,6 +78,57 @@ export default function StoreHeader({
     return () => window.removeEventListener('storage', handleStorage)
   }, [])
 
+  // Al volver de Google queda una sesión de Supabase: se usa solo para identificar al cliente
+  // y guardar su perfil, igual que el ingreso por teléfono
+  useEffect(() => {
+    let procesando = false
+
+    const completeGoogleLogin = async (email: string, nombreGoogle: string) => {
+      if (procesando) return
+      procesando = true
+
+      // La tienda trabaja con el perfil guardado; no hace falta mantener la sesión de Supabase
+      await supabase.auth.signOut({ scope: 'local' })
+      const { data: { session: sesionActiva } } = await supabase.auth.getSession()
+
+      const { data: matched } = await supabase
+        .from('clientes')
+        .select('*')
+        .ilike('email', email.replace(/[\\%_]/g, '\\$&'))
+        .limit(1)
+      const client = matched?.[0]
+
+      localStorage.setItem('guga_store_customer', JSON.stringify({
+        id: client?.id,
+        nombre: client?.nombre || nombreGoogle,
+        telefono: client?.telefono || '',
+        email,
+        direccion: client?.direccion || '',
+        rut: client?.rut || '',
+        empresa: '',
+      }))
+
+      // Las páginas de la tienda leen el perfil al cargar: recargar para que todas lo tomen.
+      // Si la sesión no se pudo cerrar no se recarga, para no repetir este paso en bucle.
+      if (sesionActiva) {
+        refreshLocalData()
+        return
+      }
+      window.location.reload()
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const user = session?.user
+      if (!user?.email) return
+      const email = user.email.toLowerCase()
+      const nombreGoogle = user.user_metadata?.full_name || user.user_metadata?.name || email.split('@')[0]
+      // Supabase no permite llamar a su cliente dentro de este callback: diferir
+      setTimeout(() => completeGoogleLogin(email, nombreGoogle), 0)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
   useEffect(() => {
     setLocalSearch(searchTerm)
   }, [searchTerm])
@@ -122,10 +174,10 @@ export default function StoreHeader({
           {/* Logo GUGA */}
           <Link href="/tienda" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', flexShrink: 0 }}>
             <img
-              src="/logo.png"
+              src={LOGO_URL}
               alt="GUGA Imprenta & Gráfica"
               className="store-header-logo"
-              style={{ height: '48px', maxWidth: '190px', width: 'auto', objectFit: 'contain' }}
+              style={{ height: '52px', maxWidth: '210px', width: 'auto', objectFit: 'contain' }}
             />
           </Link>
 
@@ -190,10 +242,13 @@ export default function StoreHeader({
                 }
               }}
               style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '7px',
                 background: 'linear-gradient(135deg, #149b8e 0%, #0e746b 100%)',
                 color: '#ffffff',
                 border: 'none',
-                padding: '9px 18px',
+                padding: '8px 18px',
                 borderRadius: '999px',
                 fontSize: '13px',
                 fontWeight: 700,
@@ -204,7 +259,7 @@ export default function StoreHeader({
               }}
               title="Explorar catálogo"
             >
-              <Search size={15} />
+              <Search size={17} />
               <span className="store-btn-text">Explorar</span>
             </button>
 

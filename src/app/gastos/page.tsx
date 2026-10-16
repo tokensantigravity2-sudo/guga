@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { Gasto, Proveedor } from '@/lib/types'
-import { formatCurrency, formatDate, CATEGORIAS_GASTO } from '@/lib/helpers'
+import { formatCurrency, formatDate, getTodayStr, CATEGORIAS_GASTO } from '@/lib/helpers'
 import { Search, Plus, Edit2, Trash2, DollarSign, Calendar, AlertCircle, Clock, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -13,9 +13,11 @@ export default function GastosPage() {
   const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [mesFilter, setMesFilter] = useState<string>(new Date().toISOString().substring(0, 7))
+  const [mesFilter, setMesFilter] = useState<string>(getTodayStr().substring(0, 7))
   const [showModal, setShowModal] = useState(false)
   const [editingGasto, setEditingGasto] = useState<Gasto | null>(null)
+  // IDs de gastos que ya tienen su salida registrada en caja
+  const [gastosEnCaja, setGastosEnCaja] = useState<Set<string>>(new Set())
 
   const [form, setForm] = useState({
     concepto: '',
@@ -34,16 +36,27 @@ export default function GastosPage() {
   }, [])
 
   const loadData = async () => {
-    const [{ data: g, error: gErr }, { data: p }] = await Promise.all([
+    const [{ data: g, error: gErr }, { data: p }, { data: egresos }] = await Promise.all([
       supabase.from('gastos').select('*').order('fecha', { ascending: false }),
       supabase.from('proveedores').select('*').order('nombre'),
+      supabase.from('caja_movimientos').select('referencia_id').eq('tipo', 'egreso').not('referencia_id', 'is', null),
     ])
 
     if (gErr) toast.error('Error al cargar gastos: ' + gErr.message)
     if (g) setGastos(g)
     if (p) setProveedores(p)
+    if (egresos) setGastosEnCaja(new Set(egresos.map(e => e.referencia_id)))
     setLoading(false)
   }
+
+  // Salida de caja vinculada al gasto, en el mismo día del gasto
+  const egresoDeGasto = (g: Gasto) => ({
+    tipo: 'egreso',
+    monto: Number(g.monto),
+    concepto: `Gasto: ${g.concepto}`,
+    referencia_id: g.id,
+    fecha: `${g.fecha || getTodayStr()}T12:00:00`,
+  })
 
   const isGastoFiado = (g: Gasto) => {
     return g.estado_pago === 'fiado' ||
@@ -99,6 +112,8 @@ export default function GastosPage() {
         toast.error('Error al actualizar gasto: ' + error.message)
         return
       }
+      // Mantener el mismo monto en la salida de caja de este gasto
+      await supabase.from('caja_movimientos').update({ monto: Number(form.monto) }).eq('referencia_id', editingGasto.id).eq('tipo', 'egreso')
       toast.success('Gasto actualizado correctamente')
     } else {
       let { data: newGasto, error } = await supabase.from('gastos').insert(payload).select().single()
@@ -135,11 +150,15 @@ export default function GastosPage() {
   }
 
   const handleDelete = async (id: string, concepto: string) => {
-    if (!confirm(`¿Eliminar el gasto "${concepto}"?`)) return
+    const enCaja = gastosEnCaja.has(id)
+    if (!confirm(`¿Eliminar el gasto "${concepto}"?${enCaja ? ' También se quita su salida de Caja.' : ''}`)) return
     const { error } = await supabase.from('gastos').delete().eq('id', id)
     if (error) {
       toast.error('Error al eliminar gasto: ' + error.message)
       return
+    }
+    if (enCaja) {
+      await supabase.from('caja_movimientos').delete().eq('referencia_id', id).eq('tipo', 'egreso')
     }
     toast.success('Gasto eliminado')
     await loadData()
@@ -189,23 +208,29 @@ export default function GastosPage() {
       return
     }
 
-    const [year, month] = mesFilter.split('-')
-    const prevDate = new Date(Number(year), Number(month) - 2, 1)
-    const prevMesStr = prevDate.toISOString().substring(0, 7)
+    const [year, month] = mesFilter.split('-').map(Number)
+    const prevDate = new Date(year, month - 2, 1)
+    const prevMesStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`
 
+    // Hasta antes del día 1 del mes elegido: un "-31" fijo rompe la consulta en meses de 30 días
     const { data: prevGastos, error: pErr } = await supabase
       .from('gastos')
       .select('*')
       .gte('fecha', `${prevMesStr}-01`)
-      .lte('fecha', `${prevMesStr}-31`)
+      .lt('fecha', `${mesFilter}-01`)
 
-    if (pErr || !prevGastos || prevGastos.length === 0) {
+    if (pErr) {
+      toast.error('Error al leer los gastos del mes anterior: ' + pErr.message)
+      return
+    }
+    if (!prevGastos || prevGastos.length === 0) {
       toast.error(`No hay gastos registrados en el mes anterior (${prevMesStr}) para copiar`)
       return
     }
 
     const fijos = prevGastos.filter(g =>
       ['Alquiler', 'Servicios', 'Personal', 'Impuestos', 'Mantenimiento Máquinas'].includes(g.categoria) ||
+      (g.categoria || '').toLowerCase().includes('fijo') ||
       (g.notas && g.notas.toLowerCase().includes('fijo'))
     )
 
@@ -214,11 +239,21 @@ export default function GastosPage() {
       return
     }
 
-    if (!confirm(`¿Deseas copiar ${fijos.length} gastos fijos del mes ${prevMesStr} al mes ${mesFilter}?`)) {
+    // No repetir los que ya están cargados en el mes elegido
+    const claveGasto = (g: Gasto) => `${g.concepto}|${g.categoria}`.toLowerCase()
+    const yaEnMes = new Set(gastos.filter(g => (g.fecha || '').startsWith(mesFilter)).map(claveGasto))
+    const pendientes = fijos.filter(g => !yaEnMes.has(claveGasto(g)))
+
+    if (pendientes.length === 0) {
+      toast.error(`Los gastos fijos de ${prevMesStr} ya están cargados en ${mesFilter}`)
       return
     }
 
-    const nuevosGastos = fijos.map(g => ({
+    if (!confirm(`¿Deseas copiar ${pendientes.length} gastos fijos del mes ${prevMesStr} al mes ${mesFilter}? Los pagados también se suman a las salidas de Caja.`)) {
+      return
+    }
+
+    const nuevosGastos = pendientes.map(g => ({
       concepto: g.concepto,
       monto: Number(g.monto),
       categoria: g.categoria,
@@ -227,13 +262,38 @@ export default function GastosPage() {
       notas: g.notas || 'Gasto fijo mensual recurrente'
     }))
 
-    const { error: insErr } = await supabase.from('gastos').insert(nuevosGastos)
+    const { data: creados, error: insErr } = await supabase.from('gastos').insert(nuevosGastos).select()
     if (insErr) {
       toast.error('Error al generar gastos fijos: ' + insErr.message)
       return
     }
 
+    // Los fiados entran a caja recién cuando se saldan
+    const egresos = ((creados || []) as Gasto[]).filter(g => !isGastoFiado(g)).map(egresoDeGasto)
+    if (egresos.length > 0) {
+      const { error: cajaErr } = await supabase.from('caja_movimientos').insert(egresos)
+      if (cajaErr) toast.error('Gastos copiados, pero no se pudieron sumar a Caja: ' + cajaErr.message)
+    }
+
     toast.success(`Se generaron ${nuevosGastos.length} gastos fijos para ${mesFilter}`)
+    await loadData()
+  }
+
+  const gastosSinCaja = gastos.filter(g => !isGastoFiado(g) && !gastosEnCaja.has(g.id))
+
+  const registrarGastosEnCaja = async () => {
+    const total = gastosSinCaja.reduce((sum, g) => sum + Number(g.monto), 0)
+    if (!confirm(`¿Sumar ${gastosSinCaja.length} gastos pagados (${formatCurrency(total)}) a las salidas de Caja, cada uno en su fecha?`)) {
+      return
+    }
+
+    const { error } = await supabase.from('caja_movimientos').insert(gastosSinCaja.map(egresoDeGasto))
+    if (error) {
+      toast.error('Error al registrar en Caja: ' + error.message)
+      return
+    }
+
+    toast.success(`${gastosSinCaja.length} gastos sumados a las salidas de Caja`)
     await loadData()
   }
 
@@ -305,6 +365,11 @@ export default function GastosPage() {
             <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Total filtrado: <strong>{formatCurrency(totalMes)}</strong></p>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
+            {gastosSinCaja.length > 0 && (
+              <button className="btn btn-secondary" onClick={registrarGastosEnCaja} title="Gastos pagados que todavía no figuran como salida de Caja">
+                <DollarSign size={16} /> Sumar a Caja ({gastosSinCaja.length})
+              </button>
+            )}
             {mesFilter && (
               <button className="btn btn-secondary" onClick={generarGastosFijosRecurrentes} title="Copiar gastos fijos del mes anterior a este mes">
                 🔄 Copiar Gastos Fijos del Mes

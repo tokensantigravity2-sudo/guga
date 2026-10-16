@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { Servicio, Cliente, PedidoItem, Pedido, StockItem, VariableServicio, EscalaPrecio } from '@/lib/types'
-import { formatCurrency, formatDateTime, generateNumeroPedido, ESTADOS_PEDIDO, CATEGORIAS_SERVICIO, cleanProductDescription, formatProductUnit } from '@/lib/helpers'
+import { formatCurrency, formatDateTime, generateNumeroPedido, ESTADOS_PEDIDO, cleanProductDescription, formatProductUnit, parseVariantesTag } from '@/lib/helpers'
 import {
   Plus, Minus, ShoppingCart, Search, X, Trash2,
   CreditCard, Banknote, ArrowLeftRight, Printer,
@@ -214,17 +214,7 @@ export default function PedidosPage() {
     if (Array.isArray(servicio.variantes) && servicio.variantes.length > 0) {
       return servicio.variantes
     }
-    if ((servicio.descripcion || '').includes('[VARIANTES:')) {
-      const match = (servicio.descripcion || '').match(/\[VARIANTES:([\s\S]*?)\]/)
-      if (match) {
-        try {
-          return JSON.parse(match[1])
-        } catch (e) {
-          console.error('Error parsing variantes JSON', e)
-        }
-      }
-    }
-    return []
+    return parseVariantesTag(servicio.descripcion)
   }
 
   const openAddItemModal = (servicio: Servicio) => {
@@ -234,14 +224,7 @@ export default function PedidosPage() {
     setItemMaterial('')
     setItemAcabado('')
 
-    const cleanDesc = (servicio.descripcion || '')
-      .replace(/\[VARIANTES:[\s\S]*?\]/gi, '')
-      .replace(/\[TERCERIZADO:[^\]]*\]/gi, '')
-      .replace(/\[COBRADO:[^\]]*\]/gi, '')
-      .replace(/\[STOCK:[^\]]*\]/gi, '')
-      .replace(/\[.*?\]/g, '')
-      .trim()
-    setItemDescripcion(cleanDesc)
+    setItemDescripcion(cleanProductDescription(servicio.descripcion))
 
     const vars = parseServicioVariantes(servicio)
     setAvailableVariantes(vars)
@@ -283,7 +266,10 @@ export default function PedidosPage() {
       setItemPrecioUnitario(match.precio)
       setItemPrecioEsTotal(true)
     } else {
+      // Sin tiradas propias: volver al precio base en vez de arrastrar el de la variable anterior
       setSelectedEscala(null)
+      setItemPrecioUnitario(Number(selectedServicio?.precio_base || 0))
+      setItemPrecioEsTotal(false)
     }
   }
 
@@ -1119,13 +1105,13 @@ export default function PedidosPage() {
                           <span>{item.nombre}</span>
                           <span style={{ color: 'var(--accent)' }}>{formatCurrency(item.subtotal)}</span>
                         </div>
-                        {(item.medida || item.material || item.acabado || item.descripcion) && (
+                        {(item.medida || item.material || item.acabado || cleanProductDescription(item.descripcion)) && (
                           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                             {[
                               item.medida,
                               item.material,
                               item.acabado,
-                              item.descripcion ? `📝 ${item.descripcion.slice(0, 45)}${item.descripcion.length > 45 ? '...' : ''}` : null
+                              cleanProductDescription(item.descripcion) ? `📝 ${cleanProductDescription(item.descripcion).slice(0, 45)}${cleanProductDescription(item.descripcion).length > 45 ? '...' : ''}` : null
                             ].filter(Boolean).join(' • ')}
                           </div>
                         )}
@@ -1403,7 +1389,7 @@ export default function PedidosPage() {
                     style={{ padding: '6px 10px', fontSize: 13 }}
                   >
                     <option value="">Todas las Categorías</option>
-                    {CATEGORIAS_SERVICIO.map(cat => (
+                    {categorias.map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
                   </select>
@@ -2121,13 +2107,13 @@ export default function PedidosPage() {
                           <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 4 }}>
                             <strong>{it.cantidad} unidades</strong> • {formatCurrency(unitPrice)} c/u
                           </div>
-                          {(it.medida || it.material || it.acabado || it.descripcion) && (
+                          {(it.medida || it.material || it.acabado || cleanProductDescription(it.descripcion)) && (
                             <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
                               {[
                                 it.medida,
                                 it.material,
                                 it.acabado,
-                                it.descripcion ? `📝 ${it.descripcion}` : null
+                                cleanProductDescription(it.descripcion) ? `📝 ${cleanProductDescription(it.descripcion)}` : null
                               ].filter(Boolean).join(' • ')}
                             </div>
                           )}

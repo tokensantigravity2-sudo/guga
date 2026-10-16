@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { Lock, Eye, EyeOff } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { LOGO_URL } from '@/lib/helpers'
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
@@ -56,7 +57,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
         {/* GUGA PRINT LOGO */}
         <div style={{ marginBottom: '24px', textAlign: 'center' }}>
           <img
-            src="/logo.png"
+            src={LOGO_URL}
             alt="GUGA IMPRENTA & GRÁFICA"
             style={{ height: '68px', maxWidth: '240px', width: 'auto', objectFit: 'contain' }}
           />

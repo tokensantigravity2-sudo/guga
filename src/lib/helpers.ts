@@ -1,3 +1,7 @@
+import type { Pedido, VariableServicio } from './types';
+
+export const LOGO_URL = '/logo-guga.png';
+
 export const formatCurrency = (amount: number): string => {
   if (amount === undefined || amount === null || isNaN(amount)) return '$ 0';
   const hasDecimals = amount % 1 !== 0;
@@ -55,14 +59,97 @@ export const generateNumeroPedido = (): string => {
   return `P-${datePart}-${randomPart}`;
 };
 
+// Índice del "]" que cierra el "[" de `start`. Cuenta corchetes anidados e ignora los que
+// están dentro de strings JSON: [VARIANTES:...] guarda un JSON con sus propios "]".
+const findClosingBracket = (text: string, start: number, jsonStrings = true): number => {
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === '\\') i++;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"' && jsonStrings) inString = true;
+    else if (ch === '[') depth++;
+    else if (ch === ']' && --depth === 0) return i;
+  }
+  // Una comilla suelta (ej: 10") no es un string JSON: reintentar contando solo corchetes
+  return jsonStrings ? findClosingBracket(text, start, false) : -1;
+};
+
+const startsWithTag = (text: string, at: number, tag: string): boolean =>
+  text.slice(at, at + tag.length + 2).toUpperCase() === `[${tag}:`;
+
+// Quita etiquetas [TAG:...] completas. Sin `tags` quita todo lo que esté entre corchetes.
+const stripBracketTags = (text: string, tags?: string[]): string => {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === '[' && (!tags || tags.some(t => startsWithTag(text, i, t)))) {
+      const end = findClosingBracket(text, i);
+      if (end !== -1) {
+        i = end + 1;
+        continue;
+      }
+    }
+    out += text[i++];
+  }
+  return out;
+};
+
+// Restos de [VARIANTES:...] que quedaron guardados como texto cuando la etiqueta se cortaba
+// en el primer "]" (ej: `},{"id":"...","nombre":"...","escalas":[]}]]`)
+const VARIANTES_RESIDUE = /\}(?:\s*,\s*\{(?:[^{}]|\{[^{}]*\})*\})*\s*\]\]/g;
+
+const tidyDescription = (text: string): string =>
+  text.replace(VARIANTES_RESIDUE, '').replace(/[ \t]{2,}/g, ' ').trim();
+
+// Descripción para mostrar: sin ninguna etiqueta interna
 export const cleanProductDescription = (desc?: string): string => {
   if (!desc) return '';
-  return desc
-    .replace(/\[TERCERIZADO:[^\]]*\]/gi, '')
-    .replace(/\[COSTO:[^\]]*\]/gi, '')
-    .replace(/\[PROVEEDOR:[^\]]*\]/gi, '')
-    .replace(/\[.*?\]/g, '')
-    .trim();
+  return tidyDescription(stripBracketTags(desc));
+};
+
+// Descripción editable del servicio: solo quita las etiquetas que escribe el catálogo
+export const stripServicioTags = (desc?: string): string => {
+  if (!desc) return '';
+  return tidyDescription(stripBracketTags(desc, ['VARIANTES', 'TERCERIZADO']));
+};
+
+export const parseVariantesTag = (desc?: string): VariableServicio[] => {
+  const text = desc || '';
+  const start = text.toUpperCase().indexOf('[VARIANTES:');
+  if (start === -1) return [];
+  const end = findClosingBracket(text, start);
+  if (end === -1) return [];
+  try {
+    const parsed = JSON.parse(text.slice(start + '[VARIANTES:'.length, end));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.error('Error parsing variantes JSON', err);
+    return [];
+  }
+};
+
+// La tienda guarda teléfono, entrega y email también dentro de `notas`, porque la tabla pedidos
+// puede no tener esas columnas. Completa desde ahí los campos que no vengan de la base.
+export const completarPedidoTienda = <T extends Partial<Pedido>>(p: T): T => {
+  const notas = p.notas || '';
+  if (!notas.includes('[TIENDA ONLINE]')) return p;
+
+  const tel = notas.match(/Tel:\s*([^|]+)/);
+  const entrega = notas.match(/Entrega:\s*(\w+)\s*\((.*?)\)\s*(?:\||$)/);
+  const email = notas.match(/Email:\s*([^|\s]+)/);
+  const esEnvio = entrega?.[1].toUpperCase() === 'ENVIO';
+
+  return {
+    ...p,
+    origen: p.origen || 'ecommerce',
+    cliente_telefono: p.cliente_telefono || tel?.[1].trim(),
+    cliente_email: p.cliente_email || email?.[1],
+    cliente_direccion: p.cliente_direccion || (entrega ? (esEnvio ? entrega[2].trim() : 'Retiro en Taller') : undefined),
+    metodo_entrega: p.metodo_entrega || (entrega ? (esEnvio ? 'envio' : 'retiro') : undefined),
+  };
 };
 
 export const formatProductUnit = (
