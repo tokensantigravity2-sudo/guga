@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Servicio, Pedido } from '@/lib/types'
-import { formatCurrency, generateNumeroEcommerce, formatWhatsAppMessage, LINEAS_IMPRENTA, formatProductUnit, cleanProductDescription, completarPedidoTienda, LOGO_URL } from '@/lib/helpers'
+import { formatCurrency, generateNumeroEcommerce, formatWhatsAppMessage, LINEAS_IMPRENTA, formatProductUnit, cleanProductDescription, completarPedidoTienda, getVariantesServicio, LOGO_URL } from '@/lib/helpers'
 import {
   Search, ShoppingCart, Truck, User, Plus, Minus, Trash2,
   X, Check, Phone, MapPin,
@@ -17,6 +17,7 @@ import WhatsAppWidget from '@/components/WhatsAppWidget'
 import CategoryIcon, { DEFAULT_CATEGORY_VECTOR_MAP } from '@/components/CategoryIcon'
 import CustomerAuthModal from '@/components/CustomerAuthModal'
 import StoreHeader from '@/components/StoreHeader'
+import ProductoModal, { ProductoSeleccion } from '@/components/ProductoModal'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 
@@ -24,7 +25,13 @@ interface CartItem {
   servicio: Servicio
   cantidad: number
   subtotal: number
+  variante?: string
+  escala?: { cantidad: number; precio: number } // tirada elegida: la cantidad avanza de a tiradas completas
 }
+
+// Un mismo producto con otra variable o tirada es otro renglón del carrito
+const claveItem = (it: Pick<CartItem, 'servicio' | 'variante' | 'escala'>) =>
+  [it.servicio.id, it.variante || '', it.escala?.cantidad || ''].join('|')
 
 export interface BannerSlideItem {
   id: string | number
@@ -136,6 +143,8 @@ export default function TiendaPage() {
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false)
   const [orderSuccess, setOrderSuccess] = useState<{ pedidoNumero: string; whatsappUrl: string } | null>(null)
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false)
+  const [productoAbierto, setProductoAbierto] = useState<Servicio | null>(null)
+  const [carritoCargado, setCarritoCargado] = useState(false)
 
   // Category Vector Line Icons State
   const [categoryVectorIcons, setCategoryVectorIcons] = useState<Record<string, string>>(DEFAULT_CATEGORY_VECTOR_MAP)
@@ -197,6 +206,7 @@ export default function TiendaPage() {
         console.error('Error cargando carrito guardado:', e)
       }
     }
+    setCarritoCargado(true)
 
     // Check if URL has ?openCart=true
     if (typeof window !== 'undefined') {
@@ -404,44 +414,54 @@ export default function TiendaPage() {
     }
   }
 
+  // Guardar el carrito para que no se pierda al recargar, navegar o volver de Google
+  useEffect(() => {
+    if (!carritoCargado) return
+    try {
+      localStorage.setItem('guga_store_cart', JSON.stringify(cart))
+      window.dispatchEvent(new Event('storage'))
+    } catch {}
+  }, [cart, carritoCargado])
+
   // Cart Actions
-  const addToCart = (srv: Servicio, qty: number = 1) => {
+  const addToCart = (srv: Servicio, seleccion: ProductoSeleccion) => {
+    const nuevo: CartItem = { servicio: srv, ...seleccion }
     setCart(prev => {
-      const index = prev.findIndex(item => item.servicio.id === srv.id)
-      if (index >= 0) {
-        const updated = [...prev]
-        const newQty = updated[index].cantidad + qty
-        updated[index] = {
-          ...updated[index],
-          cantidad: newQty,
-          subtotal: newQty * srv.precio_base,
-        }
-        return updated
-      } else {
-        return [...prev, { servicio: srv, cantidad: qty, subtotal: qty * srv.precio_base }]
+      const index = prev.findIndex(item => claveItem(item) === claveItem(nuevo))
+      if (index < 0) return [...prev, nuevo]
+      const updated = [...prev]
+      updated[index] = {
+        ...updated[index],
+        cantidad: updated[index].cantidad + nuevo.cantidad,
+        subtotal: updated[index].subtotal + nuevo.subtotal,
       }
+      return updated
     })
-    toast.success(`"${srv.nombre}" agregado al carrito`)
+    setProductoAbierto(null)
+    toast.success(`"${srv.nombre}${seleccion.variante ? ` — ${seleccion.variante}` : ''}" agregado al carrito`)
   }
 
-  const updateCartQty = (srvId: string, delta: number) => {
-    setCart(prev => {
-      return prev.map(item => {
-        if (item.servicio.id === srvId) {
-          const newQty = Math.max(1, item.cantidad + delta)
-          return {
-            ...item,
-            cantidad: newQty,
-            subtotal: newQty * item.servicio.precio_base,
-          }
-        }
-        return item
-      })
-    })
+  const updateCartQty = (clave: string, delta: number) => {
+    setCart(prev => prev.map(item => {
+      if (claveItem(item) !== clave) return item
+      if (item.escala) {
+        const tiradas = Math.max(1, Math.round(item.cantidad / item.escala.cantidad) + delta)
+        return { ...item, cantidad: tiradas * item.escala.cantidad, subtotal: tiradas * item.escala.precio }
+      }
+      const newQty = Math.max(1, item.cantidad + delta)
+      return { ...item, cantidad: newQty, subtotal: newQty * item.servicio.precio_base }
+    }))
   }
 
-  const removeFromCart = (srvId: string) => {
-    setCart(prev => prev.filter(item => item.servicio.id !== srvId))
+  const removeFromCart = (clave: string) => {
+    setCart(prev => prev.filter(item => claveItem(item) !== clave))
+  }
+
+  // Precio a mostrar en la tarjeta: la tirada más barata si el producto tiene variables con tiradas
+  const precioDesde = (srv: Servicio) => {
+    const escalas = getVariantesServicio(srv).flatMap(v => v.escalas || []).filter(e => e.precio > 0)
+    if (escalas.length === 0) return null
+    return escalas.reduce((min, e) => (e.precio < min.precio ? e : min))
   }
 
   const cartCount = cart.reduce((acc, it) => acc + it.cantidad, 0)
@@ -490,9 +510,11 @@ export default function TiendaPage() {
 
       const itemsForOrder = cart.map(it => ({
         producto_id: it.servicio.id,
-        nombre: it.servicio.nombre,
+        nombre: it.variante ? `${it.servicio.nombre} — ${it.variante}` : it.servicio.nombre,
+        variante_nombre: it.variante || undefined,
+        acabado: it.variante || undefined,
         cantidad: it.cantidad,
-        precio_unitario: it.servicio.precio_base,
+        precio_unitario: it.cantidad > 0 ? Math.round((it.subtotal / it.cantidad) * 100) / 100 : it.servicio.precio_base,
         subtotal: it.subtotal,
         unidad: it.servicio.unidad || 'unidad',
         imagen_url: it.servicio.imagen_url || '',
@@ -1369,7 +1391,8 @@ export default function TiendaPage() {
               <>
                 <div className="tienda-products-grid">
                   {displayedProducts.map((srv) => {
-                  const cartItem = cart.find(it => it.servicio.id === srv.id)
+                  const enCarrito = cart.some(it => it.servicio.id === srv.id)
+                  const desde = precioDesde(srv)
                   const imgUrl = getProductImage(srv)
 
                   return (
@@ -1399,7 +1422,9 @@ export default function TiendaPage() {
                       {/* Product Image Container */}
                       <div
                         className="product-card-img-container"
+                        onClick={() => setProductoAbierto(srv)}
                         style={{
+                          cursor: 'pointer',
                           height: '180px',
                           backgroundColor: '#f1f5f9',
                           position: 'relative',
@@ -1474,93 +1499,45 @@ export default function TiendaPage() {
                         <div>
                           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '10px' }}>
                             <div>
+                              {desde && (
+                                <span style={{ fontSize: '11px', color: '#64748b', marginRight: '4px' }}>Desde</span>
+                              )}
                               <span className="product-card-price" style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a' }}>
-                                {formatCurrency(srv.precio_base)}
+                                {formatCurrency(desde ? desde.precio : srv.precio_base)}
                               </span>
                               <span className="product-card-unit" style={{ fontSize: '11px', color: '#64748b', marginLeft: '4px' }}>
-                                /{formatProductUnit(srv)}
+                                /{desde ? `${desde.cantidad.toLocaleString('es-UY')} u` : formatProductUnit(srv)}
                               </span>
                             </div>
                           </div>
 
-                          {/* Add to Cart / Quantity Selector */}
-                          {cartItem ? (
-                            <div style={{
+                          {/* Entrar al producto para elegir variable y cantidad */}
+                          <button
+                            onClick={() => setProductoAbierto(srv)}
+                            className="product-card-btn"
+                            style={{
+                              width: '100%',
                               display: 'flex',
                               alignItems: 'center',
-                              justifyContent: 'space-between',
-                              backgroundColor: '#f1f5f9',
+                              justifyContent: 'center',
+                              gap: '6px',
+                              backgroundColor: enCarrito ? '#0e746b' : '#149b8e',
+                              color: '#ffffff',
+                              border: 'none',
+                              padding: '9px 12px',
                               borderRadius: '8px',
-                              padding: '4px'
-                            }}>
-                              <button
-                                onClick={() => updateCartQty(srv.id, -1)}
-                                style={{
-                                  width: '28px',
-                                  height: '28px',
-                                  borderRadius: '6px',
-                                  backgroundColor: '#ffffff',
-                                  border: '1px solid #cbd5e1',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  cursor: 'pointer',
-                                  color: '#334155'
-                                }}
-                              >
-                                <Minus size={13} />
-                              </button>
-
-                              <span style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a' }}>
-                                {cartItem.cantidad}
-                              </span>
-
-                              <button
-                                onClick={() => updateCartQty(srv.id, 1)}
-                                style={{
-                                  width: '28px',
-                                  height: '28px',
-                                  borderRadius: '6px',
-                                  backgroundColor: '#ffffff',
-                                  border: '1px solid #cbd5e1',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  cursor: 'pointer',
-                                  color: '#334155'
-                                }}
-                              >
-                                <Plus size={13} />
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => addToCart(srv, 1)}
-                              className="product-card-btn"
-                              style={{
-                                width: '100%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '6px',
-                                backgroundColor: '#149b8e',
-                                color: '#ffffff',
-                                border: 'none',
-                                padding: '9px 12px',
-                                borderRadius: '8px',
-                                fontSize: '13px',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                transition: 'opacity 0.2s',
-                                boxShadow: '0 2px 6px rgba(20, 155, 142, 0.2)'
-                              }}
-                              onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
-                              onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-                            >
-                              <ShoppingCart size={14} />
-                              <span>Agregar</span>
-                            </button>
-                          )}
+                              fontSize: '13px',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              transition: 'opacity 0.2s',
+                              boxShadow: '0 2px 6px rgba(20, 155, 142, 0.2)'
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
+                            onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+                          >
+                            {enCarrito ? <Check size={14} /> : <ArrowRight size={14} />}
+                            <span>{enCarrito ? 'En el carrito · Ver' : 'Ver producto'}</span>
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -1774,6 +1751,15 @@ export default function TiendaPage() {
       {/* INTERACTIVE WHATSAPP WIDGET (Expands with ¿Necesitas ayuda?) */}
       <WhatsAppWidget phone={STORE_PHONE} />
 
+      {productoAbierto && (
+        <ProductoModal
+          servicio={productoAbierto}
+          imagenUrl={getProductImage(productoAbierto)}
+          onClose={() => setProductoAbierto(null)}
+          onAdd={(seleccion) => addToCart(productoAbierto, seleccion)}
+        />
+      )}
+
       {/* CART DRAWER */}
       {isCartOpen && (
         <div style={{
@@ -1832,7 +1818,7 @@ export default function TiendaPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                   {cart.map((it) => (
                     <div
-                      key={it.servicio.id}
+                      key={claveItem(it)}
                       style={{
                         display: 'flex',
                         gap: '12px',
@@ -1854,6 +1840,14 @@ export default function TiendaPage() {
                         <h4 style={{ fontSize: '13.5px', fontWeight: 700, color: '#0f172a', margin: '2px 0 6px 0', lineHeight: '1.2' }}>
                           {it.servicio.nombre}
                         </h4>
+                        {(it.variante || it.escala) && (
+                          <div style={{ fontSize: '12px', color: '#475569', margin: '-2px 0 6px 0' }}>
+                            {[
+                              it.variante,
+                              it.escala ? `${it.cantidad.toLocaleString('es-UY')} u (${Math.round(it.cantidad / it.escala.cantidad)} × ${it.escala.cantidad.toLocaleString('es-UY')})` : null
+                            ].filter(Boolean).join(' · ')}
+                          </div>
+                        )}
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>
                             {formatCurrency(it.subtotal)}
@@ -1862,22 +1856,24 @@ export default function TiendaPage() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <button
                               type="button"
-                              onClick={() => updateCartQty(it.servicio.id, -1)}
+                              onClick={() => updateCartQty(claveItem(it), -1)}
                               style={{ width: '26px', height: '26px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#475569' }}
                             >
                               <Minus size={13} />
                             </button>
-                            <span style={{ fontSize: '13px', fontWeight: 700, minWidth: '18px', textAlign: 'center' }}>{it.cantidad}</span>
+                            <span style={{ fontSize: '13px', fontWeight: 700, minWidth: '18px', textAlign: 'center' }}>
+                              {it.escala ? Math.round(it.cantidad / it.escala.cantidad) : it.cantidad}
+                            </span>
                             <button
                               type="button"
-                              onClick={() => updateCartQty(it.servicio.id, 1)}
+                              onClick={() => updateCartQty(claveItem(it), 1)}
                               style={{ width: '26px', height: '26px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#475569' }}
                             >
                               <Plus size={13} />
                             </button>
                             <button
                               type="button"
-                              onClick={() => removeFromCart(it.servicio.id)}
+                              onClick={() => removeFromCart(claveItem(it))}
                               style={{ marginLeft: '6px', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}
                               title="Eliminar del carrito"
                             >

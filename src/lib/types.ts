@@ -145,6 +145,7 @@ export interface Gasto {
   estado_pago?: 'pagado' | 'fiado'
   fecha_vencimiento?: string
   created_at?: string
+  proyectado?: boolean // gasto fijo repetido automáticamente en un mes sin registro propio
 }
 
 export interface Proveedor {

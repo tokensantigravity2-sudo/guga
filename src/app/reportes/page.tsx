@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Header from '@/components/Header'
-import { formatCurrency, formatDate, getTodayStr } from '@/lib/helpers'
+import { formatCurrency, formatDate, getTodayStr, proyectarGastosFijos, esGastoFijo } from '@/lib/helpers'
 import { Pedido, Gasto, StockItem, Cliente, CajaMovimiento } from '@/lib/types'
 import {
   BarChart3, TrendingUp, TrendingDown, DollarSign, ShoppingCart,
@@ -112,6 +112,7 @@ export default function ReportesPage() {
     pedidosVencidosCount: 0,
     gastos: 0,
     gastosTabla: 0,
+    gastosFijos: 0,
     egresosCaja: 0,
     ganancia: 0,
     gananciaCaja: 0,
@@ -233,8 +234,9 @@ export default function ReportesPage() {
       return true
     })
 
-    // Filter gastos by date
-    const gastosFiltrados = gastosRaw.filter(g => {
+    // Filter gastos by date (los gastos fijos se repiten solos en cada mes)
+    const gastosConFijos = proyectarGastosFijos(gastosRaw)
+    const gastosFiltrados = gastosConFijos.filter(g => {
       const fechaStr = g.fecha || g.created_at
       if (!fechaStr) return false
       const d = parseFechaLocal(fechaStr)
@@ -251,6 +253,7 @@ export default function ReportesPage() {
     })
 
     const montoGastosTabla = gastosFiltrados.reduce((sum, g) => sum + Number(g.monto), 0)
+    const montoGastosFijos = gastosFiltrados.filter(esGastoFijo).reduce((sum, g) => sum + Number(g.monto), 0)
     const montoEgresosCaja = egresosCajaFiltrados.reduce((sum, c) => sum + Number(c.monto), 0)
     const totalGastos = montoGastosTabla + montoEgresosCaja
 
@@ -261,7 +264,7 @@ export default function ReportesPage() {
       .filter(c => (c.fecha || c.created_at || '').substring(0, 10) === todayStr && c.tipo === 'ingreso')
       .reduce((sum, c) => sum + Number(c.monto || 0), 0)
 
-    const gastTablaHoy = gastosRaw
+    const gastTablaHoy = gastosConFijos
       .filter(g => (g.fecha || g.created_at || '').substring(0, 10) === todayStr)
       .reduce((sum, g) => sum + Number(g.monto || 0), 0)
 
@@ -465,6 +468,7 @@ export default function ReportesPage() {
       pedidosVencidosCount: globalPedidosVencidos,
       gastos: totalGastos,
       gastosTabla: montoGastosTabla,
+      gastosFijos: montoGastosFijos,
       egresosCaja: montoEgresosCaja,
       ganancia,
       gananciaCaja,
@@ -741,6 +745,11 @@ export default function ReportesPage() {
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
                 {formatCurrency(resumen.gastosTabla)} operativos + {formatCurrency(resumen.egresosCaja)} salidas de caja
               </div>
+              {resumen.gastosFijos > 0 && (
+                <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                  Incluye {formatCurrency(resumen.gastosFijos)} de gastos fijos del mes
+                </div>
+              )}
             </div>
           </div>
 

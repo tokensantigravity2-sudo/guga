@@ -1,4 +1,4 @@
-import type { Pedido, VariableServicio } from './types';
+import type { Gasto, Pedido, VariableServicio } from './types';
 
 export const LOGO_URL = '/logo-guga.png';
 
@@ -50,6 +50,47 @@ export const getTodayStr = (): string => {
   const month = String(today.getMonth() + 1).padStart(2, '0');
   const day = String(today.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+export const esGastoFijo = (g: Pick<Gasto, 'categoria'>): boolean =>
+  (g.categoria || '').toLowerCase().includes('fijo');
+
+const siguienteMes = (mes: string): string => {
+  const [y, m] = mes.split('-').map(Number);
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+};
+
+// Los gastos de categoría "fijo" se repiten solos cada mes, desde el mes en que se cargaron hasta el actual.
+// Un mes con registro propio usa ese monto; uno sin registro suma una copia proyectada con el último monto conocido.
+export const proyectarGastosFijos = <T extends Gasto>(gastos: T[]): T[] => {
+  const mesActual = getTodayStr().substring(0, 7);
+  const grupos = new Map<string, T[]>();
+  for (const g of gastos) {
+    if (!esGastoFijo(g) || !g.fecha) continue;
+    const clave = g.concepto.trim().toLowerCase();
+    grupos.set(clave, [...(grupos.get(clave) || []), g]);
+  }
+
+  const proyectados: T[] = [];
+  for (const registros of grupos.values()) {
+    const ordenados = [...registros].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+    const mesesConRegistro = new Set(ordenados.map(g => (g.fecha || '').substring(0, 7)));
+    const inicio = ordenados
+      .flatMap(g => [(g.fecha || '').substring(0, 7), (g.created_at || '').substring(0, 7)])
+      .filter(Boolean)
+      .sort()[0];
+
+    for (let mes = inicio; mes && mes <= mesActual; mes = siguienteMes(mes)) {
+      if (mesesConRegistro.has(mes)) continue;
+      const base = [...ordenados].reverse().find(g => (g.fecha || '').substring(0, 7) <= mes) || ordenados[0];
+      const [y, m] = mes.split('-').map(Number);
+      const dia = Math.min(Number((base.fecha || '').substring(8, 10)) || 1, new Date(y, m, 0).getDate());
+      const fecha = `${mes}-${String(dia).padStart(2, '0')}`;
+      proyectados.push({ ...base, id: `fijo-${base.id}-${mes}`, fecha, created_at: fecha, proyectado: true });
+    }
+  }
+
+  return [...gastos, ...proyectados];
 };
 
 export const generateNumeroPedido = (): string => {
@@ -130,6 +171,9 @@ export const parseVariantesTag = (desc?: string): VariableServicio[] => {
     return [];
   }
 };
+
+export const getVariantesServicio = (srv: { variantes?: VariableServicio[]; descripcion?: string }): VariableServicio[] =>
+  Array.isArray(srv.variantes) && srv.variantes.length > 0 ? srv.variantes : parseVariantesTag(srv.descripcion);
 
 // La tienda guarda teléfono, entrega y email también dentro de `notas`, porque la tabla pedidos
 // puede no tener esas columnas. Completa desde ahí los campos que no vengan de la base.
