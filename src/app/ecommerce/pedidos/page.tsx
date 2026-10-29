@@ -192,7 +192,7 @@ export default function TiendaPedidosPage() {
       localStorage.setItem('guga_store_cart', JSON.stringify(itemsToAdd))
       localStorage.setItem('guga_cart_items', JSON.stringify(itemsToAdd))
       toast.success(`¡${itemsToAdd.length} producto(s) agregados al carrito!`)
-      window.location.href = '/tienda?openCart=true'
+      window.location.href = '/ecommerce?openCart=true'
     } catch (e) {
       console.error('Error reordering:', e)
       toast.error('No se pudo reordenar el pedido')

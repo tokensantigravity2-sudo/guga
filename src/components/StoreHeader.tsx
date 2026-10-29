@@ -6,7 +6,6 @@ import {
   ChevronDown, LogIn, LogOut
 } from 'lucide-react'
 import { formatCurrency, LOGO_URL } from '@/lib/helpers'
-import { supabase } from '@/lib/supabase'
 import CustomerAuthModal from '@/components/CustomerAuthModal'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
@@ -78,57 +77,6 @@ export default function StoreHeader({
     return () => window.removeEventListener('storage', handleStorage)
   }, [])
 
-  // Al volver de Google queda una sesión de Supabase: se usa solo para identificar al cliente
-  // y guardar su perfil, igual que el ingreso por teléfono
-  useEffect(() => {
-    let procesando = false
-
-    const completeGoogleLogin = async (email: string, nombreGoogle: string) => {
-      if (procesando) return
-      procesando = true
-
-      // La tienda trabaja con el perfil guardado; no hace falta mantener la sesión de Supabase
-      await supabase.auth.signOut({ scope: 'local' })
-      const { data: { session: sesionActiva } } = await supabase.auth.getSession()
-
-      const { data: matched } = await supabase
-        .from('clientes')
-        .select('*')
-        .ilike('email', email.replace(/[\\%_]/g, '\\$&'))
-        .limit(1)
-      const client = matched?.[0]
-
-      localStorage.setItem('guga_store_customer', JSON.stringify({
-        id: client?.id,
-        nombre: client?.nombre || nombreGoogle,
-        telefono: client?.telefono || '',
-        email,
-        direccion: client?.direccion || '',
-        rut: client?.rut || '',
-        empresa: '',
-      }))
-
-      // Las páginas de la tienda leen el perfil al cargar: recargar para que todas lo tomen.
-      // Si la sesión no se pudo cerrar no se recarga, para no repetir este paso en bucle.
-      if (sesionActiva) {
-        refreshLocalData()
-        return
-      }
-      window.location.reload()
-    }
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      const user = session?.user
-      if (!user?.email) return
-      const email = user.email.toLowerCase()
-      const nombreGoogle = user.user_metadata?.full_name || user.user_metadata?.name || email.split('@')[0]
-      // Supabase no permite llamar a su cliente dentro de este callback: diferir
-      setTimeout(() => completeGoogleLogin(email, nombreGoogle), 0)
-    })
-
-    return () => subscription.unsubscribe()
-  }, [])
-
   useEffect(() => {
     setLocalSearch(searchTerm)
   }, [searchTerm])
@@ -138,7 +86,7 @@ export default function StoreHeader({
     if (setSearchTerm) {
       setSearchTerm(localSearch)
     } else {
-      window.location.href = `/tienda?search=${encodeURIComponent(localSearch.trim())}`
+      window.location.href = `/ecommerce?search=${encodeURIComponent(localSearch.trim())}`
     }
   }
 
@@ -153,7 +101,7 @@ export default function StoreHeader({
     if (onOpenCart) {
       onOpenCart()
     } else {
-      window.location.href = '/tienda?openCart=true'
+      window.location.href = '/ecommerce?openCart=true'
     }
   }
 
@@ -172,7 +120,7 @@ export default function StoreHeader({
       }}>
         <div className="store-header-inner">
           {/* Logo GUGA */}
-          <Link href="/tienda" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', flexShrink: 0 }}>
+          <Link href="/ecommerce" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', flexShrink: 0 }}>
             <img
               src={LOGO_URL}
               alt="GUGA Imprenta & Gráfica"
@@ -238,7 +186,7 @@ export default function StoreHeader({
                   const el = document.getElementById('catalogo-section')
                   if (el) el.scrollIntoView({ behavior: 'smooth' })
                 } else {
-                  window.location.href = '/tienda#catalogo-section'
+                  window.location.href = '/ecommerce#catalogo-section'
                 }
               }}
               style={{
@@ -316,7 +264,7 @@ export default function StoreHeader({
 
             {/* Pedidos — Outline pill */}
             <Link
-              href="/tienda/pedidos"
+              href="/ecommerce/pedidos"
               className="store-action-btn"
               style={{
                 display: 'flex',
@@ -407,7 +355,7 @@ export default function StoreHeader({
 
                     <div style={{ padding: '6px' }}>
                       <Link
-                        href="/tienda/cuenta"
+                        href="/ecommerce/cuenta"
                         onClick={() => setIsUserMenuOpen(false)}
                         style={{
                           display: 'flex',
@@ -429,7 +377,7 @@ export default function StoreHeader({
                       </Link>
 
                       <Link
-                        href="/tienda/pedidos"
+                        href="/ecommerce/pedidos"
                         onClick={() => setIsUserMenuOpen(false)}
                         style={{
                           display: 'flex',

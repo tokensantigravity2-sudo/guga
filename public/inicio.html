@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GUGA Print · Imprenta & Soluciones Gráficas en Maldonado</title>
+  <meta name="description" content="Imprenta y soluciones gráficas en Maldonado: tarjetas, folletos, talonarios, stickers, banners, packaging y diseño. Pedí online o escribinos por WhatsApp." />
+  <link rel="icon" href="/g.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/lenis@1.1.13/dist/lenis.css" />
+  <script>
+    // Con JS activo se ocultan los elementos de la intro hasta que GSAP los anima
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('animado')
+  </script>
+  <style>
+    :root {
+      --teal: #149b8e;
+      --teal-dark: #0e746b;
+      --amarillo: #f59e0b;
+      --naranja: #f97316;
+      --texto: #0f172a;
+      --texto-2: #475569;
+      --texto-3: #64748b;
+      --borde: #e2e8f0;
+      --fondo: #f8fafc;
+      --wpp: #25d366;
+      --degradado: linear-gradient(135deg, #149b8e 0%, #f59e0b 55%, #f97316 100%);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #ffffff;
+      color: var(--texto);
+      font-family: 'Inter', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.55;
+      overflow-x: hidden;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    img { display: block; max-width: 100%; }
+
+    .contenedor { max-width: 1160px; margin: 0 auto; padding: 0 20px; }
+
+    /* Antes de animar */
+    .animado .intro { visibility: hidden; }
+
+    /* Encabezado */
+    header {
+      position: fixed;
+      inset: 0 0 auto 0;
+      z-index: 20;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+    header.con-sombra { border-color: var(--borde); box-shadow: 0 6px 24px rgba(15, 23, 42, 0.06); }
+    .barra { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 76px; }
+    .barra img { height: 48px; width: auto; }
+    nav { display: flex; align-items: center; gap: 28px; font-size: 14px; font-weight: 600; color: var(--texto-2); }
+    nav .enlace { position: relative; }
+    nav .enlace::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      bottom: -6px;
+      width: 100%;
+      height: 2px;
+      background: var(--degradado);
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform 0.3s ease;
+    }
+    nav .enlace:hover { color: var(--texto); }
+    nav .enlace:hover::after { transform: scaleX(1); }
+
+    /* Botones */
+    .boton {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 14px 24px;
+      border-radius: 999px;
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1;
+      white-space: nowrap;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+    .boton:hover { transform: translateY(-2px); }
+    .boton svg, .boton img { width: 20px; height: 20px; flex-shrink: 0; }
+    .boton-principal { background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%); color: #ffffff; box-shadow: 0 8px 22px rgba(20, 155, 142, 0.32); }
+    .boton-principal:hover { box-shadow: 0 12px 28px rgba(20, 155, 142, 0.42); }
+    .boton-wpp { background: #ffffff; color: var(--texto); border: 1.5px solid var(--borde); }
+    .boton-wpp:hover { border-color: var(--wpp); box-shadow: 0 10px 24px rgba(37, 211, 102, 0.18); }
+    .boton-chico { padding: 11px 18px; font-size: 14px; }
+
+    /* Portada */
+    .portada { position: relative; padding: 150px 0 90px; background: var(--fondo); overflow: hidden; }
+    .mancha {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(60px);
+      opacity: 0.35;
+      pointer-events: none;
+    }
+    .mancha-1 { width: 420px; height: 420px; background: #149b8e; top: -120px; right: 8%; }
+    .mancha-2 { width: 380px; height: 380px; background: #f59e0b; bottom: -160px; right: -60px; opacity: 0.25; }
+    .portada-grilla { position: relative; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 48px; align-items: center; }
+    h1 { font-size: clamp(36px, 5.2vw, 62px); line-height: 1.05; letter-spacing: -0.025em; margin: 0 0 20px; font-weight: 900; }
+    h1 .linea { display: block; overflow: hidden; padding-bottom: 0.06em; }
+    h1 .linea > span { display: inline-block; }
+    .degradado-texto { background: var(--degradado); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .bajada { font-size: clamp(16px, 1.8vw, 19px); color: var(--texto-2); max-width: 560px; margin: 0 0 30px; }
+    .acciones { display: flex; flex-wrap: wrap; gap: 12px; }
+    .ubicacion-corta { display: inline-flex; align-items: center; gap: 8px; margin-top: 26px; font-size: 14px; color: var(--texto-3); font-weight: 600; }
+    .ubicacion-corta svg { width: 18px; height: 18px; color: var(--naranja); }
+
+    .mano-3d { position: relative; height: 640px; margin-bottom: -90px; align-self: end; }
+    #mano { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+    .portada .contenedor { z-index: 1; }
+    .chip {
+      position: absolute;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-radius: 16px;
+      background: #ffffff;
+      box-shadow: 0 14px 34px rgba(15, 23, 42, 0.14);
+      font-size: 13.5px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .chip small { display: block; font-weight: 500; color: var(--texto-3); font-size: 12px; }
+    .chip-icono { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .chip-icono img, .chip-icono svg { width: 20px; height: 20px; }
+    .chip-1 { top: 16%; left: -2%; }
+    .chip-1 .chip-icono { background: rgba(37, 211, 102, 0.12); }
+    .chip-2 { top: 42%; right: 0; }
+    .chip-2 .chip-icono { background: rgba(249, 115, 22, 0.12); color: var(--naranja); }
+
+    /* Cinta de servicios */
+    .cinta { background: var(--texto); color: #ffffff; padding: 18px 0; overflow: hidden; }
+    .cinta-pista { display: flex; width: max-content; }
+    .cinta-grupo { display: flex; align-items: center; gap: 40px; padding-right: 40px; font-size: 18px; font-weight: 800; letter-spacing: 0.01em; }
+    .cinta-grupo i { width: 9px; height: 9px; border-radius: 50%; background: var(--degradado); display: inline-block; }
+
+    /* Secciones */
+    section { padding: 100px 0; }
+    .antetitulo { display: inline-block; font-size: 13px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--teal); margin-bottom: 12px; }
+    .titulo-seccion { font-size: clamp(28px, 3.6vw, 42px); line-height: 1.12; letter-spacing: -0.02em; margin: 0 0 14px; font-weight: 800; }
+    .texto-seccion { color: var(--texto-2); font-size: 17px; max-width: 640px; margin: 0; }
+
+    .nosotros { display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 60px; align-items: center; }
+    .nosotros-foto { position: relative; border-radius: 28px; overflow: hidden; aspect-ratio: 4 / 5; box-shadow: 0 30px 60px rgba(15, 23, 42, 0.16); }
+    .nosotros-foto img { width: 100%; height: 115%; object-fit: cover; }
+    .datos { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 30px; }
+    .dato { padding: 20px; border-radius: 18px; border: 1px solid var(--borde); background: #ffffff; transition: border-color 0.2s ease, transform 0.2s ease; }
+    .dato:hover { border-color: rgba(20, 155, 142, 0.4); transform: translateY(-3px); }
+    .dato strong { display: block; font-size: 16px; margin-bottom: 4px; }
+    .dato span { color: var(--texto-3); font-size: 14px; }
+
+    .servicios { background: var(--fondo); }
+    .grilla { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-top: 44px; }
+    .tarjeta { border-radius: 20px; background: #ffffff; border: 1px solid var(--borde); overflow: hidden; transition: transform 0.25s ease, box-shadow 0.25s ease; }
+    .tarjeta:hover { transform: translateY(-6px); box-shadow: 0 20px 40px rgba(15, 23, 42, 0.1); }
+    .tarjeta-foto { height: 160px; overflow: hidden; position: relative; }
+    .tarjeta-foto img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.6s ease; }
+    .tarjeta:hover .tarjeta-foto img { transform: scale(1.07); }
+    .tarjeta-cuerpo { padding: 20px 20px 22px; position: relative; }
+    .icono {
+      position: absolute;
+      top: -24px;
+      left: 18px;
+      width: 46px;
+      height: 46px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #ffffff;
+      color: var(--teal);
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+    }
+    .icono svg { width: 22px; height: 22px; }
+    .tarjeta h3 { margin: 18px 0 6px; font-size: 16.5px; }
+    .tarjeta p { margin: 0; color: var(--texto-3); font-size: 14px; }
+
+    .pasos { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 48px; }
+    .pasos-linea { position: absolute; top: 46px; left: 16%; right: 16%; height: 3px; background: var(--degradado); border-radius: 3px; transform-origin: left; }
+    .paso { position: relative; padding: 28px; border-radius: 20px; border: 1px solid var(--borde); background: #ffffff; text-align: center; }
+    .numero {
+      width: 40px;
+      height: 40px;
+      margin: 0 auto 16px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--degradado);
+      color: #ffffff;
+      font-weight: 800;
+      box-shadow: 0 0 0 6px #ffffff;
+    }
+    .paso h3 { margin: 0 0 6px; font-size: 17px; }
+    .paso p { margin: 0; color: var(--texto-3); font-size: 14.5px; }
+
+    .ubicacion { background: var(--fondo); }
+    .ubicacion-grilla { display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 40px; align-items: stretch; }
+    .direccion { padding: 34px; border-radius: 24px; background: #ffffff; border: 1px solid var(--borde); display: flex; flex-direction: column; justify-content: center; }
+    .direccion h3 { margin: 0 0 6px; font-size: 22px; }
+    .direccion p { margin: 0 0 22px; color: var(--texto-2); }
+    .direccion .acciones { flex-direction: column; align-items: stretch; }
+    .mapa { border-radius: 24px; overflow: hidden; min-height: 360px; border: 1px solid var(--borde); box-shadow: 0 20px 44px rgba(15, 23, 42, 0.08); }
+    .mapa iframe { width: 100%; height: 100%; min-height: 360px; border: 0; display: block; }
+
+    .llamado {
+      position: relative;
+      overflow: hidden;
+      margin: 0 20px 100px;
+      padding: 70px 32px;
+      border-radius: 32px;
+      background: var(--texto);
+      color: #ffffff;
+      text-align: center;
+    }
+    .llamado::before {
+      content: '';
+      position: absolute;
+      width: 520px;
+      height: 520px;
+      left: 50%;
+      top: -320px;
+      transform: translateX(-50%);
+      background: var(--degradado);
+      filter: blur(90px);
+      opacity: 0.35;
+    }
+    .llamado > * { position: relative; }
+    .llamado h2 { font-size: clamp(28px, 4vw, 44px); margin: 0 0 12px; font-weight: 800; letter-spacing: -0.02em; }
+    .llamado p { color: #cbd5e1; margin: 0 0 30px; font-size: 17px; }
+    .llamado .acciones { justify-content: center; }
+    .llamado .boton-wpp { background: transparent; color: #ffffff; border-color: rgba(255, 255, 255, 0.35); }
+
+    footer { border-top: 1px solid var(--borde); padding: 36px 0; color: var(--texto-3); font-size: 14px; }
+    .pie { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+    .pie img { height: 40px; width: auto; }
+    .pie a:hover { color: var(--teal); }
+
+    /* WhatsApp flotante */
+    .wpp-flotante {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 30;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: var(--wpp);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 12px 30px rgba(37, 211, 102, 0.45);
+      transition: transform 0.2s ease;
+    }
+    .wpp-flotante:hover { transform: scale(1.08); }
+    .wpp-flotante img { width: 32px; height: 32px; }
+    .wpp-flotante::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 2px solid var(--wpp);
+      animation: pulso 2.2s ease-out infinite;
+    }
+    @keyframes pulso {
+      0% { transform: scale(1); opacity: 0.8; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+
+    @media (max-width: 960px) {
+      .portada-grilla, .nosotros, .ubicacion-grilla { grid-template-columns: 1fr; }
+      .mano-3d { height: 440px; margin-bottom: -60px; }
+      .grilla { grid-template-columns: repeat(2, 1fr); }
+      .nosotros-foto { aspect-ratio: 16 / 11; }
+    }
+
+    @media (max-width: 640px) {
+      nav .enlace { display: none; }
+      .barra { height: 66px; }
+      .barra img { height: 40px; }
+      .portada { padding: 110px 0 60px; }
+      .mano-3d { height: 360px; }
+      .chip { font-size: 12.5px; padding: 10px 12px; }
+      .chip-2 { right: 0; }
+      section { padding: 70px 0; }
+      .grilla, .pasos { grid-template-columns: 1fr; }
+      .pasos-linea { display: none; }
+      .acciones .boton { flex: 1; }
+      .datos { grid-template-columns: 1fr; }
+      .llamado { margin: 0 16px 70px; padding: 50px 22px; }
+      .direccion { padding: 26px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .wpp-flotante::before { animation: none; }
+      * { transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="intro">
+    <div class="contenedor barra">
+      <a href="#inicio" aria-label="GUGA Print"><img src="/logo-guga.png" alt="GUGA Print · Imprenta & Soluciones Gráficas" /></a>
+      <nav>
+        <a class="enlace" href="#nosotros">Nosotros</a>
+        <a class="enlace" href="#servicios">Servicios</a>
+        <a class="enlace" href="#como-pedir">Cómo pedir</a>
+        <a class="enlace" href="#ubicacion">Ubicación</a>
+        <a class="boton boton-principal boton-chico" href="/ecommerce">Ir a la tienda</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="inicio">
+    <div class="portada">
+      <div class="mancha mancha-1"></div>
+      <div class="mancha mancha-2"></div>
+      <canvas id="mano" aria-hidden="true"></canvas>
+      <div class="contenedor portada-grilla">
+        <div>
+          <h1 class="intro">
+            <span class="linea"><span>Tu imprenta</span></span>
+            <span class="linea"><span>de confianza,</span></span>
+            <span class="linea"><span class="degradado-texto">de la idea al impreso</span></span>
+          </h1>
+          <p class="bajada intro">Fabricamos tarjetas, folletos, talonarios, stickers, banners y etiquetas con la mayor calidad gráfica. Elegí tu producto en la tienda online o escribinos y te asesoramos.</p>
+          <div class="acciones intro">
+            <a class="boton boton-principal" href="/ecommerce">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+              Ir a la tienda
+            </a>
+            <a class="boton boton-wpp" href="https://wa.me/59899724454?text=Hola%20GUGA%2C%20quiero%20hacer%20una%20consulta" target="_blank" rel="noopener">
+              <img src="/whatsapp.svg" alt="" />
+              Escribinos por WhatsApp
+            </a>
+          </div>
+          <div class="ubicacion-corta intro">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.99-5.54 10.19-7.4 11.8a1 1 0 0 1-1.2 0C9.54 20.19 4 14.99 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
+            Chiossi y Luxemburgo, Maldonado
+          </div>
+        </div>
+
+        <div class="mano-3d">
+          <div class="chip chip-1 intro">
+            <div class="chip-icono"><img src="/whatsapp.svg" alt="" /></div>
+            <div>Pedidos por WhatsApp<small>Te asesoramos al instante</small></div>
+          </div>
+          <div class="chip chip-2 intro">
+            <div class="chip-icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg></div>
+            <div>Retiro o envío<small>En Maldonado</small></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cinta" aria-hidden="true">
+      <div class="cinta-pista">
+        <div class="cinta-grupo"><span>Tarjetas</span><i></i><span>Folletos</span><i></i><span>Talonarios</span><i></i><span>Stickers</span><i></i><span>Banners</span><i></i><span>Packaging</span><i></i><span>Papelería</span><i></i><span>Diseño</span><i></i></div>
+        <div class="cinta-grupo"><span>Tarjetas</span><i></i><span>Folletos</span><i></i><span>Talonarios</span><i></i><span>Stickers</span><i></i><span>Banners</span><i></i><span>Packaging</span><i></i><span>Papelería</span><i></i><span>Diseño</span><i></i></div>
+      </div>
+    </div>
+
+    <section id="nosotros">
+      <div class="contenedor nosotros">
+        <div class="nosotros-foto revelar">
+          <img class="parallax" src="https://images.unsplash.com/photo-1563986768609-322da13575f3?w=1000&auto=format&fit=crop&q=80" alt="Trabajo en el taller de impresión" />
+        </div>
+        <div>
+          <span class="antetitulo revelar">Quiénes somos</span>
+          <h2 class="titulo-seccion revelar">Una imprenta cerca tuyo, en Maldonado</h2>
+          <p class="texto-seccion revelar">En GUGA Print somos una imprenta y estudio de soluciones gráficas. Acompañamos a emprendedores, comercios y empresas para que su marca se vea bien en cada impreso: desde una tarjeta personal hasta un banner o el packaging de sus productos.</p>
+          <p class="texto-seccion revelar" style="margin-top: 14px;">Te asesoramos en papel, formato y terminaciones, y nos ocupamos de que el trabajo llegue a tiempo.</p>
+          <div class="datos">
+            <div class="dato revelar"><strong>Impresión digital y offset</strong><span>Tiradas chicas y grandes</span></div>
+            <div class="dato revelar"><strong>Terminaciones</strong><span>Laminado mate, brillo y troquelado</span></div>
+            <div class="dato revelar"><strong>Diseño</strong><span>Te ayudamos a preparar tu archivo</span></div>
+            <div class="dato revelar"><strong>Retiro o envío</strong><span>Como te quede más cómodo</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="servicios" class="servicios">
+      <div class="contenedor">
+        <span class="antetitulo revelar">Qué ofrecemos</span>
+        <h2 class="titulo-seccion revelar">Todo lo que tu negocio necesita imprimir</h2>
+        <p class="texto-seccion revelar">Elegí el producto, la terminación y la cantidad en nuestra tienda online.</p>
+        <div class="grilla">
+          <a class="tarjeta" href="/ecommerce">
+            <div class="tarjeta-foto"><img src="https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&auto=format&fit=crop&q=80" alt="Tarjetas personales" loading="lazy" /></div>
+            <div class="tarjeta-cuerpo">
+              <div class="icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg></div>
+              <h3>Tarjetas personales</h3>
+              <p>Simple o doble faz, con laminado y distintos papeles.</p>
+            </div>
+          </a>
+          <a class="tarjeta" href="/ecommerce">
+            <div class="tarjeta-foto"><img src="https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&auto=format&fit=crop&q=80" alt="Folletos y volantes" loading="lazy" /></div>
+            <div class="tarjeta-cuerpo">
+              <div class="icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg></div>
+              <h3>Folletos y volantes</h3>
+              <p>Para promociones, menús y lanzamientos.</p>
+            </div>
+          </a>
+          <a class="tarjeta" href="/ecommerce">
+            <div class="tarjeta-foto"><img src="https://images.unsplash.com/photo-1450133064473-71024230f91b?w=600&auto=format&fit=crop&q=80" alt="Talonarios y facturas" loading="lazy" /></div>
+            <div class="tarjeta-cuerpo">
+              <div class="icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/></svg></div>
+              <h3>Talonarios y facturas</h3>
+              <p>Recibos, órdenes y formularios a medida.</p>
+            </div>
+          </a>
+          <a class="tarjeta" href="/ecommerce">
+            <div class="tarjeta-foto"><img src="https://images.unsplash.com/photo-1572375992501-4b0892d50c69?w=600&auto=format&fit=crop&q=80" alt="Stickers y etiquetas" loading="lazy" /></div>
+            <div class="tarjeta-cuerpo">
+              <div class="icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1"/></svg></div>
+              <h3>Stickers y etiquetas</h3>
+              <p>Para tus productos, envíos y packaging.</p>
+            </div>
+          </a>
+          <a class="tarjeta" href="/ecommerce">
+            <div class="tarjeta-foto"><img src="https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?w=600&auto=format&fit=crop&q=80" alt="Banners y banderas" loading="lazy" /></div>
+            <div class="tarjeta-cuerpo">
+              <div class="icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></div>
+              <h3>Banners y afiches</h3>
+              <p>Gran formato, banderas y cartelería.</p>
+            </div>
+          </a>
+          <a class="tarjeta" href="/ecommerce">
+            <div class="tarjeta-foto"><img src="https://images.unsplash.com/photo-1530587191325-3db32d826c18?w=600&auto=format&fit=crop&q=80" alt="Packaging" loading="lazy" /></div>
+            <div class="tarjeta-cuerpo">
+              <div class="icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 7.7 4.73a2 2 0 0 0 2 0L20.7 7"/></svg></div>
+              <h3>Packaging</h3>
+              <p>Cajas y envoltorios con tu marca.</p>
+            </div>
+          </a>
+          <a class="tarjeta" href="/ecommerce">
+            <div class="tarjeta-foto"><img src="https://images.unsplash.com/photo-1596526131083-e8c633c948d2?w=600&auto=format&fit=crop&q=80" alt="Papelería corporativa" loading="lazy" /></div>
+            <div class="tarjeta-cuerpo">
+              <div class="icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg></div>
+              <h3>Papelería corporativa</h3>
+              <p>Hojas membretadas, sobres y carpetas.</p>
+            </div>
+          </a>
+          <a class="tarjeta" href="/ecommerce">
+            <div class="tarjeta-foto"><img src="https://images.unsplash.com/photo-1561070791-2526d30994b5?w=600&auto=format&fit=crop&q=80" alt="Diseño gráfico" loading="lazy" /></div>
+            <div class="tarjeta-cuerpo">
+              <div class="icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.13a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.55-2.5 5.55-5.55C21.97 6.01 17.46 2 12 2z"/><circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/></svg></div>
+              <h3>Diseño gráfico</h3>
+              <p>Armamos o ajustamos tu diseño para imprimir.</p>
+            </div>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section id="como-pedir">
+      <div class="contenedor">
+        <span class="antetitulo revelar">Cómo pedir</span>
+        <h2 class="titulo-seccion revelar">En tres pasos tenés tu trabajo listo</h2>
+        <div class="pasos">
+          <div class="pasos-linea"></div>
+          <div class="paso">
+            <div class="numero">1</div>
+            <h3>Elegí tu producto</h3>
+            <p>Entrá a la tienda, elegí la opción y la cantidad que necesitás.</p>
+          </div>
+          <div class="paso">
+            <div class="numero">2</div>
+            <h3>Confirmá tu pedido</h3>
+            <p>Te contactamos por WhatsApp para coordinar el diseño y el pago.</p>
+          </div>
+          <div class="paso">
+            <div class="numero">3</div>
+            <h3>Retiralo o recibilo</h3>
+            <p>Pasá por el taller en Maldonado o te lo enviamos.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="ubicacion" class="ubicacion">
+      <div class="contenedor">
+        <span class="antetitulo revelar">Ubicación</span>
+        <h2 class="titulo-seccion revelar">Visitanos en Maldonado</h2>
+        <div class="ubicacion-grilla" style="margin-top: 36px;">
+          <div class="direccion revelar">
+            <h3>Chiossi y Luxemburgo</h3>
+            <p>Maldonado, Uruguay. Coordiná el retiro de tu pedido por WhatsApp.</p>
+            <div class="acciones">
+              <a class="boton boton-principal" href="https://www.google.com/maps/search/?api=1&query=Chiossi+y+Luxemburgo%2C+Maldonado%2C+Uruguay" target="_blank" rel="noopener">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+                Cómo llegar
+              </a>
+              <a class="boton boton-wpp" href="https://wa.me/59899724454?text=Hola%20GUGA%2C%20quiero%20coordinar%20un%20retiro" target="_blank" rel="noopener">
+                <img src="/whatsapp.svg" alt="" />
+                Coordinar retiro
+              </a>
+            </div>
+          </div>
+          <div class="mapa revelar">
+            <iframe title="Mapa: Chiossi y Luxemburgo, Maldonado" src="https://www.google.com/maps?q=Chiossi%20y%20Luxemburgo%2C%20Maldonado%2C%20Uruguay&z=16&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section style="padding-bottom: 0;">
+      <div class="llamado revelar">
+        <h2>¿Listo para tu próximo impreso?</h2>
+        <p>Mirá los productos y precios en la tienda, o consultanos lo que necesites.</p>
+        <div class="acciones">
+          <a class="boton boton-principal" href="/ecommerce">Ir a la tienda</a>
+          <a class="boton boton-wpp" href="https://wa.me/59899724454?text=Hola%20GUGA%2C%20quiero%20hacer%20una%20consulta" target="_blank" rel="noopener">
+            <img src="/whatsapp.svg" alt="" />
+            WhatsApp
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="contenedor pie">
+      <img src="/logo-guga.png" alt="GUGA Print" />
+      <div>Chiossi y Luxemburgo, Maldonado</div>
+      <div>
+        <a href="https://wa.me/59899724454" target="_blank" rel="noopener">WhatsApp 099 724 454</a>
+        &nbsp;·&nbsp;
+        <a href="/ecommerce">Tienda online</a>
+      </div>
+    </div>
+  </footer>
+
+  <a class="wpp-flotante" href="https://wa.me/59899724454?text=Hola%20GUGA%2C%20quiero%20hacer%20una%20consulta" target="_blank" rel="noopener" aria-label="Escribinos por WhatsApp">
+    <img src="/whatsapp-blanco.svg" alt="" />
+  </a>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+  <script src="https://unpkg.com/lenis@1.1.13/dist/lenis.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    (function () {
+      var raiz = document.documentElement
+      var header = document.querySelector('header')
+      var sombra = function () { header.classList.toggle('con-sombra', window.scrollY > 10) }
+      window.addEventListener('scroll', sombra, { passive: true })
+      sombra()
+
+      // Si no hay animaciones (movimiento reducido o no cargó GSAP), todo queda visible y quieto
+      if (!raiz.classList.contains('animado') || !window.gsap || !window.ScrollTrigger) {
+        raiz.classList.remove('animado')
+        return
+      }
+
+      gsap.registerPlugin(ScrollTrigger)
+
+      // Scroll suave con Lenis, sincronizado con ScrollTrigger
+      var lenis = window.Lenis ? new Lenis({ duration: 1.15, smoothWheel: true }) : null
+      if (lenis) {
+        lenis.on('scroll', ScrollTrigger.update)
+        gsap.ticker.add(function (t) { lenis.raf(t * 1000) })
+        gsap.ticker.lagSmoothing(0)
+      }
+
+      // Enlaces internos con scroll suave
+      document.querySelectorAll('a[href^="#"]').forEach(function (a) {
+        a.addEventListener('click', function (e) {
+          var destino = document.querySelector(a.getAttribute('href'))
+          if (!destino) return
+          e.preventDefault()
+          if (lenis) lenis.scrollTo(destino, { offset: -80 })
+          else destino.scrollIntoView({ behavior: 'smooth' })
+        })
+      })
+
+      // Intro de la portada
+      gsap.set('.intro', { visibility: 'visible' })
+      var intro = gsap.timeline({ defaults: { ease: 'power3.out' } })
+      intro
+        .from('header', { yPercent: -100, duration: 0.8 })
+        .from('h1 .linea > span', { yPercent: 110, duration: 1, stagger: 0.12 }, '-=0.4')
+        .from('.bajada', { y: 24, autoAlpha: 0, duration: 0.8 }, '-=0.6')
+        .from('.portada .acciones .boton', { y: 20, autoAlpha: 0, duration: 0.6, stagger: 0.1 }, '-=0.5')
+        .from('.ubicacion-corta', { autoAlpha: 0, duration: 0.6 }, '-=0.3')
+        .from('.chip', { scale: 0.6, autoAlpha: 0, duration: 0.7, stagger: 0.15, ease: 'back.out(1.7)' }, 1)
+
+      // Manchas de color y chips flotando suave
+      gsap.to('.mancha-1', { x: -60, y: 40, duration: 9, repeat: -1, yoyo: true, ease: 'sine.inOut' })
+      gsap.to('.mancha-2', { x: 50, y: -30, duration: 11, repeat: -1, yoyo: true, ease: 'sine.inOut' })
+      gsap.to('.chip-1', { y: -10, duration: 2.6, repeat: -1, yoyo: true, ease: 'sine.inOut', delay: 2 })
+      gsap.to('.chip-2', { y: 10, duration: 3, repeat: -1, yoyo: true, ease: 'sine.inOut', delay: 2 })
+
+      // Cinta de servicios infinita
+      gsap.to('.cinta-pista', { xPercent: -50, duration: 28, ease: 'none', repeat: -1 })
+
+      // Aparición al hacer scroll
+      gsap.utils.toArray('.revelar').forEach(function (el) {
+        gsap.from(el, { y: 40, autoAlpha: 0, duration: 0.9, ease: 'power3.out', scrollTrigger: { trigger: el, start: 'top 88%' } })
+      })
+
+      // Tarjetas de servicios de a grupos
+      gsap.set('.tarjeta', { y: 50, autoAlpha: 0 })
+      ScrollTrigger.batch('.tarjeta', {
+        start: 'top 90%',
+        onEnter: function (lote) { gsap.to(lote, { y: 0, autoAlpha: 1, duration: 0.8, stagger: 0.08, ease: 'power3.out', overwrite: true }) }
+      })
+
+      // Foto de nosotros con parallax interno
+      gsap.fromTo('.parallax', { yPercent: -8 }, { yPercent: 0, ease: 'none', scrollTrigger: { trigger: '.nosotros-foto', start: 'top bottom', end: 'bottom top', scrub: true } })
+
+      // Línea que une los pasos y pasos que entran
+      gsap.from('.pasos-linea', { scaleX: 0, ease: 'none', scrollTrigger: { trigger: '.pasos', start: 'top 80%', end: 'top 40%', scrub: true } })
+      gsap.from('.paso', { y: 40, autoAlpha: 0, duration: 0.8, stagger: 0.15, ease: 'power3.out', scrollTrigger: { trigger: '.pasos', start: 'top 82%' } })
+
+      // Botón de WhatsApp entra al final de la intro
+      gsap.from('.wpp-flotante', { scale: 0, duration: 0.6, ease: 'back.out(2)', delay: 1.6 })
+    })()
+  </script>
+  <script>
+    // Mano 3D hecha de miles de partículas de colores: se arma al cargar y se desintegra al hacer scroll
+    (function () {
+      var lienzo = document.getElementById('mano')
+      if (!lienzo || !window.THREE) return
+      var renderer
+      try {
+        renderer = new THREE.WebGLRenderer({ canvas: lienzo, alpha: true, antialias: true })
+      } catch (e) {
+        lienzo.style.display = 'none'
+        return
+      }
+      var animar = document.documentElement.classList.contains('animado') && window.gsap && window.ScrollTrigger
+      var escena = new THREE.Scene()
+      var camara = new THREE.PerspectiveCamera(32, 1, 0.1, 100)
+      camara.position.set(0, 0.6, 12)
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+
+      // Forma de la mano: palma, cinco dedos y muñeca que nace desde el borde inferior
+      var partes = [
+        { tipo: 'palma', peso: 0.30 },
+        { tipo: 'dedo', a: [-0.72, 0.95], ang: -11, largo: 1.75, r: 0.23, peso: 0.085 },
+        { tipo: 'dedo', a: [-0.24, 1.0], ang: -3, largo: 1.98, r: 0.24, peso: 0.095 },
+        { tipo: 'dedo', a: [0.24, 0.97], ang: 5, largo: 1.82, r: 0.23, peso: 0.09 },
+        { tipo: 'dedo', a: [0.70, 0.88], ang: 14, largo: 1.38, r: 0.2, peso: 0.07 },
+        { tipo: 'dedo', a: [-0.98, -0.2], ang: -52, largo: 1.4, r: 0.27, peso: 0.08 },
+        { tipo: 'dedo', a: [0.0, -1.1], ang: 180, largo: 2.6, r: 0.66, peso: 0.18 }
+      ]
+      var TOTAL = window.innerWidth < 640 ? 7000 : 13000
+      var pos = new Float32Array(TOTAL * 3)
+      var dispersion = new Float32Array(TOTAL * 3)
+      var colores = new Float32Array(TOTAL * 3)
+      var tamanios = new Float32Array(TOTAL)
+      var semillas = new Float32Array(TOTAL)
+      var color = new THREE.Color()
+      var paletaImprenta = ['#00AEEF', '#EC008C', '#FFE600', '#149b8e', '#f97316', '#8b5cf6']
+
+      function puntoDedo(p) {
+        var rad = (p.ang * Math.PI) / 180
+        var dx = Math.sin(rad), dy = Math.cos(rad)
+        var t = Math.random() * p.largo
+        var th = Math.random() * Math.PI * 2
+        var r = p.r * (Math.random() < 0.75 ? 0.92 + Math.random() * 0.08 : Math.random())
+        // Punta redondeada
+        var punta = t > p.largo - p.r ? Math.sqrt(Math.max(0, 1 - Math.pow((t - (p.largo - p.r)) / p.r, 2))) : 1
+        var ox = Math.cos(th) * r * punta, oz = Math.sin(th) * r * punta * 0.8
+        return [p.a[0] + dx * t + ox * dy, p.a[1] + dy * t - ox * dx, oz]
+      }
+
+      function puntoPalma() {
+        var x, y
+        do { x = Math.random() * 2 - 1; y = Math.random() * 2.2 - 1.15 } while (Math.pow(Math.abs(x), 4) + Math.pow(Math.abs(y / 1.15), 4) > 1)
+        var cara = Math.random() < 0.7
+        var z = cara ? (Math.random() < 0.5 ? -1 : 1) * (0.3 - Math.random() * 0.04) : (Math.random() * 2 - 1) * 0.3
+        return [x * 1.02, y, z]
+      }
+
+      for (var i = 0; i < TOTAL; i++) {
+        var azar = Math.random(), acum = 0, parte = partes[0]
+        for (var k = 0; k < partes.length; k++) { acum += partes[k].peso; if (azar <= acum) { parte = partes[k]; break } }
+        var p = parte.tipo === 'palma' ? puntoPalma() : puntoDedo(parte)
+        pos[i * 3] = p[0]; pos[i * 3 + 1] = p[1]; pos[i * 3 + 2] = p[2]
+
+        // Hacia dónde vuela cada partícula al desintegrarse
+        var dir = new THREE.Vector3(p[0] + (Math.random() - 0.5) * 2, p[1] + (Math.random() - 0.3) * 2, p[2] + (Math.random() - 0.5) * 3).normalize()
+        var dist = 3.5 + Math.random() * 9
+        dispersion[i * 3] = dir.x * dist
+        dispersion[i * 3 + 1] = dir.y * dist + 2.5
+        dispersion[i * 3 + 2] = dir.z * dist + Math.random() * 4
+
+        // Arcoíris recorriendo la mano + puntos de tinta CMYK
+        if (Math.random() < 0.18) color.set(paletaImprenta[Math.floor(Math.random() * paletaImprenta.length)])
+        else color.setHSL((0.58 + p[1] * 0.11 + p[0] * 0.06 + Math.random() * 0.05 + 1) % 1, 0.92, 0.55)
+        colores[i * 3] = color.r; colores[i * 3 + 1] = color.g; colores[i * 3 + 2] = color.b
+        tamanios[i] = 0.55 + Math.random() * 1.1
+        semillas[i] = Math.random()
+      }
+
+      var geo = new THREE.BufferGeometry()
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+      geo.setAttribute('aDispersion', new THREE.BufferAttribute(dispersion, 3))
+      geo.setAttribute('aColor', new THREE.BufferAttribute(colores, 3))
+      geo.setAttribute('aTamanio', new THREE.BufferAttribute(tamanios, 1))
+      geo.setAttribute('aSemilla', new THREE.BufferAttribute(semillas, 1))
+
+      var uniformes = {
+        uIntro: { value: animar ? 1 : 0 },
+        uScroll: { value: 0 },
+        uTiempo: { value: 0 },
+        uTamanio: { value: 34 * renderer.getPixelRatio() }
+      }
+      var material = new THREE.ShaderMaterial({
+        uniforms: uniformes,
+        transparent: true,
+        depthWrite: false,
+        vertexShader: [
+          'attribute vec3 aDispersion; attribute vec3 aColor; attribute float aTamanio; attribute float aSemilla;',
+          'uniform float uIntro; uniform float uScroll; uniform float uTiempo; uniform float uTamanio;',
+          'varying vec3 vColor; varying float vAlfa;',
+          'void main() {',
+          '  float avance = max(uIntro, uScroll);',
+          '  float p = smoothstep(0.0, 1.0, clamp(avance * 1.25 - aSemilla * 0.25, 0.0, 1.0));',
+          '  vec3 posicion = mix(position, aDispersion, p);',
+          '  float giro = p * (3.0 + aSemilla * 4.0);',
+          '  posicion.xz = mat2(cos(giro), -sin(giro), sin(giro), cos(giro)) * posicion.xz;',
+          '  posicion += 0.035 * vec3(sin(uTiempo * 1.4 + aSemilla * 30.0), cos(uTiempo * 1.1 + aSemilla * 21.0), sin(uTiempo * 0.9 + aSemilla * 17.0)) * (1.0 - p);',
+          '  vec4 mv = modelViewMatrix * vec4(posicion, 1.0);',
+          '  gl_Position = projectionMatrix * mv;',
+          '  gl_PointSize = uTamanio * aTamanio * (1.0 + p * 1.5) / -mv.z;',
+          '  vColor = aColor;',
+          '  vAlfa = 1.0 - smoothstep(0.45, 1.0, p);',
+          '}'
+        ].join('\n'),
+        fragmentShader: [
+          'varying vec3 vColor; varying float vAlfa;',
+          'void main() {',
+          '  float d = length(gl_PointCoord - 0.5);',
+          '  if (d > 0.5) discard;',
+          '  gl_FragColor = vec4(vColor, smoothstep(0.5, 0.18, d) * vAlfa);',
+          '}'
+        ].join('\n')
+      })
+
+      var mano = new THREE.Points(geo, material)
+      var grupo = new THREE.Group()
+      grupo.add(mano)
+      grupo.position.y = -0.9
+      grupo.rotation.set(-0.12, -0.35, 0.08)
+      escena.add(grupo)
+
+      // El lienzo cubre toda la portada (las partículas vuelan libres); la mano se ubica en el hueco .mano-3d
+      var hueco = document.querySelector('.mano-3d')
+      function ajustar() {
+        var w = lienzo.clientWidth, h = lienzo.clientHeight
+        if (!w || !h) return
+        renderer.setSize(w, h, false)
+        var marco = lienzo.getBoundingClientRect(), caja = hueco.getBoundingClientRect()
+        var cx = caja.left - marco.left + caja.width / 2
+        var cy = caja.top - marco.top + caja.height / 2
+        var alturaMundo = 6.88 * (h / Math.max(caja.height, 1))
+        camara.fov = (2 * Math.atan(alturaMundo / 2 / 12) * 180) / Math.PI
+        camara.aspect = w / h
+        camara.setViewOffset(w, h, w / 2 - cx, h / 2 - cy, w, h)
+        camara.updateProjectionMatrix()
+      }
+      window.addEventListener('resize', ajustar)
+      ajustar()
+
+      // Sigue un poco al mouse
+      var mouse = { x: 0, y: 0 }
+      window.addEventListener('pointermove', function (e) {
+        mouse.x = e.clientX / window.innerWidth - 0.5
+        mouse.y = e.clientY / window.innerHeight - 0.5
+      }, { passive: true })
+
+      var visible = true
+      var reloj = new THREE.Clock()
+      function dibujar() {
+        if (visible) {
+          var t = reloj.getElapsedTime()
+          uniformes.uTiempo.value = t
+          var s = uniformes.uScroll.value
+          grupo.rotation.y += ((-0.35 + Math.sin(t * 0.4) * 0.18 + mouse.x * 0.5 + s * 1.6) - grupo.rotation.y) * 0.06
+          grupo.rotation.x += ((-0.12 + mouse.y * 0.25 - s * 0.3) - grupo.rotation.x) * 0.06
+          grupo.position.y = -0.9 + Math.sin(t * 0.8) * 0.08 + s * 1.4
+          renderer.render(escena, camara)
+        }
+        if (animar) requestAnimationFrame(dibujar)
+      }
+
+      if (!animar) {
+        dibujar()
+        return
+      }
+
+      // Se arma desde una nube de colores al entrar a la página
+      gsap.to(uniformes.uIntro, { value: 0, duration: 2.6, ease: 'power3.out', delay: 0.4 })
+      // Se desintegra a medida que bajás, y se vuelve a armar si subís
+      gsap.to(uniformes.uScroll, {
+        value: 1,
+        ease: 'none',
+        scrollTrigger: {
+          trigger: '.portada',
+          start: 'top top',
+          end: 'bottom 20%',
+          scrub: 1.2,
+          onUpdate: function (st) { visible = st.progress < 1 }
+        }
+      })
+      requestAnimationFrame(dibujar)
+    })()
+  </script>
+</body>
+</html>

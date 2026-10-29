@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-import AppShell from '@/components/AppShell'
 import { Toaster } from 'react-hot-toast'
 
 const inter = Inter({
@@ -12,8 +11,8 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'GUGA · CRM Imprenta',
-  description: 'Sistema de gestión para GUGA Imprenta — Pedidos, Stock, Clientes y más.',
+  title: 'GUGA Print · Imprenta & Soluciones Gráficas',
+  description: 'Imprenta y soluciones gráficas: tarjetas, folletos, talonarios, stickers, banners y más.',
   icons: {
     icon: '/g.png',
     shortcut: '/g.png',
@@ -25,9 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es" className={inter.variable}>
       <body style={{ fontFamily: 'var(--font-inter), Inter, system-ui, sans-serif' }}>
-        <AppShell>
-          {children}
-        </AppShell>
+        {children}
         <Toaster
           position="top-right"
           toastOptions={{

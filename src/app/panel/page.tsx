@@ -196,7 +196,7 @@ export default function DashboardPage() {
 
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <Link
-              href="/pedidos?tab=historial"
+              href="/panel/pedidos?tab=historial"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -217,7 +217,7 @@ export default function DashboardPage() {
             </Link>
 
             <Link
-              href="/pedidos?tab=nuevo"
+              href="/panel/pedidos?tab=nuevo"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -285,7 +285,7 @@ export default function DashboardPage() {
                   <Truck size={18} style={{ color: 'var(--accent)' }} />
                   <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>🚚 Entregas del Día ({entregasHoy.length})</h3>
                 </div>
-                <Link href="/calendario" style={{ fontSize: 12.5, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', fontWeight: 600 }}>
+                <Link href="/panel/calendario" style={{ fontSize: 12.5, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', fontWeight: 600 }}>
                   Ver Calendario →
                 </Link>
               </div>
@@ -351,7 +351,7 @@ export default function DashboardPage() {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                 <div className="section-title" style={{ margin: 0 }}>Últimos Pedidos</div>
-                <Link href="/pedidos" style={{ fontSize: 12.5, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', fontWeight: 500 }}>
+                <Link href="/panel/pedidos" style={{ fontSize: 12.5, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', fontWeight: 500 }}>
                   Ver todos <ArrowRight size={12} />
                 </Link>
               </div>
@@ -408,7 +408,7 @@ export default function DashboardPage() {
                   <CheckSquare size={16} style={{ color: 'var(--accent)' }} />
                   Pendientes & Ideas
                 </div>
-                <Link href="/pendientes" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>Ver todo →</Link>
+                <Link href="/panel/pendientes" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>Ver todo →</Link>
               </div>
 
               {tareasPendientes.length > 0 ? (
@@ -436,7 +436,7 @@ export default function DashboardPage() {
             <div className="card">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                 <div className="section-title" style={{ margin: 0 }}>⚠ Materiales Bajo Stock</div>
-                <Link href="/stock" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none' }}>Ver stock →</Link>
+                <Link href="/panel/stock" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none' }}>Ver stock →</Link>
               </div>
               {stockBajo.length === 0 ? (
                 <div style={{ fontSize: 13, color: 'var(--success)', textAlign: 'center', padding: '16px 0' }}>
@@ -467,16 +467,16 @@ export default function DashboardPage() {
             <div className="card">
               <div className="section-title">Acceso Rápido</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <Link href="/pedidos" className="btn btn-primary" style={{ justifyContent: 'center' }}>
+                <Link href="/panel/pedidos" className="btn btn-primary" style={{ justifyContent: 'center' }}>
                   <ShoppingCart size={15} /> Nuevo Pedido
                 </Link>
-                <Link href="/calendario" className="btn btn-secondary" style={{ justifyContent: 'center' }}>
+                <Link href="/panel/calendario" className="btn btn-secondary" style={{ justifyContent: 'center' }}>
                   <CalendarIcon size={15} /> Ver Calendario
                 </Link>
-                <Link href="/pendientes" className="btn btn-secondary" style={{ justifyContent: 'center' }}>
+                <Link href="/panel/pendientes" className="btn btn-secondary" style={{ justifyContent: 'center' }}>
                   <CheckSquare size={15} /> Ver Pendientes & Notes
                 </Link>
-                <Link href="/caja" className="btn btn-secondary" style={{ justifyContent: 'center' }}>
+                <Link href="/panel/caja" className="btn btn-secondary" style={{ justifyContent: 'center' }}>
                   <Wallet size={15} /> Ver Caja
                 </Link>
               </div>

@@ -94,7 +94,7 @@ export default function ClientesPage() {
 
     setSelectedClienteHistory(null)
     toast.success('¡Cargando pedido en el carrito!')
-    router.push('/pedidos')
+    router.push('/panel/pedidos')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

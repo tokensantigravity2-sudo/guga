@@ -420,7 +420,7 @@ export default function CalendarioPage() {
                         <Wallet size={15} style={{ color: 'var(--accent)' }} /> Resumen de Caja del Día
                       </strong>
                       <a
-                        href={`/caja?fecha=${selectedDay}`}
+                        href={`/panel/caja?fecha=${selectedDay}`}
                         className="btn btn-sm btn-ghost"
                         style={{ fontSize: 11, padding: '2px 6px', gap: 4, color: 'var(--accent)' }}
                       >

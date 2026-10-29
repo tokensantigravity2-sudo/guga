@@ -66,7 +66,7 @@ interface PedidoCobradoDetalle {
   estadoPedido: string
   metodoPago: string
   fechaEntrega?: string
-  tipoSaldo?: 'sena' | 'cuenta_corriente' | 'saldado'
+  tipoSaldo?: 'sena' | 'cuenta_corriente' | 'sin_cobrar' | 'saldado'
   estadoVencimiento?: 'vencido' | 'hoy' | 'a_vencer' | 'sin_fecha'
   items?: any[]
 }
@@ -106,6 +106,7 @@ export default function ReportesPage() {
     saldoPorCobrar: 0,
     saldoSenas: 0,
     saldoCuentasCorrientes: 0,
+    saldoSinCobrar: 0,
     saldoVencido: 0,
     saldoVenceHoy: 0,
     saldoAVencer: 0,
@@ -135,7 +136,7 @@ export default function ReportesPage() {
 
   // Saldos pendientes detallados (señas y cuentas corrientes a vencimiento)
   const [saldosPendientesList, setSaldosPendientesList] = useState<PedidoCobradoDetalle[]>([])
-  const [filtroSaldos, setFiltroSaldos] = useState<'todos' | 'senas' | 'cuentas_corrientes' | 'vencidos'>('todos')
+  const [filtroSaldos, setFiltroSaldos] = useState<'todos' | 'senas' | 'cuentas_corrientes' | 'sin_cobrar' | 'vencidos'>('todos')
   const [searchSaldo, setSearchSaldo] = useState('')
 
   const [pedidosCobradosDetalle, setPedidosCobradosDetalle] = useState<PedidoCobradoDetalle[]>([])
@@ -290,6 +291,7 @@ export default function ReportesPage() {
     const todosSaldosPendientes: PedidoCobradoDetalle[] = []
     let globalSaldoSenas = 0
     let globalSaldoCtaCte = 0
+    let globalSaldoSinCobrar = 0
     let globalSaldoVencido = 0
     let globalSaldoVenceHoy = 0
     let globalSaldoAVencer = 0
@@ -322,10 +324,12 @@ export default function ReportesPage() {
           }
         }
 
-        const isCtaCte = p.metodo_pago === 'cuenta_corriente' || totalHistoricoCaja === 0
-        const tipoSald: 'sena' | 'cuenta_corriente' = (!isCtaCte && totalHistoricoCaja > 0) ? 'sena' : 'cuenta_corriente'
+        // Cuenta corriente es solo la forma de pago "Cta. Corriente"; sin ningún cobro es "sin cobrar"
+        const tipoSald: 'sena' | 'cuenta_corriente' | 'sin_cobrar' =
+          p.metodo_pago === 'cuenta_corriente' ? 'cuenta_corriente' : totalHistoricoCaja > 0 ? 'sena' : 'sin_cobrar'
         if (tipoSald === 'sena') globalSaldoSenas += saldoPend
-        else globalSaldoCtaCte += saldoPend
+        else if (tipoSald === 'cuenta_corriente') globalSaldoCtaCte += saldoPend
+        else globalSaldoSinCobrar += saldoPend
 
         todosSaldosPendientes.push({
           id: p.id,
@@ -408,8 +412,9 @@ export default function ReportesPage() {
           else estVenc = 'a_vencer'
         }
 
-        const isCtaCte = p.metodo_pago === 'cuenta_corriente' || totalHistoricoCaja === 0
-        const tipoSald: 'sena' | 'cuenta_corriente' | 'saldado' = is100 ? 'saldado' : ((!isCtaCte && totalHistoricoCaja > 0) ? 'sena' : 'cuenta_corriente')
+        const tipoSald: 'sena' | 'cuenta_corriente' | 'sin_cobrar' | 'saldado' = is100
+          ? 'saldado'
+          : p.metodo_pago === 'cuenta_corriente' ? 'cuenta_corriente' : totalHistoricoCaja > 0 ? 'sena' : 'sin_cobrar'
 
         pedidosReporteList.push({
           id: p.id,
@@ -459,9 +464,10 @@ export default function ReportesPage() {
       ingresosSenas: totalSenas,
       ingresosPagosCompletos: totalPagosCompletos,
       cajaIngresosDirectos,
-      saldoPorCobrar: globalSaldoSenas + globalSaldoCtaCte,
+      saldoPorCobrar: globalSaldoSenas + globalSaldoCtaCte + globalSaldoSinCobrar,
       saldoSenas: globalSaldoSenas,
       saldoCuentasCorrientes: globalSaldoCtaCte,
+      saldoSinCobrar: globalSaldoSinCobrar,
       saldoVencido: globalSaldoVencido,
       saldoVenceHoy: globalSaldoVenceHoy,
       saldoAVencer: globalSaldoAVencer,
@@ -727,7 +733,7 @@ export default function ReportesPage() {
               <div className="stat-label">Saldo Pendiente a Cobrar</div>
               <div className="stat-value" style={{ color: '#d97706' }}>{formatCurrency(resumen.saldoPorCobrar)}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                {formatCurrency(resumen.saldoSenas)} en señas · {formatCurrency(resumen.saldoCuentasCorrientes)} ctas. corrientes
+                {formatCurrency(resumen.saldoSenas)} en señas · {formatCurrency(resumen.saldoCuentasCorrientes)} ctas. corrientes · {formatCurrency(resumen.saldoSinCobrar)} sin cobrar
               </div>
               <div style={{ fontSize: 11, color: resumen.saldoVencido > 0 ? '#dc2626' : 'var(--success)', marginTop: 2, fontWeight: 600 }}>
                 {resumen.saldoVencido > 0 ? `⚠️ ${formatCurrency(resumen.saldoVencido)} vencido a la fecha` : '✓ Sin saldos vencidos'}
@@ -781,7 +787,7 @@ export default function ReportesPage() {
                 <span>Saldos Pendientes a Cobrar ({saldosPendientesList.length})</span>
               </div>
               <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
-                Desglose de saldos de señas y cuentas corrientes clasificadas por fecha de vencimiento / entrega.
+                Desglose de saldos de señas, cuentas corrientes y pedidos sin cobrar, clasificados por fecha de vencimiento / entrega.
               </p>
             </div>
 
@@ -792,6 +798,9 @@ export default function ReportesPage() {
               </span>
               <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.12)', color: '#1d4ed8', border: '1px solid #3b82f6', fontSize: 12 }}>
                 📝 Ctas. Corrientes: <strong>{formatCurrency(resumen.saldoCuentasCorrientes)}</strong>
+              </span>
+              <span className="badge" style={{ background: 'rgba(100, 116, 139, 0.12)', color: '#334155', border: '1px solid #94a3b8', fontSize: 12 }}>
+                🕓 Sin cobrar: <strong>{formatCurrency(resumen.saldoSinCobrar)}</strong>
               </span>
               {resumen.saldoVencido > 0 && (
                 <span className="badge badge-danger" style={{ fontSize: 12 }}>
@@ -824,6 +833,13 @@ export default function ReportesPage() {
                 onClick={() => setFiltroSaldos('cuentas_corrientes')}
               >
                 📝 Solo Cuentas Corrientes ({saldosPendientesList.filter(s => s.tipoSaldo === 'cuenta_corriente').length})
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${filtroSaldos === 'sin_cobrar' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setFiltroSaldos('sin_cobrar')}
+              >
+                🕓 Sin cobrar ({saldosPendientesList.filter(s => s.tipoSaldo === 'sin_cobrar').length})
               </button>
               <button
                 type="button"
@@ -870,6 +886,7 @@ export default function ReportesPage() {
                     .filter(s => {
                       if (filtroSaldos === 'senas' && s.tipoSaldo !== 'sena') return false
                       if (filtroSaldos === 'cuentas_corrientes' && s.tipoSaldo !== 'cuenta_corriente') return false
+                      if (filtroSaldos === 'sin_cobrar' && s.tipoSaldo !== 'sin_cobrar') return false
                       if (filtroSaldos === 'vencidos' && s.estadoVencimiento !== 'vencido') return false
                       if (searchSaldo.trim()) {
                         const q = searchSaldo.toLowerCase()
@@ -886,9 +903,13 @@ export default function ReportesPage() {
                             <span className="badge" style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#b45309', border: '1px solid #f59e0b' }}>
                               ⏳ Saldo de Seña
                             </span>
-                          ) : (
+                          ) : s.tipoSaldo === 'cuenta_corriente' ? (
                             <span className="badge" style={{ backgroundColor: 'rgba(59, 130, 246, 0.12)', color: '#1d4ed8', border: '1px solid #3b82f6' }}>
                               📝 Cta. Corriente
+                            </span>
+                          ) : (
+                            <span className="badge" style={{ backgroundColor: 'rgba(100, 116, 139, 0.12)', color: '#334155', border: '1px solid #94a3b8' }}>
+                              🕓 Sin cobrar
                             </span>
                           )}
                         </td>

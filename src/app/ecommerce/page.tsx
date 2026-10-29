@@ -1,131 +1,227 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { supabase, fetchAll } from '@/lib/supabase'
-import Header from '@/components/Header'
-import { Pedido, Servicio, Cliente } from '@/lib/types'
-import { formatCurrency, formatDateTime, formatDate, ESTADOS_PEDIDO, CATEGORIAS_TIENDA, formatProductUnit, cleanProductDescription, completarPedidoTienda } from '@/lib/helpers'
-import CategoryIcon, { AVAILABLE_VECTOR_ICONS, DEFAULT_CATEGORY_VECTOR_MAP } from '@/components/CategoryIcon'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { supabase } from '@/lib/supabase'
+import { Servicio, Pedido } from '@/lib/types'
+import { formatCurrency, generateNumeroEcommerce, formatWhatsAppMessage, LINEAS_IMPRENTA, formatProductUnit, cleanProductDescription, completarPedidoTienda, getVariantesServicio, LOGO_URL } from '@/lib/helpers'
 import {
-  Store, ShoppingBag, Truck, CheckCircle2, Clock, AlertCircle,
-  Search, Filter, Plus, Edit2, Trash2, ExternalLink, Printer,
-  Phone, DollarSign, Package, Check, RefreshCw,
-  Eye, ArrowUpRight, ShieldAlert, Sparkles, MapPin, Layers,
-  Globe, Share2, FileText, ToggleLeft, ToggleRight, Image as ImageIcon,
-  Ban, Palette, Upload, Link as LinkIcon, Monitor, Smartphone
+  Search, ShoppingCart, Truck, User, Plus, Minus, Trash2,
+  X, Check, Phone, MapPin,
+  Clock, Filter, ArrowRight,
+  Package, CheckCircle2, ChevronLeft, ChevronRight, ChevronDown,
+  MessageSquare, Building2, Store, CreditCard, Banknote, ShieldCheck,
+  LogIn, LogOut, UserCheck
 } from 'lucide-react'
 import WhatsAppIcon from '@/components/WhatsAppIcon'
-import toast from 'react-hot-toast'
-import PresupuestoPDFModal from '@/components/PresupuestoPDFModal'
+import WhatsAppWidget from '@/components/WhatsAppWidget'
+import CategoryIcon, { DEFAULT_CATEGORY_VECTOR_MAP } from '@/components/CategoryIcon'
+import CustomerAuthModal from '@/components/CustomerAuthModal'
+import StoreHeader from '@/components/StoreHeader'
+import ProductoModal, { ProductoSeleccion } from '@/components/ProductoModal'
+import { TEXTOS_PIE_TIENDA, leerConfigTienda } from '@/lib/configTienda'
 import Link from 'next/link'
+import toast from 'react-hot-toast'
 
-export interface AdminBannerSlide {
-  id: string
-  desktopUrl: string
-  mobileUrl: string
-  activo: boolean
+interface CartItem {
+  servicio: Servicio
+  cantidad: number
+  subtotal: number
+  variante?: string
+  escala?: { cantidad: number; precio: number } // tirada elegida: la cantidad avanza de a tiradas completas
 }
 
-export default function EcommerceAdminPage() {
-  const [activeTab, setActiveTab] = useState<'pedidos' | 'catalogo' | 'config'>('pedidos')
-  const [pedidos, setPedidos] = useState<Pedido[]>([])
+// Un mismo producto con otra variable o tirada es otro renglón del carrito
+const claveItem = (it: Pick<CartItem, 'servicio' | 'variante' | 'escala'>) =>
+  [it.servicio.id, it.variante || '', it.escala?.cantidad || ''].join('|')
+
+export interface BannerSlideItem {
+  id: string | number
+  desktopUrl: string
+  mobileUrl?: string
+  activo?: boolean
+}
+
+// Banners de prueba por defecto (Solo imágenes sin texto superpuesto)
+const DEFAULT_BANNERS: BannerSlideItem[] = [
+  {
+    id: 1,
+    desktopUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=1600&auto=format&fit=crop&q=80',
+    mobileUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=800&auto=format&fit=crop&q=80',
+    activo: true
+  },
+  {
+    id: 2,
+    desktopUrl: 'https://images.unsplash.com/photo-1572375992501-4b0892d50c69?w=1600&auto=format&fit=crop&q=80',
+    mobileUrl: 'https://images.unsplash.com/photo-1572375992501-4b0892d50c69?w=800&auto=format&fit=crop&q=80',
+    activo: true
+  },
+  {
+    id: 3,
+    desktopUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=1600&auto=format&fit=crop&q=80',
+    mobileUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=800&auto=format&fit=crop&q=80',
+    activo: true
+  }
+]
+
+// Fallback images for printing categories
+const CATEGORY_IMAGES: Record<string, string> = {
+  'Tarjetas': 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&auto=format&fit=crop&q=80',
+  'Folletos': 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&auto=format&fit=crop&q=80',
+  'Facturas': 'https://images.unsplash.com/photo-1450133064473-71024230f91b?w=600&auto=format&fit=crop&q=80',
+  'Stickers': 'https://images.unsplash.com/photo-1572375992501-4b0892d50c69?w=600&auto=format&fit=crop&q=80',
+  'Imanes': 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=600&auto=format&fit=crop&q=80',
+  'Afiches': 'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=600&auto=format&fit=crop&q=80',
+  'Banderas': 'https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?w=600&auto=format&fit=crop&q=80',
+  'Block de Notas': 'https://images.unsplash.com/photo-1517842645767-c639042777db?w=600&auto=format&fit=crop&q=80',
+  'Documentos para Impresora': 'https://images.unsplash.com/photo-1586075010923-2dd4570fb338?w=600&auto=format&fit=crop&q=80',
+  'Sobres': 'https://images.unsplash.com/photo-1596526131083-e8c633c948d2?w=600&auto=format&fit=crop&q=80',
+  'Hojas Membretadas': 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=600&auto=format&fit=crop&q=80',
+  'Llaveros': 'https://images.unsplash.com/photo-1614312134515-585973e44502?w=600&auto=format&fit=crop&q=80',
+  'Grifas Etiquetas': 'https://images.unsplash.com/photo-1572375992501-4b0892d50c69?w=600&auto=format&fit=crop&q=80',
+  'default': 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=600&auto=format&fit=crop&q=80'
+}
+
+export default function TiendaPage() {
   const [servicios, setServicios] = useState<Servicio[]>([])
   const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedCategoria, setSelectedCategoria] = useState<string>('Todas')
+  const [selectedLinea, setSelectedLinea] = useState<string>('Todas')
+  const [sortBy, setSortBy] = useState<'relevancia' | 'precio_menor' | 'precio_mayor' | 'nombre'>('relevancia')
 
-  // Filter & Search states for Orders
-  const [filtroEstado, setFiltroEstado] = useState<string>('todos')
-  const [searchTerm, setSearchTerm] = useState<string>('')
+  // Carousel Banner state (Active slide index)
+  const [banners, setBanners] = useState<BannerSlideItem[]>(DEFAULT_BANNERS)
+  const [currentBannerIndex, setCurrentBannerIndex] = useState(0)
 
-  // Filter & Search states for Catalog
-  const [catalogSearch, setCatalogSearch] = useState<string>('')
-  const [catalogCategoria, setCatalogCategoria] = useState<string>('Todas')
-  const [catalogSoloPublicados, setCatalogSoloPublicados] = useState<boolean>(false)
-
-  // Visual Category Icon Picker state
-  const [selectedCategoryForIcon, setSelectedCategoryForIcon] = useState<string | null>(null)
-  const [iconSearchTerm, setIconSearchTerm] = useState<string>('')
-  const [newCategoryName, setNewCategoryName] = useState<string>('')
-  const [customIconUrlInput, setCustomIconUrlInput] = useState<string>('')
-
-  // Selected Order for details modal or PDF
-  const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null)
-  const [showPdfModal, setShowPdfModal] = useState(false)
-  const [pdfPedido, setPdfPedido] = useState<Pedido | null>(null)
-
-  // Catalog edit modal
-  const [showCatalogModal, setShowCatalogModal] = useState(false)
-  const [editingServicio, setEditingServicio] = useState<Servicio | null>(null)
-  const [catalogForm, setCatalogForm] = useState({
-    nombre: '',
-    categoria: 'Folletos',
-    descripcion: '',
-    precio_base: 0,
-    unidad: 'unidad',
-    tiempo_estimado: '2-3 días',
-    disponible: true,
-    imagen_url: ''
-  })
-
-  // Store Config State (Editable store parameters + Pure Image Banners)
+  // Store Configuration
   const [storeConfig, setStoreConfig] = useState({
     nombreTienda: 'GUGA Imprenta & Gráfica',
     telefonoWhatsApp: '59899724454',
-    direccionTaller: 'Av. Principal 1234, Taller GUGA',
+    direccionTaller: 'Chiossi y Luxemburgo, Maldonado',
     costoEnvioFijo: 250,
     envioGratisMinimo: 4000,
     mensajeBienvenida: '¡Bienvenido a GUGA Imprenta Online! Tu trabajo en las mejores manos.',
     instagramUrl: 'gugaprint.uy',
-    banners: [
-      {
-        id: '1',
-        desktopUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=1600&auto=format&fit=crop&q=80',
-        mobileUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=800&auto=format&fit=crop&q=80',
-        activo: true
-      },
-      {
-        id: '2',
-        desktopUrl: 'https://images.unsplash.com/photo-1572375992501-4b0892d50c69?w=1600&auto=format&fit=crop&q=80',
-        mobileUrl: 'https://images.unsplash.com/photo-1572375992501-4b0892d50c69?w=800&auto=format&fit=crop&q=80',
-        activo: true
-      },
-      {
-        id: '3',
-        desktopUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=1600&auto=format&fit=crop&q=80',
-        mobileUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=800&auto=format&fit=crop&q=80',
-        activo: true
-      }
-    ] as AdminBannerSlide[]
+    ...TEXTOS_PIE_TIENDA,
   })
+
+  // WhatsApp store phone
+  const STORE_PHONE = storeConfig.telefonoWhatsApp || '59899724454'
+
+  // Cart State
+  const [cart, setCart] = useState<CartItem[]>([])
+  const [isCartOpen, setIsCartOpen] = useState(false)
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false)
+
+  // Order Tracking State
+  const [isTrackOpen, setIsTrackOpen] = useState(false)
+  const [trackQuery, setTrackQuery] = useState('')
+  const [trackedOrders, setTrackedOrders] = useState<Pedido[]>([])
+  const [isTrackingLoading, setIsTrackingLoading] = useState(false)
+
+  // Customer Login/Identify modal
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
+  const [customerInfo, setCustomerInfo] = useState({
+    id: '',
+    nombre: '',
+    telefono: '',
+    direccion: '',
+    email: '',
+    rut: '',
+    empresa: ''
+  })
+
+  // Checkout Form
+  const [checkoutForm, setCheckoutForm] = useState({
+    nombre: '',
+    telefono: '',
+    direccion: '',
+    email: '',
+    metodoEntrega: 'retiro', // 'retiro' | 'envio'
+    metodoPago: 'efectivo',  // 'efectivo' | 'transferencia' | 'mercadopago'
+    notas: '',
+  })
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false)
+  const [orderSuccess, setOrderSuccess] = useState<{ pedidoNumero: string; whatsappUrl: string } | null>(null)
+  const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false)
+  const [productoAbierto, setProductoAbierto] = useState<Servicio | null>(null)
+  const [carritoCargado, setCarritoCargado] = useState(false)
 
   // Category Vector Line Icons State
   const [categoryVectorIcons, setCategoryVectorIcons] = useState<Record<string, string>>(DEFAULT_CATEGORY_VECTOR_MAP)
 
-  // SEO & Meta Tags Configuration State
-  const [seoConfig, setSeoConfig] = useState({
-    metaTitle: 'GUGA Imprenta & Gráfica | Impresión Digital, Offset y Merchandising',
-    metaDescription: 'Imprenta online líder en Uruguay. Impresión de folletos, tarjetas de visita, stickers, talonarios, packaging y banners con envíos rápidos a todo el país.',
-    keywords: 'imprenta, impresion digital, folletos uruguay, tarjetas de presentacion, talonarios, stickers adhesivos, packaging, merchandising, guga imprenta',
-    ogImageUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=1200&auto=format&fit=crop&q=80',
-    canonicalUrl: 'https://gugaimprenta.com.uy/tienda',
-    robotsIndex: true,
-    googleAnalyticsId: 'G-XXXXXXXXXX',
-    googleSiteVerification: '',
-    author: 'GUGA Gráfica & Imprenta'
-  })
-
   useEffect(() => {
-    loadData()
-    // Load config from localStorage if present
-    const savedConf = localStorage.getItem('guga_store_admin_config')
-    if (savedConf) {
+    loadCatalog()
+
+    // Load store admin config (banners & params)
+    const aplicarConfig = (parsed: any) => {
+      setStoreConfig(prev => ({ ...prev, ...parsed }))
+      if (parsed.banners && Array.isArray(parsed.banners) && parsed.banners.length > 0) {
+        const active = parsed.banners.filter((b: any) => b.activo !== false && (b.desktopUrl || b.mobileUrl))
+        if (active.length > 0) {
+          setBanners(active)
+        }
+      } else if (parsed.bannerDesktopUrl || parsed.bannerMobileUrl) {
+        setBanners([{
+          id: 1,
+          desktopUrl: parsed.bannerDesktopUrl || parsed.bannerMobileUrl,
+          mobileUrl: parsed.bannerMobileUrl || parsed.bannerDesktopUrl,
+          activo: true
+        }])
+      }
+    }
+    const savedConfig = localStorage.getItem('guga_store_admin_config')
+    if (savedConfig) {
       try {
-        setStoreConfig(JSON.parse(savedConf))
+        aplicarConfig(JSON.parse(savedConfig))
+      } catch (e) {
+        console.error('Error cargando configuración de tienda:', e)
+      }
+    }
+    leerConfigTienda().then(conf => { if (conf) aplicarConfig(conf) })
+
+    // Load customer info from localStorage
+    const savedCustomer = localStorage.getItem('guga_store_customer')
+    if (savedCustomer) {
+      try {
+        const parsed = JSON.parse(savedCustomer)
+        setCustomerInfo(prev => ({ ...prev, ...parsed }))
+        setCheckoutForm(prev => ({
+          ...prev,
+          nombre: parsed.nombre || '',
+          telefono: parsed.telefono || '',
+          direccion: parsed.direccion || '',
+          email: parsed.email || '',
+        }))
       } catch (e) {
         console.error(e)
       }
     }
 
-    // Load category vector line icons from localStorage
+    // Load saved cart from localStorage
+    const savedCart = localStorage.getItem('guga_store_cart') || localStorage.getItem('guga_cart_items')
+    if (savedCart) {
+      try {
+        const parsed = JSON.parse(savedCart)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCart(parsed)
+        }
+      } catch (e) {
+        console.error('Error cargando carrito guardado:', e)
+      }
+    }
+    setCarritoCargado(true)
+
+    // Check if URL has ?openCart=true
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search)
+      if (urlParams.get('openCart') === 'true') {
+        setIsCartOpen(true)
+      }
+    }
+
+    // Load custom category vector line icons
     const savedIcons = localStorage.getItem('guga_category_vector_icons')
     if (savedIcons) {
       try {
@@ -135,2310 +231,2368 @@ export default function EcommerceAdminPage() {
       }
     }
 
-    // Load SEO config from localStorage
+    // Load and apply custom SEO configuration to Document Head
     const savedSeo = localStorage.getItem('guga_store_seo_config')
     if (savedSeo) {
       try {
-        setSeoConfig(prev => ({ ...prev, ...JSON.parse(savedSeo) }))
+        const seo = JSON.parse(savedSeo)
+        if (seo.metaTitle) {
+          document.title = seo.metaTitle
+        }
+
+        const setMetaTag = (nameOrProp: string, key: 'name' | 'property', value: string) => {
+          if (!value) return
+          let el = document.querySelector(`meta[${key}="${nameOrProp}"]`) as HTMLMetaElement
+          if (!el) {
+            el = document.createElement('meta')
+            el.setAttribute(key, nameOrProp)
+            document.head.appendChild(el)
+          }
+          el.content = value
+        }
+
+        if (seo.metaDescription) {
+          setMetaTag('description', 'name', seo.metaDescription)
+          setMetaTag('og:description', 'property', seo.metaDescription)
+        }
+        if (seo.metaTitle) {
+          setMetaTag('og:title', 'property', seo.metaTitle)
+        }
+        if (seo.keywords) {
+          setMetaTag('keywords', 'name', seo.keywords)
+        }
+        if (seo.ogImageUrl) {
+          setMetaTag('og:image', 'property', seo.ogImageUrl)
+        }
+        if (seo.canonicalUrl) {
+          setMetaTag('og:url', 'property', seo.canonicalUrl)
+        }
+        if (seo.robotsIndex !== undefined) {
+          setMetaTag('robots', 'name', seo.robotsIndex ? 'index, follow' : 'noindex, nofollow')
+        }
+        if (seo.googleSiteVerification) {
+          setMetaTag('google-site-verification', 'name', seo.googleSiteVerification)
+        }
       } catch (e) {
-        console.error(e)
+        console.error('Error applying SEO meta tags:', e)
       }
     }
   }, [])
 
-  const handleSaveCategoryVectorIcons = (e: React.FormEvent) => {
-    e.preventDefault()
-    localStorage.setItem('guga_category_vector_icons', JSON.stringify(categoryVectorIcons))
-    toast.success('¡Íconos vectoriales de categorías guardados y sincronizados!')
+  // Auto-rotate the banners every 5 seconds
+  useEffect(() => {
+    if (banners.length <= 1) return
+    const interval = setInterval(() => {
+      setCurrentBannerIndex(prev => (prev + 1) % banners.length)
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [banners.length])
+
+  const nextBanner = () => {
+    if (banners.length <= 1) return
+    setCurrentBannerIndex(prev => (prev + 1) % banners.length)
   }
 
-  const handleSaveSeoConfig = (e: React.FormEvent) => {
-    e.preventDefault()
-    localStorage.setItem('guga_store_seo_config', JSON.stringify(seoConfig))
-    toast.success('¡Configuración SEO guardada y actualizada con éxito!')
+  const prevBanner = () => {
+    if (banners.length <= 1) return
+    setCurrentBannerIndex(prev => (prev - 1 + banners.length) % banners.length)
   }
 
-  const loadData = async () => {
+  const loadCatalog = async () => {
     setLoading(true)
-    const [{ data: pds, error: errPds }, { data: srvs, error: errSrvs }] = await Promise.all([
-      fetchAll((desde, hasta) => supabase.from('pedidos').select('*').order('created_at', { ascending: false }).order('id').range(desde, hasta)),
-      supabase.from('servicios').select('*').order('categoria').order('nombre')
-    ])
+    const { data, error } = await supabase
+      .from('servicios')
+      .select('*')
+      .eq('disponible', true)
+      .order('categoria')
+      .order('nombre')
 
-    if (errPds) {
-      toast.error('Error cargando pedidos: ' + errPds.message)
-    } else if (pds) {
-      setPedidos(pds.map(completarPedidoTienda))
+    if (!error && data) {
+      setServicios(data)
     }
-
-    if (errSrvs) {
-      toast.error('Error cargando catálogo: ' + errSrvs.message)
-    } else if (srvs) {
-      setServicios(srvs)
-    }
-
     setLoading(false)
   }
 
-  // Filter ecommerce orders (those with origen === 'ecommerce' or containing ECO- or ecommerce note)
-  const ecommerceOrders = pedidos.filter(p =>
-    p.origen === 'ecommerce' ||
-    (p.numero && p.numero.startsWith('ECO-')) ||
-    (p.notas && p.notas.includes('[TIENDA ONLINE]'))
-  )
+  // Calculate category counts
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = { 'Todas': servicios.length }
+    servicios.forEach(s => {
+      const cat = s.categoria || 'Otros'
+      counts[cat] = (counts[cat] || 0) + 1
+    })
+    return counts
+  }, [servicios])
 
-  const filteredOrders = ecommerceOrders.filter(p => {
-    // Status filter
-    if (filtroEstado !== 'todos') {
-      if (filtroEstado === 'pendientes' && (p.estado !== 'presupuesto' && p.estado !== 'recibido')) return false
-      if (filtroEstado === 'produccion' && (p.estado !== 'aprobado' && p.estado !== 'en_produccion' && p.estado !== 'preparando')) return false
-      if (filtroEstado === 'listos' && (p.estado !== 'terminado' && p.estado !== 'listo')) return false
-      if (filtroEstado === 'entregados' && p.estado !== 'entregado') return false
+  // Extract unique lines / finishes from names or categories
+  const lineasConConteo = useMemo(() => {
+    const counts: Record<string, number> = { 'Todas': servicios.length }
+    LINEAS_IMPRENTA.forEach(linea => {
+      const words = linea.toLowerCase().split(' ')
+      const matches = servicios.filter(s => {
+        const full = `${s.nombre} ${s.descripcion || ''} ${s.categoria}`.toLowerCase()
+        return words.some(w => w.length > 3 && full.includes(w))
+      })
+      if (matches.length > 0) {
+        counts[linea] = matches.length
+      }
+    })
+    return counts
+  }, [servicios])
+
+  // Screen size & Responsive Numbered Pagination (Mobile vs Desktop)
+  const [isMobile, setIsMobile] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = isMobile ? 6 : 12
+
+  // Detect mobile / desktop viewport
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768
+      setIsMobile(mobile)
+    }
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  // Reset to page 1 when filters, search, sort, or screen mode changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [selectedCategoria, selectedLinea, searchTerm, sortBy, isMobile])
+
+  // Filtered & Sorted Products
+  const filteredProducts = useMemo(() => {
+    let result = [...servicios]
+
+    // Category filter
+    if (selectedCategoria !== 'Todas') {
+      result = result.filter(s => s.categoria === selectedCategoria)
     }
 
-    // Search filter
+    // Line / Finish filter
+    if (selectedLinea !== 'Todas') {
+      const words = selectedLinea.toLowerCase().split(' ')
+      result = result.filter(s => {
+        const full = `${s.nombre} ${s.descripcion || ''} ${s.categoria}`.toLowerCase()
+        return words.some(w => w.length > 3 && full.includes(w))
+      })
+    }
+
+    // Search query
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase().trim()
-      const matchNum = p.numero.toLowerCase().includes(q)
-      const matchName = (p.cliente_nombre || '').toLowerCase().includes(q)
-      const matchPhone = (p.cliente_telefono || '').toLowerCase().includes(q)
-      return matchNum || matchName || matchPhone
+      result = result.filter(s =>
+        s.nombre.toLowerCase().includes(q) ||
+        (s.descripcion && s.descripcion.toLowerCase().includes(q)) ||
+        s.categoria.toLowerCase().includes(q)
+      )
     }
 
-    return true
-  })
+    // Sorting
+    if (sortBy === 'precio_menor') {
+      result.sort((a, b) => a.precio_base - b.precio_base)
+    } else if (sortBy === 'precio_mayor') {
+      result.sort((a, b) => b.precio_base - a.precio_base)
+    } else if (sortBy === 'nombre') {
+      result.sort((a, b) => a.nombre.localeCompare(b.nombre))
+    }
 
-  // Metric Stats
-  const totalOrdersCount = ecommerceOrders.length
-  const pendingOrdersCount = ecommerceOrders.filter(p => p.estado === 'presupuesto' || p.estado === 'recibido' || !p.estado).length
-  const inProductionCount = ecommerceOrders.filter(p => p.estado === 'aprobado' || p.estado === 'en_produccion').length
-  const totalRevenue = ecommerceOrders.reduce((acc, p) => acc + (p.total || 0), 0)
+    return result
+  }, [servicios, selectedCategoria, selectedLinea, searchTerm, sortBy])
 
-  // Status Change Handler
-  const handleUpdateStatus = async (pedidoId: string, nuevoEstado: string) => {
+  // Calculate total pages
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / itemsPerPage))
+
+  // Slice products for current page
+  const displayedProducts = useMemo(() => {
+    const startIdx = (currentPage - 1) * itemsPerPage
+    return filteredProducts.slice(startIdx, startIdx + itemsPerPage)
+  }, [filteredProducts, currentPage, itemsPerPage])
+
+  // Change page & scroll to catalog top
+  const handlePageChange = (page: number) => {
+    if (page < 1 || page > totalPages) return
+    setCurrentPage(page)
+    const catalogoEl = document.getElementById('catalogo-section')
+    if (catalogoEl) {
+      catalogoEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
+
+  // Guardar el carrito para que no se pierda al recargar, navegar o volver de Google
+  useEffect(() => {
+    if (!carritoCargado) return
     try {
-      const { error } = await supabase
-        .from('pedidos')
-        .update({ estado: nuevoEstado })
-        .eq('id', pedidoId)
+      localStorage.setItem('guga_store_cart', JSON.stringify(cart))
+      window.dispatchEvent(new Event('storage'))
+    } catch {}
+  }, [cart, carritoCargado])
 
-      if (error) throw error
+  // Carritos abandonados: se guarda el carrito con los datos del cliente para verlo en Panel → E-commerce
+  const timerCarrito = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pedidoEnCurso = useRef(false)
 
-      setPedidos(prev => prev.map(p => p.id === pedidoId ? { ...p, estado: nuevoEstado as any } : p))
-      if (selectedPedido && selectedPedido.id === pedidoId) {
-        setSelectedPedido(prev => prev ? { ...prev, estado: nuevoEstado as any } : null)
+  const sincronizarCarrito = async (estado: 'activo' | 'convertido' = 'activo', pedidoNumero?: string) => {
+    if (estado === 'activo' && pedidoEnCurso.current) return
+    let id = localStorage.getItem('guga_cart_id')
+    if (!id) {
+      if (cart.length === 0) return
+      id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`
+      localStorage.setItem('guga_cart_id', id)
+    }
+    let perfil: { nombre?: string; telefono?: string; email?: string } = {}
+    try { perfil = JSON.parse(localStorage.getItem('guga_store_customer') || '{}') } catch {}
+    const { error } = await supabase.from('carritos').upsert({
+      id,
+      cliente_nombre: checkoutForm.nombre.trim() || perfil.nombre || null,
+      cliente_telefono: checkoutForm.telefono.trim() || perfil.telefono || null,
+      cliente_email: checkoutForm.email.trim() || perfil.email || null,
+      items: cart.map(it => ({ nombre: it.servicio.nombre, variante: it.variante || null, cantidad: it.cantidad, subtotal: it.subtotal })),
+      total: cart.reduce((acc, it) => acc + it.subtotal, 0),
+      estado,
+      pedido_numero: pedidoNumero || null,
+      updated_at: new Date().toISOString(),
+    })
+    if (error) console.warn('No se pudo guardar el carrito (¿falta ejecutar supabase/tienda.sql?):', error.message)
+  }
+
+  useEffect(() => {
+    if (!carritoCargado) return
+    if (timerCarrito.current) clearTimeout(timerCarrito.current)
+    timerCarrito.current = setTimeout(() => { sincronizarCarrito() }, 1500)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart, carritoCargado, checkoutForm.nombre, checkoutForm.telefono, checkoutForm.email])
+
+  // Cart Actions
+  const addToCart = (srv: Servicio, seleccion: ProductoSeleccion) => {
+    const nuevo: CartItem = { servicio: srv, ...seleccion }
+    setCart(prev => {
+      const index = prev.findIndex(item => claveItem(item) === claveItem(nuevo))
+      if (index < 0) return [...prev, nuevo]
+      const updated = [...prev]
+      updated[index] = {
+        ...updated[index],
+        cantidad: updated[index].cantidad + nuevo.cantidad,
+        subtotal: updated[index].subtotal + nuevo.subtotal,
       }
-      toast.success(`Estado actualizado a "${nuevoEstado}"`)
-    } catch (err: any) {
-      toast.error('Error al actualizar estado: ' + err.message)
-    }
+      return updated
+    })
+    setProductoAbierto(null)
+    toast.success(`"${srv.nombre}${seleccion.variante ? ` — ${seleccion.variante}` : ''}" agregado al carrito`)
   }
 
-  // Send WhatsApp notification to client
-  const sendWhatsAppUpdate = (p: Pedido, tipo: 'recibido' | 'produccion' | 'listo' | 'entregado') => {
-    const rawPhone = p.cliente_telefono || ''
-    const cleanPhone = rawPhone.replace(/\D/g, '')
-
-    if (!cleanPhone) {
-      toast.error('El pedido no tiene teléfono registrado')
-      return
-    }
-
-    let phone = cleanPhone
-    if (!phone.startsWith('598') && phone.startsWith('09')) {
-      phone = '598' + phone.substring(1)
-    } else if (!phone.startsWith('598') && phone.length === 8) {
-      phone = '598' + phone
-    }
-
-    let msg = ''
-    if (tipo === 'recibido') {
-      msg = `Hola ${p.cliente_nombre || 'Cliente'}! 👋 Te confirmamos que recibimos tu pedido *${p.numero}* en *GUGA Imprenta*. Total: $ ${p.total?.toLocaleString('es-UY')}. Pronto comenzaremos con la preparación.`
-    } else if (tipo === 'produccion') {
-      msg = `Hola ${p.cliente_nombre || 'Cliente'}! 🖨️ Tu pedido *${p.numero}* ya ingresó a nuestro taller y está en *Producción*. Te avisaremos cuando esté listo.`
-    } else if (tipo === 'listo') {
-      const entrega = (p.metodo_entrega === 'envio' || (p.notas && p.notas.includes('ENVIO')))
-        ? 'está en camino / listo para despacho 🚚'
-        : 'ya está listo para retirar en nuestro taller 🏢'
-      msg = `¡Buenas noticias ${p.cliente_nombre || 'Cliente'}! 🎉 Tu pedido *${p.numero}* ${entrega}. ¡Muchas gracias por elegir GUGA Imprenta!`
-    } else if (tipo === 'entregado') {
-      msg = `Hola ${p.cliente_nombre || 'Cliente'}! 🙌 Tu pedido *${p.numero}* ha sido marcado como *Entregado*. Esperamos que todo haya quedado excelente. ¡Hasta la próxima!`
-    }
-
-    const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`
-    window.open(waUrl, '_blank')
-  }
-
-  // Save Store Config
-  const handleSaveConfig = (e: React.FormEvent) => {
-    e.preventDefault()
-    localStorage.setItem('guga_store_admin_config', JSON.stringify(storeConfig))
-    toast.success('¡Configuración de tienda y banners guardados con éxito!')
-  }
-
-  // Toggle individual product publication in Web Store
-  const handleToggleProductAvailability = async (srv: Servicio) => {
-    const nuevoEstado = srv.disponible === false ? true : false
-    try {
-      const { error } = await supabase
-        .from('servicios')
-        .update({ disponible: nuevoEstado })
-        .eq('id', srv.id)
-
-      if (error) throw error
-
-      setServicios(prev => prev.map(s => s.id === srv.id ? { ...s, disponible: nuevoEstado } : s))
-      toast.success(nuevoEstado ? `"${srv.nombre}" publicado en la Tienda` : `"${srv.nombre}" ocultado de la Tienda`)
-    } catch (err: any) {
-      toast.error('Error al actualizar disponibilidad: ' + err.message)
-    }
-  }
-
-  // Bulk publish / unpublish
-  const handleBulkPublish = async (publicar: boolean) => {
-    const targetIds = filteredCatalog.map(s => s.id)
-    if (targetIds.length === 0) {
-      toast.error('No hay productos que coincidan con el filtro')
-      return
-    }
-    try {
-      const { error } = await supabase
-        .from('servicios')
-        .update({ disponible: publicar })
-        .in('id', targetIds)
-
-      if (error) throw error
-
-      setServicios(prev => prev.map(s => targetIds.includes(s.id) ? { ...s, disponible: publicar } : s))
-      toast.success(publicar ? `Se publicaron ${targetIds.length} productos en la tienda` : `Se ocultaron ${targetIds.length} productos de la tienda`)
-    } catch (err: any) {
-      toast.error('Error en acción masiva: ' + err.message)
-    }
-  }
-
-  // Banner Slides Management (Direct Image Uploading)
-  const handleAddBanner = () => {
-    const newSlide: AdminBannerSlide = {
-      id: Date.now().toString(),
-      desktopUrl: '',
-      mobileUrl: '',
-      activo: true
-    }
-    setStoreConfig(prev => ({
-      ...prev,
-      banners: [...(prev.banners || []), newSlide]
+  const updateCartQty = (clave: string, delta: number) => {
+    setCart(prev => prev.map(item => {
+      if (claveItem(item) !== clave) return item
+      if (item.escala) {
+        const tiradas = Math.max(1, Math.round(item.cantidad / item.escala.cantidad) + delta)
+        return { ...item, cantidad: tiradas * item.escala.cantidad, subtotal: tiradas * item.escala.precio }
+      }
+      const newQty = Math.max(1, item.cantidad + delta)
+      return { ...item, cantidad: newQty, subtotal: newQty * item.servicio.precio_base }
     }))
-    toast.success('Nuevo banner agregado. Haz clic en "Subir Imagen" para elegir tu diseño.')
   }
 
-  const handleRemoveBanner = (index: number) => {
-    setStoreConfig(prev => {
-      const copy = (prev.banners || []).filter((_, i) => i !== index)
-      const updated = { ...prev, banners: copy }
-      localStorage.setItem('guga_store_admin_config', JSON.stringify(updated))
-      return updated
-    })
-    toast('Banner eliminado')
+  const removeFromCart = (clave: string) => {
+    setCart(prev => prev.filter(item => claveItem(item) !== clave))
   }
 
-  const handleUpdateBanner = (index: number, field: keyof AdminBannerSlide, val: any) => {
-    setStoreConfig(prev => {
-      const copy = [...(prev.banners || [])]
-      if (copy[index]) {
-        copy[index] = { ...copy[index], [field]: val }
-      }
-      return { ...prev, banners: copy }
-    })
+  // Precio a mostrar en la tarjeta: la tirada más barata si el producto tiene variables con tiradas
+  const precioDesde = (srv: Servicio) => {
+    const escalas = getVariantesServicio(srv).flatMap(v => v.escalas || []).filter(e => e.precio > 0)
+    if (escalas.length === 0) return null
+    return escalas.reduce((min, e) => (e.precio < min.precio ? e : min))
   }
 
-  // Upload banner file directly from PC
-  const handleBannerFileUpload = (index: number, field: 'desktopUrl' | 'mobileUrl', e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const cartCount = cart.reduce((acc, it) => acc + it.cantidad, 0)
+  const cartSubtotal = cart.reduce((acc, it) => acc + it.subtotal, 0)
+  const shippingCost = checkoutForm.metodoEntrega === 'envio' ? (cartSubtotal >= 4000 ? 0 : 250) : 0
+  const cartTotal = cartSubtotal + shippingCost
 
-    if (file.size > 8 * 1024 * 1024) {
-      toast.error('La imagen no puede pesar más de 8MB')
+  // Save Customer Info
+  const handleSaveCustomer = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!customerInfo.nombre || !customerInfo.telefono) {
+      toast.error('Por favor ingresá tu nombre y teléfono')
+      return
+    }
+    localStorage.setItem('guga_store_customer', JSON.stringify(customerInfo))
+    setCheckoutForm(prev => ({
+      ...prev,
+      nombre: customerInfo.nombre,
+      telefono: customerInfo.telefono,
+      direccion: customerInfo.direccion || prev.direccion,
+      email: customerInfo.email || prev.email,
+    }))
+    setIsAuthModalOpen(false)
+    toast.success('Datos guardados correctamente')
+  }
+
+  // Handle Checkout Order Submission
+  const handleConfirmOrder = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!checkoutForm.nombre.trim() || !checkoutForm.telefono.trim()) {
+      toast.error('Por favor completá tu nombre y teléfono de contacto')
+      return
+    }
+    if (checkoutForm.metodoEntrega === 'envio' && !checkoutForm.direccion.trim()) {
+      toast.error('Por favor ingresá la dirección de entrega')
+      return
+    }
+    if (cart.length === 0) {
+      toast.error('El carrito está vacío')
       return
     }
 
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const base64Url = event.target?.result as string
-      if (base64Url) {
-        setStoreConfig(prev => {
-          const copy = [...(prev.banners || [])]
-          if (copy[index]) {
-            copy[index] = { ...copy[index], [field]: base64Url }
-          }
-          const updated = { ...prev, banners: copy }
-          localStorage.setItem('guga_store_admin_config', JSON.stringify(updated))
-          return updated
-        })
-        toast.success(`¡Imagen de Banner ${field === 'desktopUrl' ? 'Computadora' : 'Celular'} subida con éxito!`)
-      }
-    }
-    reader.readAsDataURL(file)
-  }
-
-  // Filtered Catalog for publication tab
-  const filteredCatalog = servicios.filter(srv => {
-    if (catalogCategoria !== 'Todas' && srv.categoria !== catalogCategoria) return false
-    if (catalogSoloPublicados && srv.disponible === false) return false
-    if (catalogSearch.trim()) {
-      const q = catalogSearch.toLowerCase().trim()
-      const matchName = srv.nombre.toLowerCase().includes(q)
-      const matchDesc = (srv.descripcion || '').toLowerCase().includes(q)
-      const matchCat = srv.categoria.toLowerCase().includes(q)
-      return matchName || matchDesc || matchCat
-    }
-    return true
-  })
-
-  // All categories present in database + defaults
-  const allSystemCategories = Array.from(
-    new Set([
-      'Todas',
-      ...servicios.map(s => s.categoria).filter(Boolean),
-      ...Object.keys(DEFAULT_CATEGORY_VECTOR_MAP).filter(c => c !== 'default'),
-      ...Object.keys(categoryVectorIcons).filter(c => c !== 'default')
-    ])
-  ).sort((a, b) => {
-    if (a === 'Todas') return -1
-    if (b === 'Todas') return 1
-    return a.localeCompare(b)
-  })
-
-  // Select an icon for a category
-  const handleSelectIconForCategory = (cat: string, iconId: string) => {
-    setCategoryVectorIcons(prev => {
-      const updated = { ...prev, [cat]: iconId }
-      localStorage.setItem('guga_category_vector_icons', JSON.stringify(updated))
-      return updated
-    })
-    setSelectedCategoryForIcon(null)
-    setIconSearchTerm('')
-    if (iconId === 'none') {
-      toast.success(`Categoría "${cat}" configurada sin ícono (solo texto)`)
-    } else {
-      toast.success(`Ícono asignado correctamente a "${cat}"`)
-    }
-  }
-
-  // Fast toggle / remove icon
-  const handleSetNoIconForCategory = (cat: string) => {
-    setCategoryVectorIcons(prev => {
-      const updated = { ...prev, [cat]: 'none' }
-      localStorage.setItem('guga_category_vector_icons', JSON.stringify(updated))
-      return updated
-    })
-    toast.success(`"${cat}" configurada sin ícono`)
-  }
-
-  // Upload custom icon file (SVG, PNG, WebP, JPG)
-  const handleFileUploadIcon = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || !selectedCategoryForIcon) return
-
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error('El ícono no puede pesar más de 2MB')
-      return
-    }
-
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const base64Url = event.target?.result as string
-      if (base64Url) {
-        handleSelectIconForCategory(selectedCategoryForIcon, base64Url)
-        toast.success(`¡Ícono personalizado cargado para "${selectedCategoryForIcon}"!`)
-      }
-    }
-    reader.readAsDataURL(file)
-  }
-
-  // Apply custom URL icon
-  const handleApplyCustomUrlIcon = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!customIconUrlInput.trim() || !selectedCategoryForIcon) return
-    handleSelectIconForCategory(selectedCategoryForIcon, customIconUrlInput.trim())
-    setCustomIconUrlInput('')
-    toast.success(`URL de ícono asignada a "${selectedCategoryForIcon}"`)
-  }
-
-  // Add custom category mapping
-  const handleAddNewCategoryMapping = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newCategoryName.trim()) return
-    const catName = newCategoryName.trim()
-    setCategoryVectorIcons(prev => {
-      const updated = { ...prev, [catName]: prev[catName] || 'layout-grid' }
-      localStorage.setItem('guga_category_vector_icons', JSON.stringify(updated))
-      return updated
-    })
-    const added = catName
-    setNewCategoryName('')
-    setSelectedCategoryForIcon(added)
-    toast.success(`Categoría "${added}" agregada. Elige su ícono:`)
-  }
-
-  // Remove category icon custom mapping
-  const handleRemoveCategoryMapping = (cat: string) => {
-    setCategoryVectorIcons(prev => {
-      const copy = { ...prev }
-      delete copy[cat]
-      localStorage.setItem('guga_category_vector_icons', JSON.stringify(copy))
-      return copy
-    })
-    toast(`Mapeo de "${cat}" restablecido`)
-  }
-
-  // Catalog item edit / add
-  const handleOpenCatalogModal = (srv?: Servicio) => {
-    if (srv) {
-      setEditingServicio(srv)
-      setCatalogForm({
-        nombre: srv.nombre,
-        categoria: srv.categoria,
-        descripcion: srv.descripcion || '',
-        precio_base: srv.precio_base,
-        unidad: srv.unidad || 'unidad',
-        tiempo_estimado: srv.tiempo_estimado || '2-3 días',
-        disponible: srv.disponible !== false,
-        imagen_url: srv.imagen_url || ''
-      })
-    } else {
-      setEditingServicio(null)
-      setCatalogForm({
-        nombre: '',
-        categoria: 'Folletos',
-        descripcion: '',
-        precio_base: 0,
-        unidad: 'unidad',
-        tiempo_estimado: '2-3 días',
-        disponible: true,
-        imagen_url: ''
-      })
-    }
-    setShowCatalogModal(true)
-  }
-
-  const handleSaveCatalogItem = async (e: React.FormEvent) => {
-    e.preventDefault()
+    setIsSubmittingOrder(true)
+    pedidoEnCurso.current = true
+    if (timerCarrito.current) clearTimeout(timerCarrito.current)
     try {
-      if (editingServicio) {
-        const { data, error } = await supabase
-          .from('servicios')
-          .update(catalogForm)
-          .eq('id', editingServicio.id)
-          .select()
-          .single()
+      const pedidoNumero = generateNumeroEcommerce()
 
-        if (error) throw error
-        setServicios(prev => prev.map(s => s.id === editingServicio.id ? data : s))
-        toast.success('Producto actualizado en catálogo')
-      } else {
-        const { data, error } = await supabase
-          .from('servicios')
-          .insert([catalogForm])
-          .select()
-          .single()
+      const itemsForOrder = cart.map(it => ({
+        producto_id: it.servicio.id,
+        nombre: it.variante ? `${it.servicio.nombre} — ${it.variante}` : it.servicio.nombre,
+        variante_nombre: it.variante || undefined,
+        acabado: it.variante || undefined,
+        cantidad: it.cantidad,
+        precio_unitario: it.cantidad > 0 ? Math.round((it.subtotal / it.cantidad) * 100) / 100 : it.servicio.precio_base,
+        subtotal: it.subtotal,
+        unidad: it.servicio.unidad || 'unidad',
+        imagen_url: it.servicio.imagen_url || '',
+      }))
 
-        if (error) throw error
-        setServicios(prev => [data, ...prev])
-        toast.success('Nuevo producto agregado al catálogo')
+      // 1. Upsert / Buscar cliente en la tabla clientes
+      let clienteId: string | null = null
+      const cleanDigits = checkoutForm.telefono.trim().replace(/\D/g, '')
+
+      try {
+        let cltQuery = supabase.from('clientes').select('id, nombre, telefono, direccion, email')
+        if (cleanDigits.length >= 7) {
+          cltQuery = cltQuery.or(`telefono.ilike.%${cleanDigits}%,telefono.ilike.%${checkoutForm.telefono.trim()}%`)
+        } else if (checkoutForm.email.trim()) {
+          cltQuery = cltQuery.eq('email', checkoutForm.email.trim().toLowerCase())
+        } else {
+          cltQuery = cltQuery.eq('nombre', checkoutForm.nombre.trim())
+        }
+
+        const { data: existingClts } = await cltQuery.limit(1)
+
+        if (existingClts && existingClts.length > 0) {
+          clienteId = existingClts[0].id
+          // Update client details if they provided new address or email
+          if (checkoutForm.direccion.trim() || checkoutForm.email.trim()) {
+            await supabase
+              .from('clientes')
+              .update({
+                direccion: checkoutForm.direccion.trim() || existingClts[0].direccion,
+                email: checkoutForm.email.trim() || existingClts[0].email
+              })
+              .eq('id', existingClts[0].id)
+          }
+        } else {
+          const { data: newClt } = await supabase
+            .from('clientes')
+            .insert([{
+              nombre: checkoutForm.nombre.trim(),
+              telefono: checkoutForm.telefono.trim(),
+              direccion: checkoutForm.direccion.trim() || undefined,
+              email: checkoutForm.email.trim() || undefined,
+              tipo: 'web',
+              notas: '[Origen: E-commerce Web] Registrado desde la Tienda Online',
+            }])
+            .select('id')
+            .single()
+          if (newClt) clienteId = newClt.id
+        }
+      } catch (cltErr) {
+        console.warn('Customer upsert non-blocking error:', cltErr)
       }
-      setShowCatalogModal(false)
+
+      // 2. Formatear notas completas para el pedido (compatibles 100% con la base de datos)
+      const formattedNotas = [
+        `[TIENDA ONLINE]`,
+        `Tel: ${checkoutForm.telefono.trim()}`,
+        `Entrega: ${checkoutForm.metodoEntrega.toUpperCase()} (${checkoutForm.metodoEntrega === 'envio' ? (checkoutForm.direccion.trim() || 'Dirección no especificada') : 'Retiro en Local'})`,
+        `Pago: ${checkoutForm.metodoPago.toUpperCase()}`,
+        checkoutForm.email.trim() ? `Email: ${checkoutForm.email.trim()}` : null,
+        shippingCost > 0 ? `Envío: $${shippingCost}` : null,
+        checkoutForm.notas.trim() ? `Notas cliente: ${checkoutForm.notas.trim()}` : null
+      ].filter(Boolean).join(' | ')
+
+      // 3. Crear payload limpio para Supabase
+      const newPedidoPayload: any = {
+        numero: pedidoNumero,
+        cliente_id: clienteId,
+        cliente_nombre: checkoutForm.nombre.trim(),
+        cliente_telefono: checkoutForm.telefono.trim(),
+        cliente_direccion: checkoutForm.direccion.trim() || (checkoutForm.metodoEntrega === 'retiro' ? 'Retiro en Taller' : ''),
+        items: itemsForOrder,
+        subtotal: cartSubtotal,
+        descuento: 0,
+        total: cartTotal,
+        metodo_pago: checkoutForm.metodoPago,
+        estado: 'presupuesto',
+        origen: 'ecommerce',
+        notas: formattedNotas,
+      }
+
+      // 4. Inserción con reintento seguro: si la tabla no tiene alguna columna opcional
+      // (cliente_telefono, cliente_direccion, origen...) se quita y se reintenta; el dato ya va en notas
+      let pedidoError: { code?: string; message: string } | null = null
+      for (let intento = 0; intento < 8; intento++) {
+        const { error } = await supabase.from('pedidos').insert([newPedidoPayload])
+        pedidoError = error
+        if (!error) break
+
+        const columnaFaltante = error.code === 'PGRST204' ? error.message.match(/'([^']+)' column/)?.[1] : undefined
+        if (columnaFaltante && columnaFaltante in newPedidoPayload) {
+          delete newPedidoPayload[columnaFaltante]
+        } else if ('cliente_id' in newPedidoPayload) {
+          console.warn('Insert attempt failed, trying fallback without cliente_id:', error)
+          delete newPedidoPayload.cliente_id
+        } else {
+          break
+        }
+      }
+
+      if (pedidoError) {
+        console.error('Order insert failed:', pedidoError)
+        throw new Error('No se pudo guardar el pedido en la base de datos: ' + pedidoError.message)
+      }
+
+      // El carrito pasó a ser un pedido: deja de figurar como abandonado
+      pedidoEnCurso.current = false
+      await sincronizarCarrito('convertido', pedidoNumero)
+      localStorage.removeItem('guga_cart_id')
+
+      // Save customer details in localStorage
+      localStorage.setItem('guga_store_customer', JSON.stringify({
+        nombre: checkoutForm.nombre,
+        telefono: checkoutForm.telefono,
+        direccion: checkoutForm.direccion,
+        email: checkoutForm.email,
+      }))
+
+      // Save order in local history for "Mis Pedidos"
+      const localHistory = JSON.parse(localStorage.getItem('guga_my_orders') || '[]')
+      localHistory.unshift({
+        numero: pedidoNumero,
+        fecha: new Date().toISOString(),
+        total: cartTotal,
+        itemsCount: cartCount,
+      })
+      localStorage.setItem('guga_my_orders', JSON.stringify(localHistory))
+
+      // Generate WhatsApp Link
+      const waEncoded = formatWhatsAppMessage(
+        pedidoNumero,
+        checkoutForm.nombre,
+        checkoutForm.telefono,
+        itemsForOrder,
+        cartTotal,
+        checkoutForm.metodoEntrega,
+        checkoutForm.direccion,
+        checkoutForm.metodoPago,
+        checkoutForm.notas
+      )
+      const whatsappUrl = `https://wa.me/${STORE_PHONE}?text=${waEncoded}`
+
+      setOrderSuccess({
+        pedidoNumero,
+        whatsappUrl,
+      })
+
+      // Clear cart
+      setCart([])
+      setIsCheckoutOpen(false)
+      setIsCartOpen(false)
+      toast.success('¡Pedido realizado con éxito!')
     } catch (err: any) {
-      toast.error('Error al guardar producto: ' + err.message)
+      toast.error('Ocurrió un error al procesar el pedido: ' + err.message)
+    } finally {
+      pedidoEnCurso.current = false
+      setIsSubmittingOrder(false)
     }
   }
+
+  // Track Orders
+  const handleTrackOrders = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    if (!trackQuery.trim()) {
+      toast.error('Ingresá tu teléfono o número de pedido')
+      return
+    }
+
+    setIsTrackingLoading(true)
+    const q = trackQuery.trim()
+
+    try {
+      let query = supabase.from('pedidos').select('*')
+      if (q.toUpperCase().startsWith('ECO-') || q.toUpperCase().startsWith('P-')) {
+        query = query.eq('numero', q.toUpperCase())
+      } else {
+        // Los pedidos de la tienda llevan el teléfono dentro de notas
+        query = query.ilike('notas', `%${q}%`)
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false }).limit(10)
+      if (error) throw error
+      setTrackedOrders((data || []).map(completarPedidoTienda))
+      if (!data || data.length === 0) {
+        toast('No se encontraron pedidos con ese dato')
+      }
+    } catch (err: any) {
+      toast.error('Error al buscar pedidos: ' + err.message)
+    } finally {
+      setIsTrackingLoading(false)
+    }
+  }
+
+  const getProductImage = (srv: Servicio) => {
+    if (srv.imagen_url && srv.imagen_url.startsWith('http')) return srv.imagen_url
+    if (srv.imagen_url && srv.imagen_url.startsWith('data:image')) return srv.imagen_url
+    return CATEGORY_IMAGES[srv.categoria] || CATEGORY_IMAGES['default']
+  }
+
+  const activeBannersList = banners.filter(b => b.activo !== false)
+  const currentBanner = activeBannersList[currentBannerIndex] || activeBannersList[0] || DEFAULT_BANNERS[0]
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
-      <Header
-        title="Gestión E-commerce & Tienda Online"
-        subtitle="Recepción de pedidos online, despacho y administración de productos visibles en la web"
+    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', color: '#0f172a', fontFamily: 'var(--font-inter), sans-serif' }}>
+
+      {/* UNIFIED STORE HEADER */}
+      <StoreHeader
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        onOpenCart={() => setIsCartOpen(true)}
+        activePage="tienda"
+        cartCountOverride={cartCount}
+        cartSubtotalOverride={cartSubtotal}
       />
 
-      {/* Top Bar with Live Store Link & Quick Metrics */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '16px',
-        marginBottom: '24px',
-        backgroundColor: '#ffffff',
-        padding: '16px 20px',
-        borderRadius: '14px',
-        border: '1px solid var(--border)',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '10px',
-            backgroundColor: 'rgba(220, 38, 38, 0.1)',
-            color: '#dc2626',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <Store size={22} />
-          </div>
+      {/* MAIN CONTAINER */}
+      <main style={{ maxWidth: '1360px', margin: '0 auto', padding: '16px 16px' }}>
+
+        {/* HERO SECTION WITH TITLE & SEARCH */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          marginBottom: '16px'
+        }}>
           <div>
-            <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)' }}>
-              Tienda Online GUGA Activa
-            </div>
-            <div style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>
-              Ruta pública: <strong style={{ color: '#149b8e' }}>/tienda</strong> (accesible por clientes)
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button
-            onClick={loadData}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              backgroundColor: 'var(--bg-input)',
-              border: '1px solid var(--border-light)',
-              padding: '9px 14px',
-              borderRadius: '8px',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              color: 'var(--text-secondary)'
-            }}
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            <span>Actualizar</span>
-          </button>
-
-          <a
-            href="/tienda"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              backgroundColor: '#dc2626',
-              color: '#ffffff',
-              padding: '9px 18px',
-              borderRadius: '8px',
-              fontSize: '13.5px',
-              fontWeight: 700,
-              textDecoration: 'none',
-              boxShadow: '0 2px 8px rgba(220, 38, 38, 0.25)'
-            }}
-          >
-            <span>Ver Tienda Online</span>
-            <ExternalLink size={15} />
-          </a>
-        </div>
-      </div>
-
-      {/* METRIC CARDS */}
-      <div className="grid-stats" style={{ marginBottom: '24px' }}>
-        <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: 'rgba(220, 38, 38, 0.1)', color: '#dc2626' }}>
-            <ShoppingBag size={22} />
-          </div>
-          <div>
-            <div className="stat-value">{totalOrdersCount}</div>
-            <div className="stat-label">Pedidos Online Totales</div>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b' }}>
-            <Clock size={22} />
-          </div>
-          <div>
-            <div className="stat-value">{pendingOrdersCount}</div>
-            <div className="stat-label">Pendientes / Por Preparar</div>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: 'rgba(2, 132, 199, 0.1)', color: '#0284c7' }}>
-            <Truck size={22} />
-          </div>
-          <div>
-            <div className="stat-value">{inProductionCount}</div>
-            <div className="stat-label">En Taller / Producción</div>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon" style={{ backgroundColor: 'rgba(22, 163, 74, 0.1)', color: '#16a34a' }}>
-            <DollarSign size={22} />
-          </div>
-          <div>
-            <div className="stat-value">{formatCurrency(totalRevenue)}</div>
-            <div className="stat-label">Ventas Tienda Online</div>
-          </div>
-        </div>
-      </div>
-
-      {/* NAVIGATION TABS */}
-      <div style={{
-        display: 'flex',
-        borderBottom: '1px solid var(--border)',
-        marginBottom: '20px',
-        gap: '8px'
-      }}>
-        <button
-          onClick={() => setActiveTab('pedidos')}
-          style={{
-            padding: '12px 20px',
-            border: 'none',
-            background: 'none',
-            borderBottom: activeTab === 'pedidos' ? '3px solid #dc2626' : '3px solid transparent',
-            color: activeTab === 'pedidos' ? '#dc2626' : 'var(--text-secondary)',
-            fontWeight: activeTab === 'pedidos' ? 700 : 500,
-            fontSize: '14px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <ShoppingBag size={17} />
-          <span>Pedidos Online ({ecommerceOrders.length})</span>
-          {pendingOrdersCount > 0 && (
-            <span style={{
-              backgroundColor: '#dc2626',
-              color: 'white',
-              fontSize: '11px',
+            <h1 style={{
+              fontSize: 'clamp(20px, 3.5vw, 28px)',
               fontWeight: 800,
-              padding: '2px 7px',
-              borderRadius: '999px'
+              color: '#334155',
+              letterSpacing: '-0.02em',
+              margin: 0
             }}>
-              {pendingOrdersCount}
-            </span>
-          )}
-        </button>
-
-        <button
-          onClick={() => setActiveTab('catalogo')}
-          style={{
-            padding: '12px 20px',
-            border: 'none',
-            background: 'none',
-            borderBottom: activeTab === 'catalogo' ? '3px solid #dc2626' : '3px solid transparent',
-            color: activeTab === 'catalogo' ? '#dc2626' : 'var(--text-secondary)',
-            fontWeight: activeTab === 'catalogo' ? 700 : 500,
-            fontSize: '14px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <Layers size={17} />
-          <span>Catálogo & Stock ({servicios.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('config')}
-          style={{
-            padding: '12px 20px',
-            border: 'none',
-            background: 'none',
-            borderBottom: activeTab === 'config' ? '3px solid #dc2626' : '3px solid transparent',
-            color: activeTab === 'config' ? '#dc2626' : 'var(--text-secondary)',
-            fontWeight: activeTab === 'config' ? 700 : 500,
-            fontSize: '14px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <Store size={17} />
-          <span>Configuración & Banners</span>
-        </button>
-      </div>
-
-      {/* TAB 1: PEDIDOS ONLINE */}
-      {activeTab === 'pedidos' && (
-        <div>
-          {/* Filters and Search Bar */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '14px',
-            marginBottom: '18px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <button
-                onClick={() => setFiltroEstado('todos')}
-                style={{
-                  padding: '7px 14px',
-                  borderRadius: '8px',
-                  border: filtroEstado === 'todos' ? '1px solid #dc2626' : '1px solid var(--border)',
-                  backgroundColor: filtroEstado === 'todos' ? 'rgba(220, 38, 38, 0.1)' : 'var(--bg-card)',
-                  color: filtroEstado === 'todos' ? '#dc2626' : 'var(--text-secondary)',
-                  fontWeight: 600,
-                  fontSize: '13px',
-                  cursor: 'pointer'
-                }}
-              >
-                Todos ({ecommerceOrders.length})
-              </button>
-
-              <button
-                onClick={() => setFiltroEstado('pendientes')}
-                style={{
-                  padding: '7px 14px',
-                  borderRadius: '8px',
-                  border: filtroEstado === 'pendientes' ? '1px solid #f59e0b' : '1px solid var(--border)',
-                  backgroundColor: filtroEstado === 'pendientes' ? 'rgba(245, 158, 11, 0.1)' : 'var(--bg-card)',
-                  color: filtroEstado === 'pendientes' ? '#f59e0b' : 'var(--text-secondary)',
-                  fontWeight: 600,
-                  fontSize: '13px',
-                  cursor: 'pointer'
-                }}
-              >
-                ⏳ Pendientes / Presupuestos ({pendingOrdersCount})
-              </button>
-
-              <button
-                onClick={() => setFiltroEstado('produccion')}
-                style={{
-                  padding: '7px 14px',
-                  borderRadius: '8px',
-                  border: filtroEstado === 'produccion' ? '1px solid #0284c7' : '1px solid var(--border)',
-                  backgroundColor: filtroEstado === 'produccion' ? 'rgba(2, 132, 199, 0.1)' : 'var(--bg-card)',
-                  color: filtroEstado === 'produccion' ? '#0284c7' : 'var(--text-secondary)',
-                  fontWeight: 600,
-                  fontSize: '13px',
-                  cursor: 'pointer'
-                }}
-              >
-                🖨️ En Producción ({inProductionCount})
-              </button>
-
-              <button
-                onClick={() => setFiltroEstado('listos')}
-                style={{
-                  padding: '7px 14px',
-                  borderRadius: '8px',
-                  border: filtroEstado === 'listos' ? '1px solid #16a34a' : '1px solid var(--border)',
-                  backgroundColor: filtroEstado === 'listos' ? 'rgba(22, 163, 74, 0.1)' : 'var(--bg-card)',
-                  color: filtroEstado === 'listos' ? '#16a34a' : 'var(--text-secondary)',
-                  fontWeight: 600,
-                  fontSize: '13px',
-                  cursor: 'pointer'
-                }}
-              >
-                📦 Listos para Entregar
-              </button>
-            </div>
-
-            <div style={{ position: 'relative', minWidth: '280px' }}>
-              <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar por Nº, cliente, teléfono..."
-                className="input"
-                style={{ paddingLeft: '36px', fontSize: '13px' }}
-              />
-            </div>
+              Encuentra lo que necesitas
+            </h1>
+            <p style={{ color: '#64748b', fontSize: '13px', margin: '3px 0 0 0' }}>
+              Catálogo oficial de productos, formatos y presupuestos de <strong>GUGA Imprenta</strong>
+            </p>
           </div>
 
-          {/* Orders Table / Cards */}
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
-              <div className="spinner" style={{ marginBottom: '12px' }} />
-              <p>Cargando pedidos de la tienda online...</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {/* Mobile Filter Button (Visible on screens <= 960px) */}
+            <button
+              type="button"
+              className="tienda-mobile-filter-trigger"
+              onClick={() => setIsMobileFiltersOpen(true)}
+              style={{
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                borderRadius: '8px',
+                border: (selectedLinea !== 'Todas' || selectedCategoria !== 'Todas') ? '1.5px solid #149b8e' : '1px solid #cbd5e1',
+                backgroundColor: (selectedLinea !== 'Todas' || selectedCategoria !== 'Todas') ? 'rgba(20, 155, 142, 0.08)' : '#ffffff',
+                color: (selectedLinea !== 'Todas' || selectedCategoria !== 'Todas') ? '#149b8e' : '#334155',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+              }}
+            >
+              <Filter size={15} color={(selectedLinea !== 'Todas' || selectedCategoria !== 'Todas') ? '#149b8e' : '#64748b'} />
+              <span>Filtros {(selectedLinea !== 'Todas' || selectedCategoria !== 'Todas') ? '•' : ''}</span>
+            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '12.5px', color: '#64748b', fontWeight: 600 }}>Ordenar:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                style={{
+                  padding: '7px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#ffffff',
+                  fontSize: '12.5px',
+                  fontWeight: 600,
+                  color: '#334155',
+                  cursor: 'pointer',
+                  outline: 'none'
+                }}
+              >
+                <option value="relevancia">Relevancia</option>
+                <option value="precio_menor">Precio: Menor a Mayor</option>
+                <option value="precio_mayor">Precio: Mayor a Menor</option>
+                <option value="nombre">Nombre A - Z</option>
+              </select>
             </div>
-          ) : filteredOrders.length === 0 ? (
-            <div className="card empty-state">
-              <ShoppingBag size={48} />
-              <h3>No hay pedidos online que coincidan</h3>
-              <p>Cuando un cliente realice una compra desde <strong>/tienda</strong>, aparecerá aquí al instante.</p>
+          </div>
+        </div>
+
+        {/* LAYOUT GRID: SIDEBAR FILTERS (LEFT) + HERO BANNER & PRODUCTS (RIGHT) */}
+        <div className="tienda-main-grid">
+
+          {/* LEFT SIDEBAR FILTERS (DESKTOP) */}
+          <aside className="tienda-sidebar-desktop" style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '16px',
+            border: '1px solid #e2e8f0',
+            padding: '20px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+            position: 'sticky',
+            top: '90px'
+          }}>
+
+            {/* Filter Group 2: Categoría */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Categorías
+                </h3>
+                {selectedCategoria !== 'Todas' && (
+                  <button
+                    onClick={() => setSelectedCategoria('Todas')}
+                    style={{ background: 'none', border: 'none', color: '#149b8e', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Borrar
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <button
+                  onClick={() => setSelectedCategoria('Todas')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: selectedCategoria === 'Todas' ? 'rgba(20, 155, 142, 0.1)' : 'transparent',
+                    color: selectedCategoria === 'Todas' ? '#149b8e' : '#334155',
+                    fontSize: '13px',
+                    fontWeight: selectedCategoria === 'Todas' ? 700 : 500,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                    <CategoryIcon
+                      iconId={categoryVectorIcons['Todas'] || 'layout-grid'}
+                      size={17}
+                      color={selectedCategoria === 'Todas' ? '#149b8e' : '#64748b'}
+                      strokeWidth={2}
+                    />
+                    <span>Todas</span>
+                  </span>
+                  <span style={{
+                    backgroundColor: selectedCategoria === 'Todas' ? '#149b8e' : '#f1f5f9',
+                    color: selectedCategoria === 'Todas' ? 'white' : '#64748b',
+                    padding: '2px 7px',
+                    borderRadius: '999px',
+                    fontSize: '11px',
+                    fontWeight: 700
+                  }}>
+                    {servicios.length}
+                  </span>
+                </button>
+
+                {Object.entries(categoryCounts).filter(([cat]) => cat !== 'Todas').map(([cat, count]) => {
+                  const isSelected = selectedCategoria === cat
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCategoria(isSelected ? 'Todas' : cat)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: isSelected ? 'rgba(20, 155, 142, 0.1)' : 'transparent',
+                        color: isSelected ? '#149b8e' : '#334155',
+                        fontSize: '13px',
+                        fontWeight: isSelected ? 700 : 500,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '9px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                        <CategoryIcon
+                          iconId={categoryVectorIcons[cat] || cat}
+                          size={17}
+                          color={isSelected ? '#149b8e' : '#64748b'}
+                          strokeWidth={1.9}
+                        />
+                        <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{cat}</span>
+                      </span>
+                      <span style={{
+                        backgroundColor: isSelected ? '#149b8e' : '#f1f5f9',
+                        color: isSelected ? 'white' : '#64748b',
+                        padding: '2px 7px',
+                        borderRadius: '999px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        marginLeft: '8px',
+                        flexShrink: 0
+                      }}>
+                        {count}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Direct Contact Card */}
+            <div style={{
+              marginTop: '24px',
+              padding: '16px',
+              backgroundColor: '#f8fafc',
+              borderRadius: '12px',
+              border: '1px dashed #cbd5e1',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
+                ¿Buscas un trabajo a medida?
+              </div>
+              <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
+                Cotizá cantidades personalizadas, troqueles especiales o diseños únicos por WhatsApp.
+              </p>
               <a
-                href="/tienda"
+                href={`https://wa.me/${STORE_PHONE}?text=${encodeURIComponent('Hola GUGA Imprenta, quiero consultar por un presupuesto a medida.')}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="btn btn-primary"
-                style={{ marginTop: '10px' }}
-              >
-                Hacer un pedido de prueba en la Tienda ↗
-              </a>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {filteredOrders.map((pd) => {
-                let badgeColor = { bg: '#fef3c7', text: '#b45309', label: 'Pendiente / Presupuesto' }
-                if (pd.estado === 'aprobado' || pd.estado === 'en_produccion' || pd.estado === 'preparando') {
-                  badgeColor = { bg: '#e0f2fe', text: '#0369a1', label: 'En Producción' }
-                } else if (pd.estado === 'terminado' || pd.estado === 'listo') {
-                  badgeColor = { bg: '#dcfce7', text: '#15803d', label: 'Listo para Entrega' }
-                } else if (pd.estado === 'entregado') {
-                  badgeColor = { bg: '#f1f5f9', text: '#475569', label: 'Entregado' }
-                }
-
-                return (
-                  <div
-                    key={pd.id}
-                    className="card"
-                    style={{
-                      padding: '18px 20px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '12px',
-                      borderLeft: `4px solid ${badgeColor.text}`
-                    }}
-                  >
-                    {/* Card Header */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <span style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)' }}>
-                          {pd.numero}
-                        </span>
-                        <span style={{
-                          backgroundColor: badgeColor.bg,
-                          color: badgeColor.text,
-                          padding: '3px 9px',
-                          borderRadius: '6px',
-                          fontSize: '11.5px',
-                          fontWeight: 700,
-                          textTransform: 'uppercase'
-                        }}>
-                          {badgeColor.label}
-                        </span>
-                        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                          {formatDateTime(pd.created_at || '')}
-                        </span>
-                      </div>
-
-                      <div style={{ fontSize: '17px', fontWeight: 900, color: '#dc2626' }}>
-                        {formatCurrency(pd.total)}
-                      </div>
-                    </div>
-
-                    {/* Card Body: Customer & Items Details */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
-                      {/* Customer Info */}
-                      <div style={{ backgroundColor: 'var(--bg-input)', padding: '12px 14px', borderRadius: '10px' }}>
-                        <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>
-                          Datos del Cliente
-                        </div>
-                        <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                          {pd.cliente_nombre || 'Cliente Tienda'}
-                        </div>
-                        <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Phone size={13} color="#149b8e" />
-                          <span>{pd.cliente_telefono || 'Sin teléfono'}</span>
-                        </div>
-                        {pd.cliente_direccion && (
-                          <div style={{ fontSize: '12.5px', color: 'var(--text-muted)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <MapPin size={13} color="#f59e0b" />
-                            <span>{pd.cliente_direccion}</span>
-                          </div>
-                        )}
-                        {pd.metodo_pago && (
-                          <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                            Pago: <strong>{pd.metodo_pago.toUpperCase()}</strong>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Items list */}
-                      <div style={{ backgroundColor: 'var(--bg-input)', padding: '12px 14px', borderRadius: '10px' }}>
-                        <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>
-                          Productos Solicitados ({pd.items ? pd.items.length : 0})
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '120px', overflowY: 'auto' }}>
-                          {pd.items && pd.items.map((it, idx) => (
-                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                              <span>• <strong>{it.nombre}</strong> x {it.cantidad}</span>
-                              <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{formatCurrency(it.subtotal)}</span>
-                            </div>
-                          ))}
-                        </div>
-                        {pd.notas && (
-                          <div style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px solid var(--border-light)', fontSize: '12px', color: 'var(--text-muted)' }}>
-                            <em>{pd.notas}</em>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Card Actions */}
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: '10px',
-                      paddingTop: '10px',
-                      borderTop: '1px solid var(--border)'
-                    }}>
-                      {/* State workflow selector */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                          Cambiar Estado:
-                        </span>
-                        <select
-                          value={pd.estado || 'presupuesto'}
-                          onChange={(e) => handleUpdateStatus(pd.id, e.target.value)}
-                          style={{
-                            padding: '6px 12px',
-                            borderRadius: '6px',
-                            border: '1px solid var(--border-light)',
-                            fontSize: '12.5px',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            backgroundColor: 'var(--bg-card)'
-                          }}
-                        >
-                          <option value="presupuesto">⏳ Presupuesto / Pendiente</option>
-                          <option value="aprobado">✅ Aprobado / En Preparación</option>
-                          <option value="en_produccion">🖨️ En Producción</option>
-                          <option value="terminado">📦 Listo para Entregar</option>
-                          <option value="entregado">🤝 Entregado</option>
-                          <option value="cancelado">❌ Cancelado</option>
-                        </select>
-                      </div>
-
-                      {/* Action buttons: WhatsApp notifications + Ticket */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {/* WhatsApp Update button */}
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          <button
-                            onClick={() => sendWhatsAppUpdate(pd, 'produccion')}
-                            title="Notificar por WhatsApp: En Taller / Producción"
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              backgroundColor: 'rgba(2, 132, 199, 0.1)',
-                              color: '#0284c7',
-                              border: '1px solid rgba(2, 132, 199, 0.2)',
-                              padding: '6px 10px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              fontWeight: 700,
-                              cursor: 'pointer'
-                            }}
-                          >
-                            <WhatsAppIcon size={14} color="#0284c7" />
-                            <span>WA: En Taller</span>
-                          </button>
-
-                          <button
-                            onClick={() => sendWhatsAppUpdate(pd, 'listo')}
-                            title="Notificar por WhatsApp: ¡Pedido Listo!"
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              backgroundColor: '#25d366',
-                              color: '#ffffff',
-                              border: 'none',
-                              padding: '6px 12px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              boxShadow: '0 2px 6px rgba(37, 211, 102, 0.25)'
-                            }}
-                          >
-                            <WhatsAppIcon size={14} color="white" />
-                            <span>WA: ¡Pedido Listo!</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* TAB 2: CATÁLOGO & PUBLICACIÓN WEB */}
-      {activeTab === 'catalogo' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {/* Header Bar & Metrics */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '14px'
-          }}>
-            <div>
-              <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-                Publicación de Productos en Tienda Online
-              </h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '3px 0 0 0' }}>
-                Todos los precios, descripciones y tirajes se sincronizan automáticamente desde el CRM. Activa o desactiva qué productos deseas mostrar en la web.
-              </p>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <Link
-                href="/servicios"
-                className="btn btn-secondary"
                 style={{
-                  display: 'flex',
+                  display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
-                  fontSize: '13px',
+                  backgroundColor: '#16a34a',
+                  color: 'white',
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  fontSize: '12.5px',
                   fontWeight: 700,
                   textDecoration: 'none'
                 }}
               >
-                <span>Administrar Precios en CRM</span>
-                <ArrowUpRight size={14} />
-              </Link>
-            </div>
-          </div>
-
-          {/* Info Notice Box */}
-          <div style={{
-            backgroundColor: 'rgba(20, 155, 142, 0.08)',
-            border: '1px solid rgba(20, 155, 142, 0.25)',
-            borderRadius: '12px',
-            padding: '12px 18px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '12px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{ fontSize: '18px' }}>💡</span>
-              <span style={{ fontSize: '13px', color: '#0f766e', fontWeight: 600 }}>
-                Los precios, fotos y medidas provienen en tiempo real del CRM de GUGA. Aquí solo debes encender el switch para publicar o apagar para ocultar.
-              </span>
+                <WhatsAppIcon size={16} color="white" />
+                <span>Hablar con Asesor</span>
+              </a>
             </div>
 
-            <div style={{ display: 'flex', gap: '8px' }}>
+          </aside>
+
+          {/* RIGHT COLUMN: SLEEK HERO BANNER CAROUSEL & PRODUCT GRID */}
+          <div id="catalogo-section">
+
+            {/* MOBILE HORIZONTAL CATEGORY SCROLL BAR (Visible on screens <= 960px) */}
+            <div className="tienda-mobile-categories-bar">
               <button
                 type="button"
-                onClick={() => handleBulkPublish(true)}
-                className="btn btn-sm btn-success"
-                style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '6px' }}
+                onClick={() => setSelectedCategoria('Todas')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '7px 14px',
+                  borderRadius: '999px',
+                  border: selectedCategoria === 'Todas' ? '1.5px solid #149b8e' : '1px solid #cbd5e1',
+                  backgroundColor: selectedCategoria === 'Todas' ? '#149b8e' : '#ffffff',
+                  color: selectedCategoria === 'Todas' ? '#ffffff' : '#334155',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  boxShadow: selectedCategoria === 'Todas' ? '0 2px 6px rgba(20,155,142,0.3)' : 'none',
+                  transition: 'all 0.15s'
+                }}
               >
-                ✓ Publicar todos los filtrados
+                <CategoryIcon
+                  iconId={categoryVectorIcons['Todas'] || 'layout-grid'}
+                  size={14}
+                  color={selectedCategoria === 'Todas' ? '#ffffff' : '#64748b'}
+                  strokeWidth={2}
+                />
+                <span>Todas</span>
+                <span style={{
+                  backgroundColor: selectedCategoria === 'Todas' ? 'rgba(255,255,255,0.25)' : '#f1f5f9',
+                  color: selectedCategoria === 'Todas' ? '#ffffff' : '#64748b',
+                  padding: '1px 6px',
+                  borderRadius: '999px',
+                  fontSize: '10.5px',
+                  fontWeight: 800
+                }}>
+                  {servicios.length}
+                </span>
               </button>
-              <button
-                type="button"
-                onClick={() => handleBulkPublish(false)}
-                className="btn btn-sm btn-ghost"
-                style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '6px', color: '#dc2626' }}
-              >
-                ✕ Ocultar todos los filtrados
-              </button>
-            </div>
-          </div>
 
-          {/* Filters Bar */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '12px',
-            backgroundColor: 'var(--bg-card)',
-            padding: '12px 16px',
-            borderRadius: '12px',
-            border: '1px solid var(--border)'
-          }}>
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flex: 1, minWidth: '260px' }}>
-              <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
-                <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                <input
-                  type="text"
-                  className="input"
-                  placeholder="Buscar producto por nombre o categoría..."
-                  value={catalogSearch}
-                  onChange={(e) => setCatalogSearch(e.target.value)}
-                  style={{ paddingLeft: '34px', fontSize: '13px' }}
-                />
-              </div>
-
-              <select
-                className="input"
-                value={catalogCategoria}
-                onChange={(e) => setCatalogCategoria(e.target.value)}
-                style={{ width: '180px', fontSize: '13px' }}
-              >
-                <option value="Todas">Todas las Categorías</option>
-                {Array.from(new Set(servicios.map(s => s.categoria))).filter(Boolean).map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                Total: <strong>{filteredCatalog.length}</strong> ({servicios.filter(s => s.disponible !== false).length} publicados / {servicios.filter(s => s.disponible === false).length} ocultos)
-              </span>
-            </div>
-          </div>
-
-          {/* Catalog Table */}
-          <div className="table-wrapper card" style={{ padding: 0, overflow: 'hidden' }}>
-            <table>
-              <thead>
-                <tr style={{ background: '#0f172a', color: '#ffffff' }}>
-                  <th style={{ color: '#ffffff', width: '48px' }}></th>
-                  <th style={{ color: '#ffffff' }}>PRODUCTO</th>
-                  <th style={{ color: '#ffffff' }}>CATEGORÍA</th>
-                  <th style={{ color: '#ffffff' }}>PRECIO CRM</th>
-                  <th style={{ color: '#ffffff' }}>UNIDAD / TIRAJE</th>
-                  <th style={{ color: '#ffffff' }}>TIEMPO ENTREGA</th>
-                  <th style={{ color: '#ffffff', textAlign: 'center', width: '180px' }}>ESTADO EN TIENDA</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCatalog.map((srv) => {
-                  const isPublicado = srv.disponible !== false
-                  return (
-                    <tr key={srv.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '10px 8px', verticalAlign: 'middle' }}>
-                        {srv.imagen_url ? (
-                          <img
-                            src={srv.imagen_url}
-                            alt={srv.nombre}
-                            style={{ width: '38px', height: '38px', borderRadius: '6px', objectFit: 'cover', border: '1px solid var(--border)' }}
-                          />
-                        ) : (
-                          <div style={{ width: '38px', height: '38px', borderRadius: '6px', backgroundColor: 'var(--bg-input)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Package size={16} color="var(--text-muted)" />
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ padding: '10px 8px', verticalAlign: 'middle' }}>
-                        <div style={{ fontWeight: 800, color: 'var(--text-primary)', fontSize: '13.5px' }}>{srv.nombre}</div>
-                        {srv.descripcion && (
-                          <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', maxWidth: '320px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', marginTop: '2px' }}>
-                            {cleanProductDescription(srv.descripcion)}
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ padding: '10px 8px', verticalAlign: 'middle' }}>
-                        <span className="badge badge-neutral" style={{ fontWeight: 700 }}>{srv.categoria}</span>
-                      </td>
-                      <td style={{ padding: '10px 8px', verticalAlign: 'middle', fontWeight: 900, color: 'var(--accent)', fontSize: '14px' }}>
-                        {formatCurrency(srv.precio_base)}
-                      </td>
-                      <td style={{ padding: '10px 8px', verticalAlign: 'middle', color: 'var(--text-secondary)', fontWeight: 600, fontSize: '12.5px' }}>
-                        {formatProductUnit(srv.nombre, srv.unidad)}
-                      </td>
-                      <td style={{ padding: '10px 8px', verticalAlign: 'middle', color: 'var(--text-muted)', fontSize: '12.5px' }}>
-                        {srv.tiempo_estimado || '2-3 días'}
-                      </td>
-                      <td style={{ padding: '10px 8px', verticalAlign: 'middle', textAlign: 'center' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleProductAvailability(srv)}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '6px 14px',
-                            borderRadius: '20px',
-                            border: isPublicado ? '1px solid #16a34a' : '1px solid var(--border)',
-                            backgroundColor: isPublicado ? 'rgba(22, 163, 74, 0.12)' : 'var(--bg-input)',
-                            color: isPublicado ? '#16a34a' : 'var(--text-muted)',
-                            fontSize: '12px',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease'
-                          }}
-                        >
-                          {isPublicado ? <ToggleRight size={18} color="#16a34a" /> : <ToggleLeft size={18} color="var(--text-muted)" />}
-                          <span>{isPublicado ? 'Publicado' : 'Oculto'}</span>
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: CONFIGURACIÓN & BANNERS */}
-      {activeTab === 'config' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '24px' }}>
-          {/* Store Settings Form */}
-          <div className="card">
-            <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '16px' }}>
-              ⚙️ Parámetros Generales de la Tienda
-            </h3>
-
-            <form onSubmit={handleSaveConfig} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label>Nombre de la Tienda</label>
-                <input
-                  type="text"
-                  className="input"
-                  value={storeConfig.nombreTienda}
-                  onChange={(e) => setStoreConfig(prev => ({ ...prev, nombreTienda: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <label>Teléfono de WhatsApp para recibir pedidos (con código de país ej. 59899724454)</label>
-                <input
-                  type="text"
-                  className="input"
-                  placeholder="59899724454"
-                  value={storeConfig.telefonoWhatsApp}
-                  onChange={(e) => setStoreConfig(prev => ({ ...prev, telefonoWhatsApp: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <label>Dirección para Retiro en Taller</label>
-                <input
-                  type="text"
-                  className="input"
-                  value={storeConfig.direccionTaller}
-                  onChange={(e) => setStoreConfig(prev => ({ ...prev, direccionTaller: e.target.value }))}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label>Costo de Envío Estándar ($)</label>
-                  <input
-                    type="number"
-                    className="input"
-                    value={storeConfig.costoEnvioFijo}
-                    onChange={(e) => setStoreConfig(prev => ({ ...prev, costoEnvioFijo: Number(e.target.value) }))}
-                  />
-                </div>
-
-                <div>
-                  <label>Envío Gratis desde ($)</label>
-                  <input
-                    type="number"
-                    className="input"
-                    value={storeConfig.envioGratisMinimo}
-                    onChange={(e) => setStoreConfig(prev => ({ ...prev, envioGratisMinimo: Number(e.target.value) }))}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label>Usuario / Link de Instagram</label>
-                <input
-                  type="text"
-                  className="input"
-                  placeholder="gugaprint.uy"
-                  value={storeConfig.instagramUrl || ''}
-                  onChange={(e) => setStoreConfig(prev => ({ ...prev, instagramUrl: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <label>Mensaje de Anuncio Superior</label>
-                <textarea
-                  className="input"
-                  rows={2}
-                  value={storeConfig.mensajeBienvenida}
-                  onChange={(e) => setStoreConfig(prev => ({ ...prev, mensajeBienvenida: e.target.value }))}
-                />
-              </div>
-
-              <button type="submit" className="btn btn-primary" style={{ marginTop: '8px', padding: '11px', fontWeight: 800 }}>
-                Guardar Configuración de la Tienda
-              </button>
-            </form>
-          </div>
-
-          {/* Banners Manager (Pure Images & Direct Upload) */}
-          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-              <div>
-                <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-                  🖼️ Banners de la Tienda (Subir Diseños Gráficos)
-                </h3>
-                <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', margin: '2px 0 0' }}>
-                  Sube tus propios banners gráficos desde tu computadora. Banners 100% visuales sin textos superpuestos.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleAddBanner}
-                className="btn btn-sm btn-secondary"
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, padding: '8px 14px' }}
-              >
-                <Plus size={16} /> + Agregar Banner
-              </button>
-            </div>
-
-            {/* Banner list */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {(storeConfig.banners || []).map((b, idx) => (
-                <div
-                  key={b.id || idx}
-                  style={{
-                    backgroundColor: 'var(--bg-input)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '12px',
-                    padding: '16px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '14px'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontWeight: 800, fontSize: '14px', color: 'var(--text-primary)' }}>
-                        Banner #{idx + 1}
-                      </span>
-                      {b.desktopUrl && (
-                        <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', backgroundColor: 'rgba(22, 163, 74, 0.12)', color: '#16a34a', fontWeight: 700 }}>
-                          ✓ Imagen cargada
-                        </span>
-                      )}
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={b.activo !== false}
-                          onChange={(e) => handleUpdateBanner(idx, 'activo', e.target.checked)}
-                        />
-                        <span>{b.activo !== false ? 'Activo' : 'Pausado'}</span>
-                      </label>
-
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveBanner(idx)}
-                        style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#dc2626', padding: '4px' }}
-                        title="Eliminar este banner"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Desktop Banner Upload Box */}
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                      <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Monitor size={15} color="var(--accent)" />
-                        <span>Banner para Computadora (1200 × 360 px)</span>
-                      </label>
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Recomendado: 1200x360 px</span>
-                    </div>
-
-                    <input
-                      type="file"
-                      id={`banner-file-desktop-${idx}`}
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      onChange={(e) => handleBannerFileUpload(idx, 'desktopUrl', e)}
-                    />
-
-                    {b.desktopUrl ? (
-                      <div style={{
-                        position: 'relative',
-                        borderRadius: '10px',
-                        overflow: 'hidden',
-                        height: '130px',
-                        backgroundColor: '#0f172a',
-                        border: '1px solid var(--border)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}>
-                        <img
-                          src={b.desktopUrl}
-                          alt={`Banner Desktop ${idx + 1}`}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
-                        <div style={{
-                          position: 'absolute',
-                          inset: 0,
-                          backgroundColor: 'rgba(0,0,0,0.4)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '10px'
-                        }}>
-                          <button
-                            type="button"
-                            onClick={() => document.getElementById(`banner-file-desktop-${idx}`)?.click()}
-                            className="btn btn-sm btn-primary"
-                            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700 }}
-                          >
-                            <Upload size={14} /> Cambiar Imagen
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateBanner(idx, 'desktopUrl', '')}
-                            className="btn btn-sm btn-secondary"
-                            style={{ color: '#dc2626', fontSize: '12px', fontWeight: 700 }}
-                          >
-                            <Trash2 size={14} /> Quitar
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        onClick={() => document.getElementById(`banner-file-desktop-${idx}`)?.click()}
-                        style={{
-                          border: '2px dashed var(--accent)',
-                          padding: '24px 16px',
-                          borderRadius: '10px',
-                          textAlign: 'center',
-                          cursor: 'pointer',
-                          backgroundColor: 'rgba(20, 155, 142, 0.05)',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '6px',
-                          transition: 'all 0.15s ease'
-                        }}
-                      >
-                        <Upload size={24} color="var(--accent)" />
-                        <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--accent)' }}>
-                          Haz clic aquí para Subir Imagen de Computadora
-                        </div>
-                        <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
-                          Sube tu diseño gráfico desde tu PC (JPG, PNG o WebP)
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Mobile Banner Upload Box (Optional) */}
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                      <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Smartphone size={15} color="var(--text-secondary)" />
-                        <span>Banner para Celular (Opcional - 750 × 420 px)</span>
-                      </label>
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Adaptación móvil</span>
-                    </div>
-
-                    <input
-                      type="file"
-                      id={`banner-file-mobile-${idx}`}
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      onChange={(e) => handleBannerFileUpload(idx, 'mobileUrl', e)}
-                    />
-
-                    {b.mobileUrl ? (
-                      <div style={{
-                        position: 'relative',
-                        borderRadius: '10px',
-                        overflow: 'hidden',
-                        height: '100px',
-                        backgroundColor: '#0f172a',
-                        border: '1px solid var(--border)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}>
-                        <img
-                          src={b.mobileUrl}
-                          alt={`Banner Mobile ${idx + 1}`}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
-                        <div style={{
-                          position: 'absolute',
-                          inset: 0,
-                          backgroundColor: 'rgba(0,0,0,0.4)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '10px'
-                        }}>
-                          <button
-                            type="button"
-                            onClick={() => document.getElementById(`banner-file-mobile-${idx}`)?.click()}
-                            className="btn btn-sm btn-primary"
-                            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700 }}
-                          >
-                            <Upload size={14} /> Cambiar Mobile
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateBanner(idx, 'mobileUrl', '')}
-                            className="btn btn-sm btn-secondary"
-                            style={{ color: '#dc2626', fontSize: '12px', fontWeight: 700 }}
-                          >
-                            <Trash2 size={14} /> Quitar
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        onClick={() => document.getElementById(`banner-file-mobile-${idx}`)?.click()}
-                        style={{
-                          border: '1px dashed var(--border)',
-                          padding: '14px 16px',
-                          borderRadius: '10px',
-                          textAlign: 'center',
-                          cursor: 'pointer',
-                          backgroundColor: 'var(--bg-card)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '8px'
-                        }}
-                      >
-                        <Smartphone size={18} color="var(--text-muted)" />
-                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                          + Subir versión específica para Celular (opcional)
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              onClick={handleSaveConfig}
-              className="btn btn-primary"
-              style={{ marginTop: '4px', padding: '11px', fontWeight: 800 }}
-            >
-              Guardar Banners
-            </button>
-          </div>
-
-          {/* Category Vector Icons Editor Card */}
-          <div className="card" style={{ gridColumn: '1 / -1' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-              <div>
-                <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-                  🖋️ Gestor y Asignador de Íconos de Categorías
-                </h3>
-                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-                  Haz clic en cualquier categoría para elegir su ícono vectorial visual, o presiona &quot;Sin ícono&quot; para que aparezca solo como texto limpio en la tienda.
-                </p>
-              </div>
-
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <button
-                  type="button"
-                  onClick={handleSaveCategoryVectorIcons}
-                  className="btn btn-primary"
-                  style={{ padding: '8px 18px', fontSize: '13px', fontWeight: 700 }}
-                >
-                  Guardar Íconos de Categorías
-                </button>
-              </div>
-            </div>
-
-            {/* Quick Add Custom Category Bar */}
-            <form
-              onSubmit={handleAddNewCategoryMapping}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                marginBottom: '18px',
-                padding: '12px 16px',
-                backgroundColor: 'var(--bg-input)',
-                borderRadius: '10px',
-                border: '1px solid var(--border)'
-              }}
-            >
-              <div style={{ flex: 1, minWidth: '220px' }}>
-                <input
-                  type="text"
-                  className="input"
-                  placeholder="Escribe el nombre de otra categoría (ej. Remeras, Tazas, Cuadernos, Acrílicos...)..."
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  style={{ fontSize: '13px' }}
-                />
-              </div>
-              <button
-                type="submit"
-                className="btn btn-secondary"
-                style={{ fontSize: '13px', fontWeight: 700, padding: '8px 16px', whiteSpace: 'nowrap' }}
-              >
-                + Asignar Ícono a esta Categoría
-              </button>
-            </form>
-
-            {/* Responsive Cards Grid for Each Category */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))',
-              gap: '12px'
-            }}>
-              {allSystemCategories.map((cat) => {
-                const currentIconId = categoryVectorIcons[cat] || (cat === 'Todas' ? 'layout-grid' : DEFAULT_CATEGORY_VECTOR_MAP[cat] || 'printer')
-                const isNoIcon = currentIconId === 'none' || currentIconId === 'sin-icono'
-                const prodsInCat = cat === 'Todas' ? servicios.length : servicios.filter(s => s.categoria === cat).length
-
+              {Object.entries(categoryCounts).filter(([cat]) => cat !== 'Todas').map(([cat, count]) => {
+                const isSelected = selectedCategoria === cat
                 return (
-                  <div
+                  <button
                     key={cat}
+                    type="button"
+                    onClick={() => setSelectedCategoria(isSelected ? 'Todas' : cat)}
                     style={{
-                      backgroundColor: 'var(--bg-card)',
-                      padding: '14px',
-                      borderRadius: '12px',
-                      border: isNoIcon ? '1px dashed var(--border)' : '1px solid var(--border)',
-                      display: 'flex',
+                      display: 'inline-flex',
                       alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '12px',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                      gap: '6px',
+                      padding: '7px 14px',
+                      borderRadius: '999px',
+                      border: isSelected ? '1.5px solid #149b8e' : '1px solid #cbd5e1',
+                      backgroundColor: isSelected ? '#149b8e' : '#ffffff',
+                      color: isSelected ? '#ffffff' : '#334155',
+                      fontSize: '12px',
+                      fontWeight: isSelected ? 700 : 600,
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                      boxShadow: isSelected ? '0 2px 6px rgba(20,155,142,0.3)' : 'none',
+                      transition: 'all 0.15s'
                     }}
                   >
-                    {/* Left: Current Icon Badge & Category Name */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
-                      <div
-                        onClick={() => setSelectedCategoryForIcon(cat)}
-                        title="Haz clic para cambiar este ícono"
-                        style={{
-                          width: '42px',
-                          height: '42px',
-                          borderRadius: '10px',
-                          backgroundColor: isNoIcon ? 'rgba(220, 38, 38, 0.08)' : 'rgba(20, 155, 142, 0.1)',
-                          border: isNoIcon ? '1px dashed #f87171' : '1px solid rgba(20, 155, 142, 0.2)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: isNoIcon ? '#dc2626' : '#149b8e',
-                          flexShrink: 0,
-                          cursor: 'pointer',
-                          transition: 'transform 0.15s ease'
-                        }}
-                      >
-                        {isNoIcon ? (
-                          <Ban size={20} color="#dc2626" />
-                        ) : (
-                          <CategoryIcon iconId={currentIconId} size={22} color="#149b8e" strokeWidth={2} />
-                        )}
-                      </div>
-
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                          {cat}
-                        </div>
-                        <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          {isNoIcon ? (
-                            <span style={{ color: '#dc2626', fontWeight: 700 }}>Sin ícono (Solo texto)</span>
-                          ) : (
-                            <span>Ícono: <strong>{currentIconId}</strong></span>
-                          )}
-                          <span>· {prodsInCat} u.</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Right: Actions (Choose Icon / Set No Icon) */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedCategoryForIcon(cat)}
-                        style={{
-                          backgroundColor: 'var(--bg-input)',
-                          border: '1px solid var(--border)',
-                          padding: '6px 10px',
-                          borderRadius: '8px',
-                          fontSize: '12px',
-                          fontWeight: 700,
-                          color: 'var(--text-primary)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px'
-                        }}
-                        title="Abrir catálogo de íconos"
-                      >
-                        <Palette size={13} />
-                        <span>Elegir</span>
-                      </button>
-
-                      {!isNoIcon ? (
-                        <button
-                          type="button"
-                          onClick={() => handleSetNoIconForCategory(cat)}
-                          style={{
-                            backgroundColor: 'transparent',
-                            border: '1px solid var(--border)',
-                            padding: '6px 8px',
-                            borderRadius: '8px',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            color: '#dc2626',
-                            cursor: 'pointer'
-                          }}
-                          title="Quitar ícono (mostrar solo texto)"
-                        >
-                          <Ban size={13} />
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
+                    <CategoryIcon
+                      iconId={categoryVectorIcons[cat] || cat}
+                      size={14}
+                      color={isSelected ? '#ffffff' : '#64748b'}
+                      strokeWidth={1.9}
+                    />
+                    <span>{cat}</span>
+                    <span style={{
+                      backgroundColor: isSelected ? 'rgba(255,255,255,0.25)' : '#f1f5f9',
+                      color: isSelected ? '#ffffff' : '#64748b',
+                      padding: '1px 6px',
+                      borderRadius: '999px',
+                      fontSize: '10.5px',
+                      fontWeight: 800
+                    }}>
+                      {count}
+                    </span>
+                  </button>
                 )
               })}
             </div>
-          </div>
 
-          {/* SEO & Meta Tags Manager Card */}
-          <div className="card" style={{ gridColumn: '1 / -1' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{
-                  width: '40px',
-                  height: '40px',
-                  borderRadius: '10px',
-                  backgroundColor: 'rgba(20, 155, 142, 0.12)',
-                  color: '#149b8e',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <Globe size={22} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-                    🔍 Configuración de SEO & Posicionamiento en Buscadores
-                  </h3>
-                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-                    Personaliza cómo aparece GUGA Imprenta en Google, WhatsApp, Facebook, Instagram y buscadores.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleSaveSeoConfig}
-                className="btn btn-primary"
-                style={{ padding: '8px 20px', fontSize: '13.5px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-              >
-                <Check size={16} />
-                <span>Guardar Configuración SEO</span>
-              </button>
-            </div>
-
-            {/* LIVE PREVIEWS SECTION (GOOGLE & SOCIAL SHARE) */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-              gap: '18px',
-              marginBottom: '24px'
-            }}>
-              {/* 1. Google Search Preview */}
+            {/* COMPACT & SLEEK IMAGE BANNER CAROUSEL (100% Solo Imágenes sin texto) */}
+            {activeBannersList && activeBannersList.length > 0 && (
               <div style={{
-                backgroundColor: 'var(--bg-card)',
-                border: '1px solid var(--border)',
-                borderRadius: '12px',
-                padding: '18px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+                position: 'relative',
+                borderRadius: '16px',
+                overflow: 'hidden',
+                marginBottom: '20px',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+                backgroundColor: '#f1f5f9',
+                width: '100%',
+                height: 'clamp(130px, 28vw, 210px)',
+                lineHeight: 0
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px', fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                  <Search size={14} />
-                  <span>VISTA PREVIA EN GOOGLE</span>
-                </div>
-                <div style={{
-                  backgroundColor: '#ffffff',
-                  padding: '14px',
-                  borderRadius: '8px',
-                  border: '1px solid #e2e8f0',
-                  fontFamily: 'Arial, sans-serif'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <div style={{ width: '18px', height: '18px', borderRadius: '50%', backgroundColor: '#149b8e', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '10px', fontWeight: 800 }}>
-                      G
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#202124', lineHeight: 1.2, fontWeight: 500 }}>
-                        {seoConfig.canonicalUrl.replace(/^https?:\/\//, '').split('/')[0] || 'gugaimprenta.com.uy'}
-                      </div>
-                      <div style={{ fontSize: '11px', color: '#5f6368', lineHeight: 1 }}>
-                        {seoConfig.canonicalUrl || 'https://gugaimprenta.com.uy/tienda'}
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: '17px', color: '#1a0dab', fontWeight: 400, lineHeight: 1.3, marginBottom: '4px', textDecoration: 'none', cursor: 'pointer' }}>
-                    {seoConfig.metaTitle || 'GUGA Imprenta & Gráfica'}
-                  </div>
-                  <div style={{ fontSize: '13px', color: '#4d5156', lineHeight: 1.4 }}>
-                    {seoConfig.metaDescription || 'Imprenta digital y offset en Uruguay. Folletos, tarjetas, talonarios, packaging y más.'}
-                  </div>
-                </div>
-              </div>
-
-              {/* 2. WhatsApp / Social Media Card Preview */}
-              <div style={{
-                backgroundColor: 'var(--bg-card)',
-                border: '1px solid var(--border)',
-                borderRadius: '12px',
-                padding: '18px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px', fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                  <Share2 size={14} />
-                  <span>VISTA PREVIA AL COMPARTIR (WHATSAPP / REDES)</span>
-                </div>
-                <div style={{
-                  backgroundColor: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '10px',
-                  overflow: 'hidden',
-                  maxWidth: '380px'
-                }}>
-                  {seoConfig.ogImageUrl && (
-                    <div style={{ height: '130px', backgroundColor: '#0f172a', overflow: 'hidden' }}>
-                      <img
-                        src={seoConfig.ogImageUrl}
-                        alt="SEO Preview"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
-                    </div>
+                {/* Picture Banner with Desktop & Mobile sources */}
+                <picture style={{ width: '100%', height: '100%', display: 'block' }}>
+                  {currentBanner.mobileUrl && (
+                    <source
+                      media="(max-width: 767px)"
+                      srcSet={currentBanner.mobileUrl}
+                    />
                   )}
-                  <div style={{ padding: '12px' }}>
-                    <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, marginBottom: '3px' }}>
-                      {seoConfig.canonicalUrl.replace(/^https?:\/\//, '').split('/')[0] || 'gugaimprenta.com.uy'}
-                    </div>
-                    <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#0f172a', lineHeight: 1.3, marginBottom: '4px' }}>
-                      {seoConfig.metaTitle}
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#64748b', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                      {seoConfig.metaDescription}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* SEO INPUTS FORM */}
-            <form onSubmit={handleSaveSeoConfig}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-                {/* Title */}
-                <div className="form-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                    <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      Meta Título (SEO Title Tag) *
-                    </label>
-                    <span style={{ fontSize: '11.5px', color: seoConfig.metaTitle.length > 60 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
-                      {seoConfig.metaTitle.length} / 60 caracteres (Recomendado: 50-60)
-                    </span>
-                  </div>
-                  <input
-                    type="text"
-                    required
-                    className="input"
-                    value={seoConfig.metaTitle}
-                    onChange={(e) => setSeoConfig(prev => ({ ...prev, metaTitle: e.target.value }))}
-                    placeholder="Ej. GUGA Imprenta & Gráfica | Impresión Digital y Offset en Uruguay"
+                  {currentBanner.desktopUrl && (
+                    <source
+                      media="(min-width: 768px)"
+                      srcSet={currentBanner.desktopUrl}
+                    />
+                  )}
+                  <img
+                    src={currentBanner.desktopUrl || currentBanner.mobileUrl}
+                    alt="Banner GUGA Imprenta"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      display: 'block'
+                    }}
                   />
-                </div>
+                </picture>
 
-                {/* Description */}
-                <div className="form-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                    <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      Meta Descripción (SEO Meta Description) *
-                    </label>
-                    <span style={{ fontSize: '11.5px', color: seoConfig.metaDescription.length > 160 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
-                      {seoConfig.metaDescription.length} / 160 caracteres (Recomendado: 140-160)
-                    </span>
-                  </div>
-                  <textarea
-                    rows={3}
-                    required
-                    className="input"
-                    value={seoConfig.metaDescription}
-                    onChange={(e) => setSeoConfig(prev => ({ ...prev, metaDescription: e.target.value }))}
-                    placeholder="Escribe un resumen atractivo para captar clientes en Google y buscadores..."
-                    style={{ resize: 'vertical' }}
-                  />
-                </div>
-
-                {/* Keywords & Canonical */}
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      Palabras Clave (Keywords / Etiquetas separadas por coma)
-                    </label>
-                    <input
-                      type="text"
-                      className="input"
-                      value={seoConfig.keywords}
-                      onChange={(e) => setSeoConfig(prev => ({ ...prev, keywords: e.target.value }))}
-                      placeholder="imprenta, folletos, tarjetas personales, talonarios..."
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      URL Canónica (Dominio Oficial de la Tienda)
-                    </label>
-                    <input
-                      type="url"
-                      className="input"
-                      value={seoConfig.canonicalUrl}
-                      onChange={(e) => setSeoConfig(prev => ({ ...prev, canonicalUrl: e.target.value }))}
-                      placeholder="https://gugaimprenta.com.uy/tienda"
-                    />
-                  </div>
-                </div>
-
-                {/* Social Image & Tracking */}
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      Imagen de Redes Sociales (Open Graph Image URL)
-                    </label>
-                    <input
-                      type="url"
-                      className="input"
-                      value={seoConfig.ogImageUrl}
-                      onChange={(e) => setSeoConfig(prev => ({ ...prev, ogImageUrl: e.target.value }))}
-                      placeholder="https://... imagen de 1200x630 para WhatsApp y Facebook"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      ID de Google Analytics (GA4) / Meta Pixel
-                    </label>
-                    <input
-                      type="text"
-                      className="input"
-                      value={seoConfig.googleAnalyticsId}
-                      onChange={(e) => setSeoConfig(prev => ({ ...prev, googleAnalyticsId: e.target.value }))}
-                      placeholder="G-XXXXXXXXXX"
-                    />
-                  </div>
-                </div>
-
-                {/* Google Site Verification & Indexing Checkbox */}
-                <div className="form-grid" style={{ alignItems: 'center' }}>
-                  <div className="form-group">
-                    <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      Código de Google Search Console (Meta Verification)
-                    </label>
-                    <input
-                      type="text"
-                      className="input"
-                      value={seoConfig.googleSiteVerification}
-                      onChange={(e) => setSeoConfig(prev => ({ ...prev, googleSiteVerification: e.target.value }))}
-                      placeholder="google-site-verification=XXXXXXXXXXXXXXXXXXXXX"
-                    />
-                  </div>
-
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    padding: '14px 16px',
-                    backgroundColor: 'var(--bg-input)',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border)',
-                    marginTop: '20px'
-                  }}>
-                    <input
-                      type="checkbox"
-                      id="robotsIndexToggle"
-                      checked={seoConfig.robotsIndex}
-                      onChange={(e) => setSeoConfig(prev => ({ ...prev, robotsIndex: e.target.checked }))}
-                      style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                    />
-                    <label htmlFor="robotsIndexToggle" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', cursor: 'pointer' }}>
-                      Permitir indexación en Google (Robots: index, follow)
-                    </label>
-                  </div>
-                </div>
-
-                {/* Submit button bottom */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    style={{ padding: '10px 24px', fontSize: '14px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-                  >
-                    <Check size={16} />
-                    <span>Guardar Cambios de SEO</span>
-                  </button>
-                </div>
-
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: ADD / EDIT CATALOG ITEM */}
-      {showCatalogModal && (
-        <div className="modal-backdrop">
-          <div className="modal">
-            <div className="modal-header">
-              <h2>{editingServicio ? 'Editar Producto Tienda' : 'Nuevo Producto Tienda'}</h2>
-              <button onClick={() => setShowCatalogModal(false)} className="btn-ghost">✕</button>
-            </div>
-
-            <form onSubmit={handleSaveCatalogItem}>
-              <div className="modal-body">
-                <div className="form-group">
-                  <label>Nombre del Producto *</label>
-                  <input
-                    type="text"
-                    required
-                    className="input"
-                    value={catalogForm.nombre}
-                    onChange={(e) => setCatalogForm(prev => ({ ...prev, nombre: e.target.value }))}
-                    placeholder="Ej. Tarjetas Duras Mate - 100u"
-                  />
-                </div>
-
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label>Categoría *</label>
-                    <input
-                      type="text"
-                      required
-                      className="input"
-                      value={catalogForm.categoria}
-                      onChange={(e) => setCatalogForm(prev => ({ ...prev, categoria: e.target.value }))}
-                      placeholder="Tarjetas, Folletos, Facturas..."
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Precio Base ($) *</label>
-                    <input
-                      type="number"
-                      required
-                      className="input"
-                      value={catalogForm.precio_base}
-                      onChange={(e) => setCatalogForm(prev => ({ ...prev, precio_base: Number(e.target.value) }))}
-                    />
-                  </div>
-                </div>
-
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label>Unidad / Presentación</label>
-                    <input
-                      type="text"
-                      className="input"
-                      value={catalogForm.unidad}
-                      onChange={(e) => setCatalogForm(prev => ({ ...prev, unidad: e.target.value }))}
-                      placeholder="unidad, pack 100u, talonario"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Tiempo Estimado de Entrega</label>
-                    <input
-                      type="text"
-                      className="input"
-                      value={catalogForm.tiempo_estimado}
-                      onChange={(e) => setCatalogForm(prev => ({ ...prev, tiempo_estimado: e.target.value }))}
-                      placeholder="2-3 días, 24hs express"
-                    />
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label>URL de Imagen del Producto (opcional)</label>
-                  <input
-                    type="text"
-                    className="input"
-                    value={catalogForm.imagen_url}
-                    onChange={(e) => setCatalogForm(prev => ({ ...prev, imagen_url: e.target.value }))}
-                    placeholder="https://images.unsplash.com/..."
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Descripción / Especificaciones</label>
-                  <textarea
-                    rows={3}
-                    className="input"
-                    value={catalogForm.descripcion}
-                    onChange={(e) => setCatalogForm(prev => ({ ...prev, descripcion: e.target.value }))}
-                    placeholder="Papel ilustración 350g, laminado mate doble faz..."
-                  />
-                </div>
-              </div>
-
-              <div className="modal-footer">
-                <button type="button" onClick={() => setShowCatalogModal(false)} className="btn btn-secondary">
-                  Cancelar
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  Guardar Producto
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* PDF PRESUPUESTO MODAL */}
-      {showPdfModal && pdfPedido && (
-        <PresupuestoPDFModal
-          pedido={pdfPedido}
-          onClose={() => setShowPdfModal(false)}
-        />
-      )}
-
-      {/* MODAL: VISUAL ICON SELECTOR FOR CATEGORIES */}
-      {selectedCategoryForIcon !== null && (
-        <div
-          className="modal-backdrop"
-          onClick={() => { setSelectedCategoryForIcon(null); setIconSearchTerm(''); setCustomIconUrlInput(''); }}
-          style={{ zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        >
-          <div
-            className="modal"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '760px', width: '95%', maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}
-          >
-            <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
-              <div>
-                <h2 style={{ fontSize: '17px', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
-                  Elegir o Subir Ícono para: <span style={{ color: 'var(--accent)' }}>{selectedCategoryForIcon}</span>
-                </h2>
-                <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '2px 0 0' }}>
-                  Sube cualquier imagen/SVG desde tu equipo, pega un enlace, o elige un ícono de la galería.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => { setSelectedCategoryForIcon(null); setIconSearchTerm(''); setCustomIconUrlInput(''); }}
-                className="btn-ghost"
-                style={{ fontSize: '18px', cursor: 'pointer' }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              
-              {/* SECTION 1: UPLOAD CUSTOM ICON FROM PC OR URL */}
-              <div style={{
-                backgroundColor: 'var(--bg-input)',
-                padding: '16px',
-                borderRadius: '12px',
-                border: '1px solid var(--border)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '14px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                  <div style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Upload size={16} color="var(--accent)" />
-                    <span>Subir Tu Propio Ícono (Cualquier imagen o SVG)</span>
-                  </div>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Formatos: SVG, PNG, WebP, JPG</span>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  {/* File Upload Button */}
-                  <div>
-                    <input
-                      type="file"
-                      id="custom-category-icon-file-input"
-                      accept="image/*,.svg"
-                      style={{ display: 'none' }}
-                      onChange={handleFileUploadIcon}
-                    />
+                {/* Prev / Next Arrows */}
+                {activeBannersList.length > 1 && (
+                  <>
                     <button
-                      type="button"
-                      onClick={() => document.getElementById('custom-category-icon-file-input')?.click()}
-                      className="btn btn-secondary"
+                      onClick={prevBanner}
                       style={{
-                        width: '100%',
-                        padding: '12px 14px',
+                        position: 'absolute',
+                        left: '12px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: '34px',
+                        height: '34px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(255,255,255,0.92)',
+                        border: 'none',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        gap: '8px',
-                        fontWeight: 700,
-                        fontSize: '12.5px',
-                        border: '2px dashed var(--accent)',
-                        backgroundColor: 'rgba(20, 155, 142, 0.05)',
-                        color: 'var(--accent)'
+                        cursor: 'pointer',
+                        color: '#0f172a',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
+                        zIndex: 3,
+                        transition: 'background 0.2s, transform 0.15s'
+                      }}
+                      title="Banner anterior"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+
+                    <button
+                      onClick={nextBanner}
+                      style={{
+                        position: 'absolute',
+                        right: '12px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: '34px',
+                        height: '34px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(255,255,255,0.92)',
+                        border: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        color: '#0f172a',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
+                        zIndex: 3,
+                        transition: 'background 0.2s, transform 0.15s'
+                      }}
+                      title="Siguiente banner"
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+
+                    {/* Carousel Dots */}
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '10px',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      zIndex: 3,
+                      background: 'rgba(0,0,0,0.3)',
+                      padding: '4px 8px',
+                      borderRadius: '12px'
+                    }}>
+                      {activeBannersList.map((_, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setCurrentBannerIndex(idx)}
+                          style={{
+                            width: currentBannerIndex === idx ? '20px' : '6px',
+                            height: '6px',
+                            borderRadius: '3px',
+                            backgroundColor: currentBannerIndex === idx ? '#ffffff' : 'rgba(255,255,255,0.5)',
+                            border: 'none',
+                            padding: 0,
+                            cursor: 'pointer',
+                            transition: 'all 0.25s ease'
+                          }}
+                          aria-label={`Ir al banner ${idx + 1}`}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ACTIVE FILTERS CHIPS */}
+            {(selectedCategoria !== 'Todas' || selectedLinea !== 'Todas' || searchTerm) && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                flexWrap: 'wrap',
+                marginBottom: '18px',
+                padding: '10px 16px',
+                backgroundColor: '#ffffff',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0'
+              }}>
+                <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Filtros aplicados:</span>
+                {selectedCategoria !== 'Todas' && (
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    backgroundColor: 'rgba(20, 155, 142, 0.1)',
+                    color: '#149b8e',
+                    padding: '4px 12px',
+                    borderRadius: '999px',
+                    fontSize: '12px',
+                    fontWeight: 700
+                  }}>
+                    <CategoryIcon iconId={categoryVectorIcons[selectedCategoria] || selectedCategoria} size={14} color="#149b8e" strokeWidth={2} />
+                    <span>Categoría: {selectedCategoria}</span>
+                    <X size={13} style={{ cursor: 'pointer', marginLeft: '2px' }} onClick={() => setSelectedCategoria('Todas')} />
+                  </span>
+                )}
+                {selectedLinea !== 'Todas' && (
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    backgroundColor: 'rgba(20, 155, 142, 0.1)',
+                    color: '#149b8e',
+                    padding: '3px 10px',
+                    borderRadius: '999px',
+                    fontSize: '12px',
+                    fontWeight: 700
+                  }}>
+                    Línea: {selectedLinea}
+                    <X size={13} style={{ cursor: 'pointer' }} onClick={() => setSelectedLinea('Todas')} />
+                  </span>
+                )}
+                {searchTerm && (
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    backgroundColor: '#f1f5f9',
+                    color: '#475569',
+                    padding: '3px 10px',
+                    borderRadius: '999px',
+                    fontSize: '12px',
+                    fontWeight: 700
+                  }}>
+                    Búsqueda: &quot;{searchTerm}&quot;
+                    <X size={13} style={{ cursor: 'pointer' }} onClick={() => setSearchTerm('')} />
+                  </span>
+                )}
+                <button
+                  onClick={() => { setSelectedCategoria('Todas'); setSelectedLinea('Todas'); setSearchTerm(''); }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#64748b',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    textDecoration: 'underline',
+                    cursor: 'pointer',
+                    marginLeft: 'auto'
+                  }}
+                >
+                  Limpiar todo
+                </button>
+              </div>
+            )}
+
+            {/* PRODUCT GRID CONTAINER */}
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '80px 20px', color: '#64748b' }}>
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  border: '3px solid #e2e8f0',
+                  borderTopColor: '#149b8e',
+                  borderRadius: '50%',
+                  animation: 'spin 0.8s linear infinite',
+                  margin: '0 auto 16px auto'
+                }} />
+                <p style={{ fontSize: '15px', fontWeight: 600 }}>Cargando catálogo de GUGA Imprenta...</p>
+              </div>
+            ) : filteredProducts.length === 0 ? (
+              <div style={{
+                textAlign: 'center',
+                padding: '60px 20px',
+                backgroundColor: '#ffffff',
+                borderRadius: '16px',
+                border: '1px solid #e2e8f0'
+              }}>
+                <Package size={48} style={{ color: '#cbd5e1', margin: '0 auto 12px auto' }} />
+                <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                  No se encontraron productos
+                </h3>
+                <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '16px' }}>
+                  Prueba cambiando los filtros seleccionados o la palabra de búsqueda.
+                </p>
+                <button
+                  onClick={() => { setSelectedCategoria('Todas'); setSelectedLinea('Todas'); setSearchTerm(''); }}
+                  style={{
+                    backgroundColor: '#149b8e',
+                    color: 'white',
+                    border: 'none',
+                    padding: '8px 18px',
+                    borderRadius: '8px',
+                    fontSize: '13.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Ver todo el catálogo
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="tienda-products-grid">
+                  {displayedProducts.map((srv) => {
+                  const enCarrito = cart.some(it => it.servicio.id === srv.id)
+                  const desde = precioDesde(srv)
+                  const imgUrl = getProductImage(srv)
+
+                  return (
+                    <div
+                      key={srv.id}
+                      style={{
+                        backgroundColor: '#ffffff',
+                        borderRadius: '16px',
+                        border: '1px solid #e2e8f0',
+                        overflow: 'hidden',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        transition: 'transform 0.2s, box-shadow 0.2s',
+                        boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+                        position: 'relative'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-3px)'
+                        e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.08)'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)'
+                        e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)'
                       }}
                     >
-                      <Upload size={16} />
-                      <span>Subir desde mi PC</span>
-                    </button>
-                  </div>
+                      {/* Product Image Container */}
+                      <div
+                        className="product-card-img-container"
+                        onClick={() => setProductoAbierto(srv)}
+                        style={{
+                          cursor: 'pointer',
+                          height: '180px',
+                          backgroundColor: '#f1f5f9',
+                          position: 'relative',
+                          overflow: 'hidden',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <img
+                          src={imgUrl}
+                          alt={srv.nombre}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                            transition: 'transform 0.3s ease'
+                          }}
+                        />
 
-                  {/* Image / SVG URL Form */}
-                  <form onSubmit={handleApplyCustomUrlIcon} style={{ display: 'flex', gap: '6px' }}>
-                    <div style={{ position: 'relative', flex: 1 }}>
-                      <LinkIcon size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                      <input
-                        type="url"
-                        className="input"
-                        placeholder="Pegar link de imagen o SVG..."
-                        value={customIconUrlInput}
-                        onChange={(e) => setCustomIconUrlInput(e.target.value)}
-                        style={{ paddingLeft: '30px', fontSize: '12px', height: '100%' }}
-                      />
+                        {/* Category Badge with Vector Line Icon */}
+                        <div style={{
+                          position: 'absolute',
+                          top: '8px',
+                          left: '8px',
+                          backgroundColor: 'rgba(15, 23, 42, 0.82)',
+                          backdropFilter: 'blur(4px)',
+                          color: '#ffffff',
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          padding: '3px 7px',
+                          borderRadius: '6px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}>
+                          <CategoryIcon iconId={categoryVectorIcons[srv.categoria] || srv.categoria} size={12} color="#ffffff" strokeWidth={2} />
+                          <span style={{ textTransform: 'uppercase' }}>{srv.categoria}</span>
+                        </div>
+                      </div>
+
+                      {/* Product Body */}
+                      <div className="product-card-body" style={{ padding: '16px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                        <div>
+                          <h4
+                            className="product-card-title"
+                            style={{
+                              fontSize: '14.5px',
+                              fontWeight: 700,
+                              color: '#0f172a',
+                              margin: '0 0 2px 0',
+                              lineHeight: '1.3',
+                              minHeight: '38px',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden'
+                            }}
+                          >
+                            {srv.nombre}
+                          </h4>
+
+                          {srv.tiempo_estimado && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b', marginBottom: '10px' }}>
+                              <Clock size={12} />
+                              <span>Entrega: {srv.tiempo_estimado}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Price & Add to Cart Controls */}
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '10px' }}>
+                            <div>
+                              {desde && (
+                                <span style={{ fontSize: '11px', color: '#64748b', marginRight: '4px' }}>Desde</span>
+                              )}
+                              <span className="product-card-price" style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a' }}>
+                                {formatCurrency(desde ? desde.precio : srv.precio_base)}
+                              </span>
+                              <span className="product-card-unit" style={{ fontSize: '11px', color: '#64748b', marginLeft: '4px' }}>
+                                /{desde ? `${desde.cantidad.toLocaleString('es-UY')} u` : formatProductUnit(srv)}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Entrar al producto para elegir variable y cantidad */}
+                          <button
+                            onClick={() => setProductoAbierto(srv)}
+                            className="product-card-btn"
+                            style={{
+                              width: '100%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '6px',
+                              backgroundColor: enCarrito ? '#0e746b' : '#149b8e',
+                              color: '#ffffff',
+                              border: 'none',
+                              padding: '9px 12px',
+                              borderRadius: '8px',
+                              fontSize: '13px',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              transition: 'opacity 0.2s',
+                              boxShadow: '0 2px 6px rgba(20, 155, 142, 0.2)'
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
+                            onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+                          >
+                            {enCarrito ? <Check size={14} /> : <ArrowRight size={14} />}
+                            <span>{enCarrito ? 'En el carrito · Ver' : 'Ver producto'}</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <button
-                      type="submit"
-                      className="btn btn-primary"
-                      disabled={!customIconUrlInput.trim()}
-                      style={{ padding: '0 12px', fontSize: '12px', fontWeight: 700 }}
+                  )
+                })}
+              </div>
+
+            {/* NUMBERED PAGINATION (PÁGINAS 1, 2, 3...) */}
+            {totalPages > 1 && (
+              <div style={{
+                marginTop: '36px',
+                padding: '16px 20px',
+                backgroundColor: '#ffffff',
+                borderRadius: '16px',
+                border: '1px solid #e2e8f0',
+                display: 'flex',
+                flexDirection: isMobile ? 'column' : 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '14px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+              }}>
+                {/* Summary Info */}
+                <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 600, textAlign: isMobile ? 'center' : 'left' }}>
+                  Página <strong style={{ color: '#0f172a' }}>{currentPage}</strong> de <strong style={{ color: '#0f172a' }}>{totalPages}</strong> · Mostrando <strong style={{ color: '#0f172a' }}>{((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, filteredProducts.length)}</strong> de <strong style={{ color: '#0f172a' }}>{filteredProducts.length}</strong> productos
+                </div>
+
+                {/* Page Navigation Buttons */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  {/* Previous Page */}
+                  <button
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '8px 14px',
+                      borderRadius: '8px',
+                      border: '1px solid #e2e8f0',
+                      backgroundColor: currentPage === 1 ? '#f8fafc' : '#ffffff',
+                      color: currentPage === 1 ? '#cbd5e1' : '#334155',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    <ChevronLeft size={16} />
+                    <span>Anterior</span>
+                  </button>
+
+                  {/* Numbered Page Buttons */}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
+                    // Smart pagination window for long lists
+                    if (
+                      totalPages > 6 &&
+                      pageNum !== 1 &&
+                      pageNum !== totalPages &&
+                      Math.abs(pageNum - currentPage) > 1
+                    ) {
+                      if (pageNum === 2 && currentPage > 3) {
+                        return <span key={pageNum} style={{ padding: '0 4px', color: '#94a3b8' }}>…</span>
+                      }
+                      if (pageNum === totalPages - 1 && currentPage < totalPages - 2) {
+                        return <span key={pageNum} style={{ padding: '0 4px', color: '#94a3b8' }}>…</span>
+                      }
+                      return null
+                    }
+
+                    const isActive = currentPage === pageNum
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => handlePageChange(pageNum)}
+                        style={{
+                          minWidth: '38px',
+                          height: '38px',
+                          padding: '0 8px',
+                          borderRadius: '8px',
+                          border: isActive ? '1px solid #149b8e' : '1px solid #e2e8f0',
+                          backgroundColor: isActive ? '#149b8e' : '#ffffff',
+                          color: isActive ? '#ffffff' : '#334155',
+                          fontSize: '13.5px',
+                          fontWeight: isActive ? 800 : 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: isActive ? '0 2px 6px rgba(20, 155, 142, 0.3)' : 'none',
+                          transition: 'all 0.15s'
+                        }}
+                      >
+                        {pageNum}
+                      </button>
+                    )
+                  })}
+
+                  {/* Next Page */}
+                  <button
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '8px 14px',
+                      borderRadius: '8px',
+                      border: '1px solid #e2e8f0',
+                      backgroundColor: currentPage === totalPages ? '#f8fafc' : '#ffffff',
+                      color: currentPage === totalPages ? '#cbd5e1' : '#334155',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    <span>Siguiente</span>
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
+              </>
+            )}
+
+          </div>
+
+        </div>
+
+      </main>
+
+      {/* FOOTER */}
+      <footer style={{
+        marginTop: '60px',
+        backgroundColor: '#0f172a',
+        color: '#94a3b8',
+        padding: '40px 20px 20px 20px',
+        borderTop: '1px solid #1e293b'
+      }}>
+        <div style={{
+          maxWidth: '1360px',
+          margin: '0 auto',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          gap: '30px',
+          marginBottom: '30px'
+        }}>
+          <div>
+            <div style={{
+              display: 'inline-block',
+              backgroundColor: '#ffffff',
+              padding: '6px 14px',
+              borderRadius: '8px',
+              marginBottom: '14px'
+            }}>
+              <img
+                src={LOGO_URL}
+                alt="GUGA Imprenta & Gráfica"
+                style={{ height: '46px', maxWidth: '170px', width: 'auto', display: 'block', objectFit: 'contain' }}
+              />
+            </div>
+            <p style={{ fontSize: '13px', lineHeight: '1.5', color: '#cbd5e1' }}>
+              {storeConfig.textoPie}
+            </p>
+          </div>
+
+          <div>
+            <h4 style={{ color: '#ffffff', fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>
+              Atención al Cliente
+            </h4>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MapPin size={15} color="#149b8e" />
+                <span>{storeConfig.horarioRetiro}</span>
+              </li>
+              <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Truck size={15} color="#149b8e" />
+                <span>{storeConfig.textoEnvios}</span>
+              </li>
+              <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MessageSquare size={15} color="#149b8e" />
+                <span>{storeConfig.textoConsultas}</span>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 style={{ color: '#ffffff', fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>
+              Formas de Pago
+            </h4>
+            <p style={{ fontSize: '13px', lineHeight: '1.5', color: '#cbd5e1' }}>
+              {storeConfig.formasPago}
+            </p>
+          </div>
+        </div>
+
+        <div style={{
+          maxWidth: '1360px',
+          margin: '0 auto',
+          paddingTop: '20px',
+          borderTop: '1px solid #1e293b',
+          textAlign: 'center',
+          fontSize: '12px',
+          color: '#64748b'
+        }}>
+          © {new Date().getFullYear()} {storeConfig.textoCopyright}
+        </div>
+      </footer>
+
+      {/* INTERACTIVE WHATSAPP WIDGET (Expands with ¿Necesitas ayuda?) */}
+      <WhatsAppWidget phone={STORE_PHONE} />
+
+      {productoAbierto && (
+        <ProductoModal
+          servicio={productoAbierto}
+          imagenUrl={getProductImage(productoAbierto)}
+          onClose={() => setProductoAbierto(null)}
+          onAdd={(seleccion) => addToCart(productoAbierto, seleccion)}
+        />
+      )}
+
+      {/* CART DRAWER */}
+      {isCartOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          backdropFilter: 'blur(4px)',
+          zIndex: 100,
+          display: 'flex',
+          justifyContent: 'flex-end',
+          animation: 'fadeIn 0.2s ease'
+        }}>
+          <div
+            className="tienda-cart-drawer"
+            style={{
+              width: '100%',
+              maxWidth: '440px',
+              backgroundColor: '#ffffff',
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '-4px 0 24px rgba(0,0,0,0.15)'
+            }}
+          >
+            {/* Drawer Header */}
+            <div style={{
+              padding: '18px 20px',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ShoppingCart size={20} color="#149b8e" />
+                <h3 style={{ fontSize: '17px', fontWeight: 800, margin: 0, color: '#0f172a' }}>
+                  Tu Carrito ({cartCount})
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsCartOpen(false)}
+                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Cart Items List */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+              {cart.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 10px', color: '#94a3b8' }}>
+                  <ShoppingCart size={48} style={{ margin: '0 auto 12px auto', opacity: 0.4 }} />
+                  <p style={{ fontSize: '15px', fontWeight: 600, color: '#64748b' }}>Tu carrito está vacío</p>
+                  <p style={{ fontSize: '13px' }}>Agregá productos desde el catálogo para armar tu pedido.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {cart.map((it) => (
+                    <div
+                      key={claveItem(it)}
+                      style={{
+                        display: 'flex',
+                        gap: '12px',
+                        padding: '12px',
+                        borderRadius: '10px',
+                        border: '1px solid #e2e8f0',
+                        backgroundColor: '#f8fafc'
+                      }}
                     >
-                      Aplicar
-                    </button>
-                  </form>
+                      <img
+                        src={getProductImage(it.servicio)}
+                        alt={it.servicio.nombre}
+                        style={{ width: '60px', height: '60px', borderRadius: '8px', objectFit: 'cover' }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '11px', color: '#149b8e', fontWeight: 700 }}>
+                          {it.servicio.categoria}
+                        </div>
+                        <h4 style={{ fontSize: '13.5px', fontWeight: 700, color: '#0f172a', margin: '2px 0 6px 0', lineHeight: '1.2' }}>
+                          {it.servicio.nombre}
+                        </h4>
+                        {(it.variante || it.escala) && (
+                          <div style={{ fontSize: '12px', color: '#475569', margin: '-2px 0 6px 0' }}>
+                            {[
+                              it.variante,
+                              it.escala ? `${it.cantidad.toLocaleString('es-UY')} u (${Math.round(it.cantidad / it.escala.cantidad)} × ${it.escala.cantidad.toLocaleString('es-UY')})` : null
+                            ].filter(Boolean).join(' · ')}
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>
+                            {formatCurrency(it.subtotal)}
+                          </span>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <button
+                              type="button"
+                              onClick={() => updateCartQty(claveItem(it), -1)}
+                              style={{ width: '26px', height: '26px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#475569' }}
+                            >
+                              <Minus size={13} />
+                            </button>
+                            <span style={{ fontSize: '13px', fontWeight: 700, minWidth: '18px', textAlign: 'center' }}>
+                              {it.escala ? Math.round(it.cantidad / it.escala.cantidad) : it.cantidad}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => updateCartQty(claveItem(it), 1)}
+                              style={{ width: '26px', height: '26px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#475569' }}
+                            >
+                              <Plus size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeFromCart(claveItem(it))}
+                              style={{ marginLeft: '6px', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}
+                              title="Eliminar del carrito"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Cart Footer */}
+            {cart.length > 0 && (
+              <div style={{
+                padding: '20px',
+                borderTop: '1px solid #e2e8f0',
+                backgroundColor: '#f8fafc'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+                  <span style={{ fontSize: '14px', color: '#64748b', fontWeight: 600 }}>Total Estimado:</span>
+                  <span style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a' }}>
+                    {formatCurrency(cartSubtotal)}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    onClick={() => setCart([])}
+                    style={{
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      backgroundColor: '#ffffff',
+                      color: '#64748b',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Vaciar
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsCartOpen(false)
+                      setIsCheckoutOpen(true)
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: '#149b8e',
+                      color: '#ffffff',
+                      fontSize: '14px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      boxShadow: '0 2px 8px rgba(20, 155, 142, 0.3)'
+                    }}
+                  >
+                    <span>Iniciar Pedido</span>
+                    <ArrowRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* CHECKOUT MODAL */}
+      {isCheckoutOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(4px)',
+          zIndex: 110,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '12px'
+        }}>
+          <div
+            className="tienda-checkout-modal"
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '20px',
+              width: '100%',
+              maxWidth: '560px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              padding: '24px',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.2)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <div>
+                <h3 style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  Confirmar Pedido Online
+                </h3>
+                <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0 0' }}>
+                  Ingresá tus datos para registrar el pedido en el sistema de GUGA
+                </p>
+              </div>
+              <button
+                onClick={() => setIsCheckoutOpen(false)}
+                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmOrder}>
+              {/* Delivery Method */}
+              <div style={{ marginBottom: '18px' }}>
+                <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '8px', textTransform: 'uppercase' }}>
+                  Tipo de Entrega
+                </label>
+                <div className="checkout-delivery-buttons" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setCheckoutForm(prev => ({ ...prev, metodoEntrega: 'retiro' }))}
+                    style={{
+                      padding: '12px',
+                      borderRadius: '10px',
+                      border: checkoutForm.metodoEntrega === 'retiro' ? '2px solid #149b8e' : '1px solid #cbd5e1',
+                      backgroundColor: checkoutForm.metodoEntrega === 'retiro' ? 'rgba(20, 155, 142, 0.08)' : '#f8fafc',
+                      color: checkoutForm.metodoEntrega === 'retiro' ? '#149b8e' : '#334155',
+                      fontWeight: 700,
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    <Building2 size={16} />
+                    <span>Retiro en Taller (Gratis)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCheckoutForm(prev => ({ ...prev, metodoEntrega: 'envio' }))}
+                    style={{
+                      padding: '12px',
+                      borderRadius: '10px',
+                      border: checkoutForm.metodoEntrega === 'envio' ? '2px solid #149b8e' : '1px solid #cbd5e1',
+                      backgroundColor: checkoutForm.metodoEntrega === 'envio' ? 'rgba(20, 155, 142, 0.08)' : '#f8fafc',
+                      color: checkoutForm.metodoEntrega === 'envio' ? '#149b8e' : '#334155',
+                      fontWeight: 700,
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    <Truck size={16} />
+                    <span>Envío {cartSubtotal >= 4000 ? '(¡Gratis!)' : '(+$250)'}</span>
+                  </button>
                 </div>
               </div>
 
-              {/* SECTION 2: NO ICON OPTION */}
-              {(!iconSearchTerm || 'sin icono texto ninguno none'.includes(iconSearchTerm.toLowerCase())) && (
-                <button
-                  type="button"
-                  onClick={() => handleSelectIconForCategory(selectedCategoryForIcon, 'none')}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    padding: '12px 16px',
-                    borderRadius: '10px',
-                    border: categoryVectorIcons[selectedCategoryForIcon] === 'none' ? '2px solid #dc2626' : '1px dashed var(--border)',
-                    backgroundColor: categoryVectorIcons[selectedCategoryForIcon] === 'none' ? 'rgba(220, 38, 38, 0.08)' : 'var(--bg-card)',
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  <div style={{
-                    width: '36px',
-                    height: '36px',
-                    borderRadius: '8px',
-                    backgroundColor: 'rgba(220, 38, 38, 0.12)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#dc2626'
-                  }}>
-                    <Ban size={20} />
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 800, fontSize: '13.5px', color: '#dc2626' }}>
-                      🚫 Sin Ícono (Mostrar Solo Texto en la Tienda)
-                    </div>
-                    <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
-                      La categoría se mostrará limpiamente con su nombre sin ningún ícono gráfico.
-                    </div>
-                  </div>
-                </button>
-              )}
-
-              {/* SECTION 3: PRE-SET VECTOR ICONS GALLERY */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Palette size={15} color="var(--accent)" />
-                    <span>Galería de Íconos Vectoriales Prediseñados</span>
-                  </div>
-                </div>
-
-                {/* Search Bar */}
-                <div style={{ position: 'relative' }}>
-                  <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              {/* Customer Info Form */}
+              <div className="checkout-form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                    Nombre y Apellido *
+                  </label>
                   <input
                     type="text"
-                    className="input"
-                    placeholder="Filtrar íconos (ej. tarjeta, remera, taza, bolsa, factura, tijera, caja, sticker...)..."
-                    value={iconSearchTerm}
-                    onChange={(e) => setIconSearchTerm(e.target.value)}
-                    style={{ paddingLeft: '34px', fontSize: '12.5px' }}
+                    required
+                    value={checkoutForm.nombre}
+                    onChange={(e) => setCheckoutForm(prev => ({ ...prev, nombre: e.target.value }))}
+                    placeholder="Ej. Juan Pérez"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      backgroundColor: '#f8fafc',
+                      fontSize: '13.5px'
+                    }}
                   />
                 </div>
 
-                {/* Vector Icons Tiles */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
-                  gap: '10px',
-                  maxHeight: '260px',
-                  overflowY: 'auto',
-                  padding: '4px'
-                }}>
-                  {AVAILABLE_VECTOR_ICONS.filter(opt => {
-                    if (opt.id === 'none') return false
-                    if (!iconSearchTerm.trim()) return true
-                    const q = iconSearchTerm.toLowerCase().trim()
-                    return opt.label.toLowerCase().includes(q) || opt.id.toLowerCase().includes(q)
-                  }).map((opt) => {
-                    const IconComponent = opt.component
-                    const isSelected = categoryVectorIcons[selectedCategoryForIcon] === opt.id
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                    Teléfono / WhatsApp *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={checkoutForm.telefono}
+                    onChange={(e) => setCheckoutForm(prev => ({ ...prev, telefono: e.target.value }))}
+                    placeholder="Ej. 099 123 456"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      backgroundColor: '#f8fafc',
+                      fontSize: '13.5px'
+                    }}
+                  />
+                </div>
+              </div>
 
+              {checkoutForm.metodoEntrega === 'envio' && (
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                    Dirección de Entrega y Localidad *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={checkoutForm.direccion}
+                    onChange={(e) => setCheckoutForm(prev => ({ ...prev, direccion: e.target.value }))}
+                    placeholder="Calle, número, apto, esquina, ciudad"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      backgroundColor: '#f8fafc',
+                      fontSize: '13.5px'
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* Payment Method */}
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                  Forma de Pago
+                </label>
+                <select
+                  value={checkoutForm.metodoPago}
+                  onChange={(e) => setCheckoutForm(prev => ({ ...prev, metodoPago: e.target.value }))}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    backgroundColor: '#f8fafc',
+                    fontSize: '13.5px',
+                    fontWeight: 600
+                  }}
+                >
+                  <option value="efectivo">Efectivo al recibir / retirar</option>
+                  <option value="transferencia">Transferencia Bancaria (BROU / Itaú / Santander)</option>
+                  <option value="mercadopago">Mercado Pago / Tarjeta de Débito/Crédito</option>
+                </select>
+              </div>
+
+              {/* Notes */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                  Aclaraciones o detalles para el diseño / producción (opcional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={checkoutForm.notas}
+                  onChange={(e) => setCheckoutForm(prev => ({ ...prev, notas: e.target.value }))}
+                  placeholder="Ej. Tengo el archivo en PDF listo / Necesito diseño nuevo / Entrega por la tarde"
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    backgroundColor: '#f8fafc',
+                    fontSize: '13px',
+                    resize: 'vertical'
+                  }}
+                />
+              </div>
+
+              {/* Order Summary Box */}
+              <div style={{
+                padding: '16px',
+                borderRadius: '12px',
+                backgroundColor: '#f1f5f9',
+                marginBottom: '20px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                  <span>Ítems ({cartCount}):</span>
+                  <span>{formatCurrency(cartSubtotal)}</span>
+                </div>
+                {checkoutForm.metodoEntrega === 'envio' && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                    <span>Costo de envío:</span>
+                    <span>{shippingCost === 0 ? 'Gratis' : formatCurrency(shippingCost)}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: 800, color: '#0f172a', paddingTop: '6px', borderTop: '1px solid #cbd5e1' }}>
+                  <span>Total Final:</span>
+                  <span style={{ color: '#149b8e' }}>{formatCurrency(cartTotal)}</span>
+                </div>
+              </div>
+
+              {/* Submit Buttons */}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsCheckoutOpen(false)}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: '10px',
+                    border: '1px solid #cbd5e1',
+                    background: '#f8fafc',
+                    color: '#475569',
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Volver al carrito
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isSubmittingOrder}
+                  style={{
+                    flex: 2,
+                    padding: '12px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+                    color: '#ffffff',
+                    fontSize: '14.5px',
+                    fontWeight: 800,
+                    cursor: isSubmittingOrder ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    boxShadow: '0 4px 12px rgba(220, 38, 38, 0.3)'
+                  }}
+                >
+                  <CheckCircle2 size={18} />
+                  <span>{isSubmittingOrder ? 'Procesando...' : 'Confirmar y Enviar Pedido'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ORDER SUCCESS MODAL */}
+      {orderSuccess && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(4px)',
+          zIndex: 120,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '20px',
+            width: '100%',
+            maxWidth: '500px',
+            padding: '32px 28px',
+            textAlign: 'center',
+            boxShadow: '0 10px 40px rgba(0,0,0,0.25)'
+          }}>
+            <div style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              backgroundColor: 'rgba(22, 163, 74, 0.1)',
+              color: '#16a34a',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px auto'
+            }}>
+              <Check size={36} />
+            </div>
+
+            <h3 style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', marginBottom: '6px' }}>
+              ¡Pedido Registrado con Éxito!
+            </h3>
+
+            <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '18px' }}>
+              Tu código de seguimiento es: <strong style={{ color: '#0f172a', fontSize: '16px' }}>{orderSuccess.pedidoNumero}</strong>
+            </p>
+
+            <div style={{
+              padding: '16px',
+              borderRadius: '12px',
+              backgroundColor: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              marginBottom: '24px',
+              fontSize: '13.5px',
+              color: '#166534',
+              lineHeight: '1.5'
+            }}>
+              El pedido ya ingresó a la cola del CRM de <strong>GUGA Imprenta</strong>. Para acelerar la producción o enviarnos tus archivos de diseño, enviá el resumen por WhatsApp.
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <a
+                href={orderSuccess.whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  backgroundColor: '#25d366',
+                  color: 'white',
+                  padding: '14px',
+                  borderRadius: '10px',
+                  fontSize: '15px',
+                  fontWeight: 800,
+                  textDecoration: 'none',
+                  boxShadow: '0 4px 14px rgba(37, 211, 102, 0.35)'
+                }}
+              >
+                <WhatsAppIcon size={22} color="white" />
+                <span>Enviar Resumen a WhatsApp</span>
+              </a>
+
+              <button
+                onClick={() => setOrderSuccess(null)}
+                style={{
+                  backgroundColor: '#f1f5f9',
+                  color: '#475569',
+                  border: 'none',
+                  padding: '11px',
+                  borderRadius: '10px',
+                  fontSize: '13.5px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                Seguir Navegando
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TRACK ORDERS MODAL */}
+      {isTrackOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(4px)',
+          zIndex: 110,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '20px',
+            width: '100%',
+            maxWidth: '560px',
+            maxHeight: '85vh',
+            overflowY: 'auto',
+            padding: '28px',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.2)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Truck size={22} color="#149b8e" />
+                <h3 style={{ fontSize: '19px', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  Seguimiento de Pedidos
+                </h3>
+              </div>
+              <button onClick={() => setIsTrackOpen(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleTrackOrders} style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+              <input
+                type="text"
+                value={trackQuery}
+                onChange={(e) => setTrackQuery(e.target.value)}
+                placeholder="Ingresá tu teléfono o Nº de pedido (ECO-...)"
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#f8fafc',
+                  fontSize: '13.5px'
+                }}
+              />
+              <button
+                type="submit"
+                disabled={isTrackingLoading}
+                style={{
+                  backgroundColor: '#149b8e',
+                  color: 'white',
+                  border: 'none',
+                  padding: '10px 16px',
+                  borderRadius: '8px',
+                  fontWeight: 700,
+                  fontSize: '13.5px',
+                  cursor: 'pointer'
+                }}
+              >
+                {isTrackingLoading ? 'Buscando...' : 'Consultar'}
+              </button>
+            </form>
+
+            {/* Results List */}
+            {trackedOrders.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {trackedOrders.map((pd) => {
+                  let statusBadge = { label: 'Recibido / En Espera', color: '#f59e0b', bg: '#fef3c7' }
+                  if (pd.estado === 'aprobado' || pd.estado === 'en_produccion') {
+                    statusBadge = { label: 'En Producción / Taller', color: '#0284c7', bg: '#e0f2fe' }
+                  } else if (pd.estado === 'terminado') {
+                    statusBadge = { label: 'Listo para Retirar / Despachado', color: '#16a34a', bg: '#dcfce7' }
+                  } else if (pd.estado === 'entregado') {
+                    statusBadge = { label: 'Entregado', color: '#475569', bg: '#f1f5f9' }
+                  }
+
+                  return (
+                    <div
+                      key={pd.id}
+                      style={{
+                        padding: '16px',
+                        borderRadius: '12px',
+                        border: '1px solid #e2e8f0',
+                        backgroundColor: '#f8fafc'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>
+                          {pd.numero}
+                        </span>
+                        <span style={{
+                          fontSize: '11.5px',
+                          fontWeight: 700,
+                          color: statusBadge.color,
+                          backgroundColor: statusBadge.bg,
+                          padding: '3px 8px',
+                          borderRadius: '6px'
+                        }}>
+                          {statusBadge.label}
+                        </span>
+                      </div>
+
+                      <div style={{ fontSize: '12.5px', color: '#64748b', marginBottom: '8px' }}>
+                        Cliente: <strong>{pd.cliente_nombre}</strong> · Total: <strong>{formatCurrency(pd.total)}</strong>
+                      </div>
+
+                      {pd.items && pd.items.length > 0 && (
+                        <div style={{ fontSize: '12px', color: '#334155', backgroundColor: '#ffffff', padding: '8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                          {pd.items.map((it, idx) => (
+                            <div key={idx}>• {it.nombre} x {it.cantidad}</div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '24px 10px', color: '#94a3b8', fontSize: '13px' }}>
+                Ingresá tu número de teléfono o código de pedido para ver las actualizaciones en tiempo real.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MOBILE FILTERS SHEET / MODAL */}
+      {isMobileFiltersOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          backdropFilter: 'blur(3px)',
+          zIndex: 120,
+          display: 'flex',
+          alignItems: 'flex-end',
+          animation: 'fadeIn 0.15s ease'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderTopLeftRadius: '20px',
+            borderTopRightRadius: '20px',
+            width: '100%',
+            maxHeight: '82vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 -10px 30px rgba(0,0,0,0.15)'
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Filter size={18} color="#149b8e" />
+                <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  Filtrar Catálogo
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMobileFiltersOpen(false)}
+                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+              {/* Categorías */}
+              <div style={{ marginBottom: '16px' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', marginBottom: '10px' }}>
+                  Categorías
+                </h4>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategoria('Todas')}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      border: selectedCategoria === 'Todas' ? '1.5px solid #149b8e' : '1px solid #cbd5e1',
+                      backgroundColor: selectedCategoria === 'Todas' ? 'rgba(20,155,142,0.1)' : '#f8fafc',
+                      color: selectedCategoria === 'Todas' ? '#149b8e' : '#334155',
+                      fontSize: '12px',
+                      fontWeight: selectedCategoria === 'Todas' ? 700 : 500,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Todas ({servicios.length})
+                  </button>
+                  {Object.entries(categoryCounts).filter(([k]) => k !== 'Todas').map(([cat, count]) => {
+                    const isSelected = selectedCategoria === cat
                     return (
                       <button
-                        key={opt.id}
+                        key={cat}
                         type="button"
-                        onClick={() => handleSelectIconForCategory(selectedCategoryForIcon, opt.id)}
+                        onClick={() => setSelectedCategoria(isSelected ? 'Todas' : cat)}
                         style={{
-                          display: 'flex',
-                          flexDirection: 'column',
+                          display: 'inline-flex',
                           alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '8px',
-                          padding: '12px 6px',
-                          borderRadius: '10px',
-                          border: isSelected ? '2px solid var(--accent)' : '1px solid var(--border)',
-                          backgroundColor: isSelected ? 'rgba(20, 155, 142, 0.12)' : 'var(--bg-card)',
-                          color: isSelected ? 'var(--accent)' : 'var(--text-primary)',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease'
+                          gap: '6px',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          border: isSelected ? '1.5px solid #149b8e' : '1px solid #cbd5e1',
+                          backgroundColor: isSelected ? 'rgba(20,155,142,0.1)' : '#f8fafc',
+                          color: isSelected ? '#149b8e' : '#334155',
+                          fontSize: '12px',
+                          fontWeight: isSelected ? 700 : 500,
+                          cursor: 'pointer'
                         }}
                       >
-                        <IconComponent size={22} strokeWidth={isSelected ? 2.2 : 1.8} />
-                        <span style={{ fontSize: '11px', fontWeight: isSelected ? 800 : 600, textAlign: 'center', lineHeight: 1.2 }}>
-                          {opt.label.split('/')[0].trim()}
-                        </span>
+                        <CategoryIcon iconId={categoryVectorIcons[cat] || cat} size={13} color={isSelected ? '#149b8e' : '#64748b'} strokeWidth={2} />
+                        <span>{cat} ({count})</span>
                       </button>
                     )
                   })}
                 </div>
               </div>
-
             </div>
 
-            <div className="modal-footer" style={{ padding: '12px 20px', borderTop: '1px solid var(--border)' }}>
+            {/* Footer Buttons */}
+            <div style={{
+              padding: '14px 20px',
+              borderTop: '1px solid #e2e8f0',
+              display: 'flex',
+              gap: '10px',
+              backgroundColor: '#f8fafc'
+            }}>
+              {(selectedLinea !== 'Todas' || selectedCategoria !== 'Todas') && (
+                <button
+                  type="button"
+                  onClick={() => { setSelectedLinea('Todas'); setSelectedCategoria('Todas'); }}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    backgroundColor: '#ffffff',
+                    color: '#64748b',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Limpiar
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => { setSelectedCategoryForIcon(null); setIconSearchTerm(''); setCustomIconUrlInput(''); }}
-                className="btn btn-secondary"
+                onClick={() => setIsMobileFiltersOpen(false)}
+                style={{
+                  flex: 2,
+                  padding: '10px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: '#149b8e',
+                  color: '#ffffff',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
               >
-                Cerrar
+                Ver {filteredProducts.length} productos
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* PROFESSIONAL CUSTOMER AUTH MODAL */}
+      <CustomerAuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onSuccess={(cust) => {
+          setCustomerInfo(cust)
+          setCheckoutForm(prev => ({
+            ...prev,
+            nombre: cust.nombre || '',
+            telefono: cust.telefono || '',
+            direccion: cust.direccion || '',
+            email: cust.email || ''
+          }))
+        }}
+      />
 
     </div>
   )

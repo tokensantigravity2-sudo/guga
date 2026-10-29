@@ -28,39 +28,39 @@ export default function Sidebar() {
     {
       title: 'Principal',
       items: [
-        { name: 'Dashboard', icon: LayoutDashboard, href: '/' },
-        { name: 'Calendario', icon: CalendarIcon, href: '/calendario' },
-        { name: 'Caja', icon: Wallet, href: '/caja' },
+        { name: 'Dashboard', icon: LayoutDashboard, href: '/panel' },
+        { name: 'Calendario', icon: CalendarIcon, href: '/panel/calendario' },
+        { name: 'Caja', icon: Wallet, href: '/panel/caja' },
       ],
     },
     {
       title: 'Operaciones',
       items: [
-        { name: 'Pedidos CRM', icon: ShoppingCart, href: '/pedidos' },
-        { name: 'E-commerce', icon: Store, href: '/ecommerce', highlight: true },
-        { name: 'Notas & Tareas', icon: CheckSquare, href: '/pendientes' },
-        { name: 'Gastos', icon: DollarSign, href: '/gastos' },
+        { name: 'Pedidos CRM', icon: ShoppingCart, href: '/panel/pedidos' },
+        { name: 'E-commerce', icon: Store, href: '/panel/ecommerce', highlight: true },
+        { name: 'Notas & Tareas', icon: CheckSquare, href: '/panel/pendientes' },
+        { name: 'Gastos', icon: DollarSign, href: '/panel/gastos' },
       ],
     },
     {
       title: 'Catálogo',
       items: [
-        { name: 'Servicios', icon: Printer, href: '/catalogo' },
-        { name: 'Materiales', icon: Boxes, href: '/stock' },
+        { name: 'Servicios', icon: Printer, href: '/panel/catalogo' },
+        { name: 'Materiales', icon: Boxes, href: '/panel/stock' },
       ],
     },
     {
       title: 'Personas',
       items: [
-        { name: 'Empleados', icon: UserCheck, href: '/empleados' },
-        { name: 'Clientes', icon: Users, href: '/clientes' },
-        { name: 'Proveedores', icon: Package, href: '/proveedores' },
+        { name: 'Empleados', icon: UserCheck, href: '/panel/empleados' },
+        { name: 'Clientes', icon: Users, href: '/panel/clientes' },
+        { name: 'Proveedores', icon: Package, href: '/panel/proveedores' },
       ],
     },
     {
       title: 'Análisis',
       items: [
-        { name: 'Reportes', icon: BarChart2, href: '/reportes' },
+        { name: 'Reportes', icon: BarChart2, href: '/panel/reportes' },
       ],
     },
   ];
@@ -89,7 +89,7 @@ export default function Sidebar() {
         justifyContent: 'center',
         minHeight: '80px'
       }}>
-        <Link href="/" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', textDecoration: 'none' }} title="Ir al Panel Principal">
+        <Link href="/panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', textDecoration: 'none' }} title="Ir al Panel Principal">
           <img
             src={LOGO_URL}
             alt="GUGA IMPRENTA & GRÁFICA"
@@ -121,7 +121,7 @@ export default function Sidebar() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
               {group.items.map((item, j) => {
-                const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+                const isActive = pathname === item.href || (item.href !== '/panel' && pathname.startsWith(item.href));
                 const Icon = item.icon;
                 return (
                   <Link 
@@ -155,7 +155,7 @@ export default function Sidebar() {
       {/* Quick link to Storefront */}
       <div style={{ padding: '0 12px 12px 12px' }}>
         <a
-          href="/tienda"
+          href="/ecommerce"
           target="_blank"
           rel="noopener noreferrer"
           style={{

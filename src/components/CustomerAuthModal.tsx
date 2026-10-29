@@ -14,9 +14,10 @@ interface CustomerAuthModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccess: (customer: any) => void
+  obligatorio?: boolean // para entrar a la tienda: sin botón de cerrar
 }
 
-export default function CustomerAuthModal({ isOpen, onClose, onSuccess }: CustomerAuthModalProps) {
+export default function CustomerAuthModal({ isOpen, onClose, onSuccess, obligatorio = false }: CustomerAuthModalProps) {
   const [step, setStep] = useState<'login' | 'register'>('login')
   const [searchKey, setSearchKey] = useState('')
   const [loading, setLoading] = useState(false)
@@ -239,7 +240,7 @@ export default function CustomerAuthModal({ isOpen, onClose, onSuccess }: Custom
             />
           </div>
 
-          <button
+          {!obligatorio && <button
             onClick={onClose}
             style={{
               width: '32px',
@@ -255,7 +256,7 @@ export default function CustomerAuthModal({ isOpen, onClose, onSuccess }: Custom
             }}
           >
             <X size={18} />
-          </button>
+          </button>}
         </div>
 
         {/* Step Tabs */}
@@ -362,10 +363,12 @@ export default function CustomerAuthModal({ isOpen, onClose, onSuccess }: Custom
           <div>
             <div style={{ marginBottom: '20px' }}>
               <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
-                Identificación de Cliente
+                {obligatorio ? 'Ingresá a la tienda' : 'Identificación de Cliente'}
               </h3>
               <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>
-                Ingresá tu WhatsApp, Teléfono o RUT para acceder a tus presupuestos, historial de pedidos y datos guardados.
+                {obligatorio
+                  ? 'Para ver productos y precios, ingresá con Google o con tu WhatsApp. Si es tu primera vez, te registramos en un paso.'
+                  : 'Ingresá tu WhatsApp, Teléfono o RUT para acceder a tus presupuestos, historial de pedidos y datos guardados.'}
               </p>
             </div>
 

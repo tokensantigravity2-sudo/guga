@@ -1,8 +1,0 @@
-{
-  "redirects": [
-    { "source": "/ecommerce", "destination": "https://guga-three.vercel.app/tienda", "permanent": false },
-    { "source": "/ecommerce/:path*", "destination": "https://guga-three.vercel.app/tienda/:path*", "permanent": false },
-    { "source": "/ecomerce", "destination": "https://guga-three.vercel.app/tienda", "permanent": false },
-    { "source": "/tienda", "destination": "https://guga-three.vercel.app/tienda", "permanent": false }
-  ]
-}

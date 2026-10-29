@@ -188,7 +188,7 @@ export default function TiendaCuentaPage() {
       localStorage.setItem('guga_store_cart', JSON.stringify(itemsToAdd))
       localStorage.setItem('guga_cart_items', JSON.stringify(itemsToAdd))
       toast.success(`¡${itemsToAdd.length} producto(s) agregados al carrito!`)
-      window.location.href = '/tienda?openCart=true'
+      window.location.href = '/ecommerce?openCart=true'
     } catch (e) {
       console.error('Error reordering:', e)
       toast.error('No se pudo reordenar el pedido')
@@ -508,7 +508,7 @@ export default function TiendaCuentaPage() {
                 </div>
 
                 <Link
-                  href="/tienda/pedidos"
+                  href="/ecommerce/pedidos"
                   style={{ fontSize: '12.5px', color: '#149b8e', fontWeight: 700, textDecoration: 'none' }}
                 >
                   Ver todos ↗
@@ -561,7 +561,7 @@ export default function TiendaCuentaPage() {
                         {/* Order Actions */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', paddingTop: '6px', borderTop: '1px solid #e2e8f0' }}>
                           <Link
-                            href={`/tienda/pedidos?q=${encodeURIComponent(pd.numero)}`}
+                            href={`/ecommerce/pedidos?q=${encodeURIComponent(pd.numero)}`}
                             style={{
                               display: 'flex',
                               alignItems: 'center',
