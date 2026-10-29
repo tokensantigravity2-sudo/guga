@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GUGA Print · Imprenta & Soluciones Gráficas</title>
+  <meta name="description" content="Imprenta y soluciones gráficas: tarjetas, folletos, talonarios, stickers, banners, packaging y diseño. Pedí online en nuestra tienda o escribinos por WhatsApp." />
+  <link rel="icon" href="/icono.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --teal: #149b8e;
+      --teal-dark: #0e746b;
+      --amarillo: #f59e0b;
+      --naranja: #f97316;
+      --texto: #0f172a;
+      --texto-2: #475569;
+      --texto-3: #64748b;
+      --borde: #e2e8f0;
+      --fondo: #f8fafc;
+      --degradado: linear-gradient(135deg, #149b8e 0%, #f59e0b 55%, #f97316 100%);
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: #ffffff;
+      color: var(--texto);
+      font-family: 'Inter', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.55;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .contenedor { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+
+    /* Encabezado */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--borde);
+    }
+    .barra { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 72px; }
+    .barra img { height: 46px; width: auto; display: block; }
+    nav { display: flex; align-items: center; gap: 26px; font-size: 14px; font-weight: 600; color: var(--texto-2); }
+    nav a:hover { color: var(--teal); }
+
+    .boton {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 22px;
+      border-radius: 999px;
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1;
+      white-space: nowrap;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .boton:hover { transform: translateY(-1px); }
+    .boton svg { width: 18px; height: 18px; flex-shrink: 0; }
+    .boton-principal { background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%); color: #ffffff; box-shadow: 0 6px 18px rgba(20, 155, 142, 0.3); }
+    .boton-principal:hover { box-shadow: 0 10px 24px rgba(20, 155, 142, 0.38); }
+    .boton-secundario { background: #ffffff; color: var(--texto); border: 1.5px solid var(--borde); }
+    .boton-secundario:hover { border-color: #25d366; color: #128c4a; }
+    .boton-chico { padding: 10px 18px; font-size: 14px; }
+
+    /* Portada */
+    .portada { position: relative; overflow: hidden; padding: 96px 0 88px; background: var(--fondo); }
+    .portada::before {
+      content: '';
+      position: absolute;
+      inset: auto -10% -60% auto;
+      width: 620px;
+      height: 620px;
+      border-radius: 50%;
+      background: var(--degradado);
+      opacity: 0.12;
+      filter: blur(10px);
+    }
+    .portada .contenedor { position: relative; }
+    .etiqueta {
+      display: inline-block;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(20, 155, 142, 0.1);
+      color: var(--teal-dark);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      margin-bottom: 18px;
+    }
+    h1 { font-size: clamp(34px, 5.4vw, 58px); line-height: 1.08; letter-spacing: -0.02em; margin: 0 0 18px; max-width: 760px; font-weight: 900; }
+    h1 span { background: var(--degradado); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .bajada { font-size: clamp(16px, 2vw, 19px); color: var(--texto-2); max-width: 620px; margin: 0 0 32px; }
+    .acciones { display: flex; flex-wrap: wrap; gap: 12px; }
+
+    /* Secciones */
+    section { padding: 84px 0; }
+    .titulo-seccion { font-size: clamp(26px, 3.4vw, 36px); line-height: 1.15; letter-spacing: -0.01em; margin: 0 0 12px; font-weight: 800; }
+    .texto-seccion { color: var(--texto-2); font-size: 17px; max-width: 680px; margin: 0; }
+
+    .nosotros { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 48px; align-items: center; }
+    .datos { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .dato { padding: 22px; border-radius: 18px; border: 1px solid var(--borde); background: #ffffff; }
+    .dato strong { display: block; font-size: 17px; margin-bottom: 4px; }
+    .dato span { color: var(--texto-3); font-size: 14px; }
+
+    .servicios { background: var(--fondo); }
+    .grilla { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 36px; }
+    .tarjeta {
+      padding: 24px 22px;
+      border-radius: 18px;
+      background: #ffffff;
+      border: 1px solid var(--borde);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .tarjeta:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08); }
+    .icono {
+      width: 46px;
+      height: 46px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(20, 155, 142, 0.1);
+      color: var(--teal);
+      margin-bottom: 14px;
+    }
+    .icono svg { width: 23px; height: 23px; }
+    .tarjeta h3 { margin: 0 0 6px; font-size: 16.5px; }
+    .tarjeta p { margin: 0; color: var(--texto-3); font-size: 14px; }
+
+    .pasos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 36px; }
+    .paso { padding: 26px; border-radius: 18px; border: 1px solid var(--borde); }
+    .numero {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--degradado);
+      color: #ffffff;
+      font-weight: 800;
+      margin-bottom: 14px;
+    }
+    .paso h3 { margin: 0 0 6px; font-size: 17px; }
+    .paso p { margin: 0; color: var(--texto-3); font-size: 14.5px; }
+
+    .llamado {
+      margin: 0 20px 84px;
+      padding: 56px 32px;
+      border-radius: 28px;
+      background: var(--texto);
+      color: #ffffff;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .llamado::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: var(--degradado); }
+    .llamado h2 { font-size: clamp(26px, 3.6vw, 38px); margin: 0 0 10px; font-weight: 800; }
+    .llamado p { color: #cbd5e1; margin: 0 0 28px; font-size: 17px; }
+    .llamado .acciones { justify-content: center; }
+    .llamado .boton-secundario { background: transparent; color: #ffffff; border-color: rgba(255, 255, 255, 0.35); }
+
+    footer { border-top: 1px solid var(--borde); padding: 32px 0; color: var(--texto-3); font-size: 14px; }
+    .pie { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .pie img { height: 38px; width: auto; display: block; }
+    .pie a:hover { color: var(--teal); }
+
+    @media (max-width: 900px) {
+      .grilla { grid-template-columns: repeat(2, 1fr); }
+      .nosotros { grid-template-columns: 1fr; gap: 28px; }
+    }
+
+    @media (max-width: 640px) {
+      nav .enlace { display: none; }
+      .barra { height: 64px; }
+      .barra img { height: 38px; }
+      .portada { padding: 64px 0 60px; }
+      section { padding: 60px 0; }
+      .grilla, .pasos { grid-template-columns: 1fr; }
+      .acciones .boton { flex: 1; }
+      .llamado { margin: 0 16px 60px; padding: 44px 22px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="contenedor barra">
+      <a href="#inicio" aria-label="GUGA Print"><img src="/logo-guga.png" alt="GUGA Print · Imprenta & Soluciones Gráficas" /></a>
+      <nav>
+        <a class="enlace" href="#nosotros">Quiénes somos</a>
+        <a class="enlace" href="#servicios">Qué ofrecemos</a>
+        <a class="enlace" href="#contacto">Contacto</a>
+        <a class="boton boton-principal boton-chico" href="/ecommerce">Ir a la tienda</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="inicio">
+    <div class="portada">
+      <div class="contenedor">
+        <div class="etiqueta">Imprenta & Soluciones Gráficas</div>
+        <h1>Tu imprenta de confianza, <span>de la idea al impreso</span></h1>
+        <p class="bajada">Fabricamos tarjetas, folletos, talonarios, stickers, banners y etiquetas con la mayor calidad gráfica. Elegí tu producto en la tienda online o escribinos y te asesoramos.</p>
+        <div class="acciones">
+          <a class="boton boton-principal" href="/ecommerce">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+            Ir a la tienda
+          </a>
+          <a class="boton boton-secundario" href="https://wa.me/59899724454?text=Hola%20GUGA%2C%20quiero%20hacer%20una%20consulta" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+            Escribinos por WhatsApp
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <section id="nosotros">
+      <div class="contenedor nosotros">
+        <div>
+          <h2 class="titulo-seccion">Quiénes somos</h2>
+          <p class="texto-seccion">En GUGA Print somos una imprenta y estudio de soluciones gráficas. Acompañamos a emprendedores, comercios y empresas para que su marca se vea bien en cada impreso: desde una tarjeta personal hasta un banner o el packaging de sus productos.</p>
+          <p class="texto-seccion" style="margin-top: 14px;">Te asesoramos en papel, formato y terminaciones, y nos ocupamos de que el trabajo llegue a tiempo.</p>
+        </div>
+        <div class="datos">
+          <div class="dato"><strong>Impresión digital y offset</strong><span>Tiradas chicas y grandes</span></div>
+          <div class="dato"><strong>Terminaciones</strong><span>Laminado mate, brillo y troquelado</span></div>
+          <div class="dato"><strong>Diseño</strong><span>Te ayudamos a preparar tu archivo</span></div>
+          <div class="dato"><strong>Retiro o envío</strong><span>Como te quede más cómodo</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="servicios" class="servicios">
+      <div class="contenedor">
+        <h2 class="titulo-seccion">Qué ofrecemos</h2>
+        <p class="texto-seccion">Todo lo que tu negocio necesita imprimir, en un solo lugar.</p>
+        <div class="grilla">
+          <div class="tarjeta">
+            <div class="icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg></div>
+            <h3>Tarjetas personales</h3>
+            <p>Simple o doble faz, con laminado y distintos papeles.</p>
+          </div>
+          <div class="tarjeta">
+            <div class="icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg></div>
+            <h3>Folletos y volantes</h3>
+            <p>Para promociones, menús y lanzamientos.</p>
+          </div>
+          <div class="tarjeta">
+            <div class="icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/></svg></div>
+            <h3>Talonarios y facturas</h3>
+            <p>Recibos, órdenes y formularios a medida.</p>
+          </div>
+          <div class="tarjeta">
+            <div class="icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1"/></svg></div>
+            <h3>Stickers y etiquetas</h3>
+            <p>Para tus productos, envíos y packaging.</p>
+          </div>
+          <div class="tarjeta">
+            <div class="icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></div>
+            <h3>Banners y afiches</h3>
+            <p>Gran formato, banderas y cartelería.</p>
+          </div>
+          <div class="tarjeta">
+            <div class="icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 7.7 4.73a2 2 0 0 0 2 0L20.7 7"/></svg></div>
+            <h3>Packaging</h3>
+            <p>Cajas y envoltorios con tu marca.</p>
+          </div>
+          <div class="tarjeta">
+            <div class="icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg></div>
+            <h3>Papelería corporativa</h3>
+            <p>Hojas membretadas, sobres y carpetas.</p>
+          </div>
+          <div class="tarjeta">
+            <div class="icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.13a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.55-2.5 5.55-5.55C21.97 6.01 17.46 2 12 2z"/><circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/></svg></div>
+            <h3>Diseño gráfico</h3>
+            <p>Armamos o ajustamos tu diseño para imprimir.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="contenedor">
+        <h2 class="titulo-seccion">Cómo pedir</h2>
+        <p class="texto-seccion">En tres pasos tenés tu trabajo listo.</p>
+        <div class="pasos">
+          <div class="paso">
+            <div class="numero">1</div>
+            <h3>Elegí tu producto</h3>
+            <p>Entrá a la tienda, elegí la opción y la cantidad que necesitás.</p>
+          </div>
+          <div class="paso">
+            <div class="numero">2</div>
+            <h3>Confirmá tu pedido</h3>
+            <p>Te contactamos por WhatsApp para coordinar el diseño y el pago.</p>
+          </div>
+          <div class="paso">
+            <div class="numero">3</div>
+            <h3>Retiralo o recibilo</h3>
+            <p>Pasá por el taller o te lo enviamos.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div id="contacto" class="contenedor" style="padding: 0;">
+      <div class="llamado">
+        <h2>¿Listo para tu próximo impreso?</h2>
+        <p>Mirá los productos y precios en la tienda, o consultanos lo que necesites.</p>
+        <div class="acciones">
+          <a class="boton boton-principal" href="/ecommerce">Ir a la tienda</a>
+          <a class="boton boton-secundario" href="https://wa.me/59899724454?text=Hola%20GUGA%2C%20quiero%20hacer%20una%20consulta" target="_blank" rel="noopener">WhatsApp</a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="contenedor pie">
+      <img src="/logo-guga.png" alt="GUGA Print" />
+      <div>
+        <a href="https://wa.me/59899724454" target="_blank" rel="noopener">WhatsApp: 099 724 454</a>
+        &nbsp;·&nbsp;
+        <a href="/ecommerce">Tienda online</a>
+      </div>
+      <div>GUGA Print · Imprenta & Soluciones Gráficas</div>
+    </div>
+  </footer>
+</body>
+</html>

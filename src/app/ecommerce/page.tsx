@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchAll } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { Pedido, Servicio, Cliente } from '@/lib/types'
 import { formatCurrency, formatDateTime, formatDate, ESTADOS_PEDIDO, CATEGORIAS_TIENDA, formatProductUnit, cleanProductDescription, completarPedidoTienda } from '@/lib/helpers'
@@ -161,7 +161,7 @@ export default function EcommerceAdminPage() {
   const loadData = async () => {
     setLoading(true)
     const [{ data: pds, error: errPds }, { data: srvs, error: errSrvs }] = await Promise.all([
-      supabase.from('pedidos').select('*').order('created_at', { ascending: false }),
+      fetchAll((desde, hasta) => supabase.from('pedidos').select('*').order('created_at', { ascending: false }).order('id').range(desde, hasta)),
       supabase.from('servicios').select('*').order('categoria').order('nombre')
     ])
 

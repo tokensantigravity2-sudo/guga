@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchAll } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { formatCurrency, formatDate, getTodayStr, proyectarGastosFijos, esGastoFijo } from '@/lib/helpers'
 import { Pedido, Gasto, StockItem, Cliente, CajaMovimiento } from '@/lib/types'
@@ -160,10 +160,10 @@ export default function ReportesPage() {
 
   const loadRawData = async () => {
     const [{ data: p, error: pErr }, { data: g, error: gErr }, { data: s }, { data: c }] = await Promise.all([
-      supabase.from('pedidos').select('*').not('estado', 'eq', 'cancelado'),
-      supabase.from('gastos').select('*'),
+      fetchAll((desde, hasta) => supabase.from('pedidos').select('*').not('estado', 'eq', 'cancelado').order('id').range(desde, hasta)),
+      fetchAll((desde, hasta) => supabase.from('gastos').select('*').order('id').range(desde, hasta)),
       supabase.from('stock').select('*'),
-      supabase.from('caja_movimientos').select('*'),
+      fetchAll((desde, hasta) => supabase.from('caja_movimientos').select('*').order('id').range(desde, hasta)),
     ])
 
     if (pErr) toast.error('Error al cargar pedidos: ' + pErr.message)

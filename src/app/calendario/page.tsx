@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchAll } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { Pedido, Gasto, Tarea, CajaMovimiento } from '@/lib/types'
 import { formatCurrency, formatDate } from '@/lib/helpers'
@@ -39,9 +39,9 @@ export default function CalendarioPage() {
 
   const loadData = async () => {
     const [{ data: p }, { data: g }, { data: c }, { data: t }] = await Promise.all([
-      supabase.from('pedidos').select('*').not('estado', 'eq', 'cancelado'),
-      supabase.from('gastos').select('*'),
-      supabase.from('caja_movimientos').select('*').order('created_at', { ascending: false }),
+      fetchAll((desde, hasta) => supabase.from('pedidos').select('*').not('estado', 'eq', 'cancelado').order('id').range(desde, hasta)),
+      fetchAll((desde, hasta) => supabase.from('gastos').select('*').order('id').range(desde, hasta)),
+      fetchAll((desde, hasta) => supabase.from('caja_movimientos').select('*').order('created_at', { ascending: false }).order('id').range(desde, hasta)),
       supabase.from('tareas').select('*'),
     ])
 

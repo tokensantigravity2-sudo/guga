@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchAll } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { Servicio, Cliente, PedidoItem, Pedido, StockItem, VariableServicio, EscalaPrecio } from '@/lib/types'
 import { formatCurrency, formatDateTime, generateNumeroPedido, ESTADOS_PEDIDO, cleanProductDescription, formatProductUnit, parseVariantesTag } from '@/lib/helpers'
@@ -115,7 +115,7 @@ export default function PedidosPage() {
       const [{ data: srvs }, { data: clts }, { data: pds }, { data: stks }, { data: cMovs }] = await Promise.all([
         supabase.from('servicios').select('*').eq('disponible', true).order('categoria'),
         supabase.from('clientes').select('*').order('nombre'),
-        supabase.from('pedidos').select('*').order('created_at', { ascending: false }).limit(60),
+        fetchAll((desde, hasta) => supabase.from('pedidos').select('*').order('created_at', { ascending: false }).order('id').range(desde, hasta)),
         supabase.from('stock').select('*').order('nombre'),
         supabase.from('caja_movimientos').select('id, tipo, monto, concepto, referencia_id').not('referencia_id', 'is', null)
       ])

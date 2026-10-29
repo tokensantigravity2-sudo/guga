@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchAll } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { CajaMovimiento, Cliente, Pedido, Proveedor } from '@/lib/types'
 import { formatCurrency, formatDateTime, formatDate, CATEGORIAS_GASTO, getTodayStr } from '@/lib/helpers'
@@ -102,17 +102,19 @@ export default function CajaPage() {
     setLoading(true)
     try {
       const [{ data: movs, error: mErr }, { data: peds }, { data: clts }, { data: provs }] = await Promise.all([
-        supabase
+        fetchAll((desde, hasta) => supabase
           .from('caja_movimientos')
           .select('*')
           .order('created_at', { ascending: false })
-          .limit(1000),
-        supabase
+          .order('id')
+          .range(desde, hasta)),
+        fetchAll((desde, hasta) => supabase
           .from('pedidos')
           .select('id, numero, cliente_id, cliente_nombre, total, subtotal, descuento, metodo_pago, estado, notas, created_at')
           .not('estado', 'eq', 'cancelado')
           .order('created_at', { ascending: false })
-          .limit(500),
+          .order('id')
+          .range(desde, hasta)),
         supabase.from('clientes').select('id, nombre, rut, telefono, email').order('nombre'),
         supabase.from('proveedores').select('id, nombre, rubro, telefono, email, es_tercerizado').order('nombre'),
       ])

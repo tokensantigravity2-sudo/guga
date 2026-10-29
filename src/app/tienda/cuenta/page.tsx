@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchAll } from '@/lib/supabase'
 import { Pedido } from '@/lib/types'
 import { formatCurrency, formatDate, completarPedidoTienda } from '@/lib/helpers'
 import WhatsAppIcon from '@/components/WhatsAppIcon'
@@ -62,15 +62,16 @@ export default function TiendaCuentaPage() {
     const cleanDigits = (phone || '').replace(/\D/g, '')
 
     try {
-      // Fetch recent orders safely and filter
-      const { data: allPeds, error } = await supabase
+      // Buscar en todos los pedidos con un resumen liviano y después traer completos los del cliente
+      const { data: resumen, error } = await fetchAll<Partial<Pedido>>((desde, hasta) => supabase
         .from('pedidos')
-        .select('*')
+        .select('id, cliente_nombre, notas, created_at')
         .order('created_at', { ascending: false })
-        .limit(80)
+        .order('id')
+        .range(desde, hasta))
 
-      if (!error && allPeds) {
-        const filtered = allPeds.map(completarPedidoTienda).filter(p => {
+      if (!error && resumen) {
+        const coincidencias = resumen.map(completarPedidoTienda).filter(p => {
           const pPhone = (p.cliente_telefono || '').replace(/\D/g, '')
           const pName = (p.cliente_nombre || '').toLowerCase()
           const pNotes = (p.notas || '').toLowerCase()
@@ -82,7 +83,12 @@ export default function TiendaCuentaPage() {
           return matchPhone || matchName || matchNotes
         })
 
-        setSavedOrders(filtered)
+        // Los 50 más recientes del cliente, con todos sus datos
+        const ids = coincidencias.slice(0, 50).map(p => p.id)
+        const { data: completos } = ids.length > 0
+          ? await supabase.from('pedidos').select('*').in('id', ids).order('created_at', { ascending: false })
+          : { data: [] }
+        setSavedOrders((completos || []).map(completarPedidoTienda))
       }
     } catch (e) {
       console.error('Error fetching customer orders safely:', e)

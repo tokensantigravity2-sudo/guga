@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchAll } from '@/lib/supabase'
 import { Pedido } from '@/lib/types'
 import { formatCurrency, formatDate, completarPedidoTienda } from '@/lib/helpers'
 import {
@@ -113,20 +113,22 @@ export default function TiendaPedidosPage() {
         }
       }
 
-      // 2. Fetch recent orders and filter safely in JavaScript to avoid PostgREST query parsing crashes
-      const { data: allPeds, error: pedsErr } = await supabase
+      // 2. Buscar en todos los pedidos con un resumen liviano y filtrar en JavaScript
+      // (evita errores de PostgREST con lo que escribe el cliente), después traer completos los que coinciden
+      const { data: resumen, error: pedsErr } = await fetchAll<Partial<Pedido>>((desde, hasta) => supabase
         .from('pedidos')
-        .select('*')
+        .select('id, numero, cliente_nombre, notas, created_at')
         .order('created_at', { ascending: false })
-        .limit(100)
+        .order('id')
+        .range(desde, hasta))
 
       if (pedsErr) {
         console.warn('Orders fetch notice:', pedsErr)
       }
 
-      if (allPeds) {
+      if (resumen) {
         const qLower = q.toLowerCase()
-        const filtered = allPeds.map(completarPedidoTienda).filter(p => {
+        const coincidencias = resumen.map(completarPedidoTienda).filter(p => {
           const pNum = (p.numero || '').toLowerCase()
           const pName = (p.cliente_nombre || '').toLowerCase()
           const pPhone = (p.cliente_telefono || '').replace(/\D/g, '')
@@ -140,7 +142,12 @@ export default function TiendaPedidosPage() {
           return matchNum || matchName || matchPhone || matchNotes
         })
 
-        setTrackedOrders(filtered)
+        // Los 50 más recientes que coinciden, con todos sus datos
+        const ids = coincidencias.slice(0, 50).map(p => p.id)
+        const { data: completos } = ids.length > 0
+          ? await supabase.from('pedidos').select('*').in('id', ids).order('created_at', { ascending: false })
+          : { data: [] }
+        setTrackedOrders((completos || []).map(completarPedidoTienda))
       }
     } catch (err: any) {
       console.error('Safe order tracking handler:', err)
