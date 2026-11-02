@@ -54,12 +54,17 @@
       position: fixed;
       inset: 0 0 auto 0;
       z-index: 20;
-      background: rgba(255, 255, 255, 0.85);
-      backdrop-filter: blur(10px);
+      background: transparent;
       border-bottom: 1px solid transparent;
-      transition: border-color 0.3s ease, box-shadow 0.3s ease;
+      transition: transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1), background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
     }
-    header.con-sombra { border-color: var(--borde); box-shadow: 0 6px 24px rgba(15, 23, 42, 0.06); }
+    header.con-sombra {
+      background: rgba(255, 255, 255, 0.86);
+      backdrop-filter: blur(12px);
+      border-color: var(--borde);
+      box-shadow: 0 6px 24px rgba(15, 23, 42, 0.06);
+    }
+    header.oculto { transform: translateY(-110%); }
     .barra { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 76px; }
     .barra img { height: 48px; width: auto; }
     nav { display: flex; align-items: center; gap: 28px; font-size: 14px; font-weight: 600; color: var(--texto-2); }
@@ -227,27 +232,29 @@
       margin: 0 20px 100px;
       padding: 70px 32px;
       border-radius: 32px;
-      background: var(--texto);
+      background: linear-gradient(135deg, #149b8e 0%, #0e746b 55%, #0b5e57 100%);
       color: #ffffff;
       text-align: center;
+      box-shadow: 0 30px 60px rgba(14, 116, 107, 0.28);
     }
     .llamado::before {
       content: '';
       position: absolute;
-      width: 520px;
-      height: 520px;
-      left: 50%;
-      top: -320px;
-      transform: translateX(-50%);
-      background: var(--degradado);
-      filter: blur(90px);
-      opacity: 0.35;
+      width: 560px;
+      height: 560px;
+      right: -160px;
+      top: -300px;
+      background: radial-gradient(circle, rgba(255, 255, 255, 0.22) 0%, transparent 65%);
+      filter: blur(20px);
     }
+    .llamado::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: var(--degradado); }
     .llamado > * { position: relative; }
     .llamado h2 { font-size: clamp(28px, 4vw, 44px); margin: 0 0 12px; font-weight: 800; letter-spacing: -0.02em; }
-    .llamado p { color: #cbd5e1; margin: 0 0 30px; font-size: 17px; }
+    .llamado p { color: rgba(255, 255, 255, 0.88); margin: 0 0 30px; font-size: 17px; }
     .llamado .acciones { justify-content: center; }
-    .llamado .boton-wpp { background: transparent; color: #ffffff; border-color: rgba(255, 255, 255, 0.35); }
+    .llamado .boton-principal { background: #ffffff; color: var(--teal-dark); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16); }
+    .llamado .boton-wpp { background: rgba(255, 255, 255, 0.12); color: #ffffff; border-color: rgba(255, 255, 255, 0.5); }
+    .llamado .boton-wpp:hover { border-color: #ffffff; box-shadow: none; }
 
     footer { border-top: 1px solid var(--borde); padding: 36px 0; color: var(--texto-3); font-size: 14px; }
     .pie { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
@@ -299,7 +306,8 @@
       .portada { padding: 110px 0 60px; }
       .mano-3d { height: 360px; }
       .chip { font-size: 12.5px; padding: 10px 12px; }
-      .chip-2 { right: 0; }
+      .chip-1 { top: auto; bottom: 30%; left: 0; }
+      .chip-2 { top: auto; bottom: 12%; right: 0; }
       section { padding: 70px 0; }
       .grilla, .pasos { grid-template-columns: 1fr; }
       .pasos-linea { display: none; }
@@ -530,7 +538,7 @@
         <div class="acciones">
           <a class="boton boton-principal" href="/ecommerce">Ir a la tienda</a>
           <a class="boton boton-wpp" href="https://wa.me/59899724454?text=Hola%20GUGA%2C%20quiero%20hacer%20una%20consulta" target="_blank" rel="noopener">
-            <img src="/whatsapp.svg" alt="" />
+            <img src="/whatsapp-blanco.svg" alt="" />
             WhatsApp
           </a>
         </div>
@@ -562,9 +570,17 @@
     (function () {
       var raiz = document.documentElement
       var header = document.querySelector('header')
-      var sombra = function () { header.classList.toggle('con-sombra', window.scrollY > 10) }
-      window.addEventListener('scroll', sombra, { passive: true })
-      sombra()
+      var ultimoScroll = window.scrollY
+      var alScrollear = function () {
+        var y = window.scrollY
+        header.classList.toggle('con-sombra', y > 10)
+        // Bajando se esconde, subiendo vuelve a aparecer
+        if (y > 140 && y > ultimoScroll + 4) header.classList.add('oculto')
+        else if (y < ultimoScroll - 4 || y <= 140) header.classList.remove('oculto')
+        ultimoScroll = y
+      }
+      window.addEventListener('scroll', alScrollear, { passive: true })
+      alScrollear()
 
       // Si no hay animaciones (movimiento reducido o no cargó GSAP), todo queda visible y quieto
       if (!raiz.classList.contains('animado') || !window.gsap || !window.ScrollTrigger) {
@@ -597,7 +613,7 @@
       gsap.set('.intro', { visibility: 'visible' })
       var intro = gsap.timeline({ defaults: { ease: 'power3.out' } })
       intro
-        .from('header', { yPercent: -100, duration: 0.8 })
+        .from('header', { yPercent: -100, duration: 0.8, clearProps: 'transform' })
         .from('h1 .linea > span', { yPercent: 110, duration: 1, stagger: 0.12 }, '-=0.4')
         .from('.bajada', { y: 24, autoAlpha: 0, duration: 0.8 }, '-=0.6')
         .from('.portada .acciones .boton', { y: 20, autoAlpha: 0, duration: 0.6, stagger: 0.1 }, '-=0.5')
@@ -746,7 +762,7 @@
           '  gl_Position = projectionMatrix * mv;',
           '  gl_PointSize = uTamanio * aTamanio * (1.0 + p * 1.5) / -mv.z;',
           '  vColor = aColor;',
-          '  vAlfa = 1.0 - smoothstep(0.45, 1.0, p);',
+          '  vAlfa = (1.0 - smoothstep(0.45, 1.0, p)) * mix(smoothstep(-3.7, -2.5, position.y), 1.0, p);',
           '}'
         ].join('\n'),
         fragmentShader: [
@@ -762,7 +778,8 @@
       var mano = new THREE.Points(geo, material)
       var grupo = new THREE.Group()
       grupo.add(mano)
-      grupo.position.y = -0.9
+      var ALTURA_MANO = 0.5
+      grupo.position.y = ALTURA_MANO
       grupo.rotation.set(-0.12, -0.35, 0.08)
       escena.add(grupo)
 
@@ -800,7 +817,7 @@
           var s = uniformes.uScroll.value
           grupo.rotation.y += ((-0.35 + Math.sin(t * 0.4) * 0.18 + mouse.x * 0.5 + s * 1.6) - grupo.rotation.y) * 0.06
           grupo.rotation.x += ((-0.12 + mouse.y * 0.25 - s * 0.3) - grupo.rotation.x) * 0.06
-          grupo.position.y = -0.9 + Math.sin(t * 0.8) * 0.08 + s * 1.4
+          grupo.position.y = ALTURA_MANO + Math.sin(t * 0.8) * 0.08 + s * 1.4
           renderer.render(escena, camara)
         }
         if (animar) requestAnimationFrame(dibujar)
@@ -818,9 +835,9 @@
         value: 1,
         ease: 'none',
         scrollTrigger: {
-          trigger: '.portada',
-          start: 'top top',
-          end: 'bottom 20%',
+          trigger: '.mano-3d',
+          start: 'center 55%',
+          end: 'bottom top',
           scrub: 1.2,
           onUpdate: function (st) { visible = st.progress < 1 }
         }
