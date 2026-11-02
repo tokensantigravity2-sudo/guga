@@ -653,7 +653,8 @@
     })()
   </script>
   <script>
-    // Mano 3D hecha de miles de partículas de colores: se arma al cargar y se desintegra al hacer scroll
+    // Figura 3D hecha de miles de partículas de colores. Arranca como mano, al bajar se desintegra
+    // y al volver a subir se arma en la figura siguiente: mano → colibrí → lamparita → cohete → "g" de GUGA
     (function () {
       var lienzo = document.getElementById('mano')
       if (!lienzo || !window.THREE) return
@@ -670,70 +671,166 @@
       camara.position.set(0, 0.6, 12)
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 
-      // Forma de la mano: palma, cinco dedos y muñeca que nace desde el borde inferior
-      var partes = [
-        { tipo: 'palma', peso: 0.30 },
-        { tipo: 'dedo', a: [-0.72, 0.95], ang: -11, largo: 1.75, r: 0.23, peso: 0.085 },
-        { tipo: 'dedo', a: [-0.24, 1.0], ang: -3, largo: 1.98, r: 0.24, peso: 0.095 },
-        { tipo: 'dedo', a: [0.24, 0.97], ang: 5, largo: 1.82, r: 0.23, peso: 0.09 },
-        { tipo: 'dedo', a: [0.70, 0.88], ang: 14, largo: 1.38, r: 0.2, peso: 0.07 },
-        { tipo: 'dedo', a: [-0.98, -0.2], ang: -52, largo: 1.4, r: 0.27, peso: 0.08 },
-        { tipo: 'dedo', a: [0.0, -1.1], ang: 180, largo: 2.6, r: 0.66, peso: 0.18 }
-      ]
       var TOTAL = window.innerWidth < 640 ? 7000 : 13000
-      var pos = new Float32Array(TOTAL * 3)
-      var dispersion = new Float32Array(TOTAL * 3)
-      var colores = new Float32Array(TOTAL * 3)
-      var tamanios = new Float32Array(TOTAL)
-      var semillas = new Float32Array(TOTAL)
       var color = new THREE.Color()
       var paletaImprenta = ['#00AEEF', '#EC008C', '#FFE600', '#149b8e', '#f97316', '#8b5cf6']
 
-      function puntoDedo(p) {
-        var rad = (p.ang * Math.PI) / 180
-        var dx = Math.sin(rad), dy = Math.cos(rad)
-        var t = Math.random() * p.largo
-        var th = Math.random() * Math.PI * 2
-        var r = p.r * (Math.random() < 0.75 ? 0.92 + Math.random() * 0.08 : Math.random())
-        // Punta redondeada
-        var punta = t > p.largo - p.r ? Math.sqrt(Math.max(0, 1 - Math.pow((t - (p.largo - p.r)) / p.r, 2))) : 1
-        var ox = Math.cos(th) * r * punta, oz = Math.sin(th) * r * punta * 0.8
-        return [p.a[0] + dx * t + ox * dy, p.a[1] + dy * t - ox * dx, oz]
+      // Arcoíris recorriendo la figura + puntos de tinta CMYK
+      function colorArcoiris(x, y, desfase) {
+        if (Math.random() < 0.18) return color.set(paletaImprenta[Math.floor(Math.random() * paletaImprenta.length)])
+        return color.setHSL((desfase + y * 0.11 + x * 0.06 + Math.random() * 0.05 + 2) % 1, 0.92, 0.55)
       }
 
-      function puntoPalma() {
-        var x, y
-        do { x = Math.random() * 2 - 1; y = Math.random() * 2.2 - 1.15 } while (Math.pow(Math.abs(x), 4) + Math.pow(Math.abs(y / 1.15), 4) > 1)
-        var cara = Math.random() < 0.7
-        var z = cara ? (Math.random() < 0.5 ? -1 : 1) * (0.3 - Math.random() * 0.04) : (Math.random() * 2 - 1) * 0.3
-        return [x * 1.02, y, z]
+      // Degradado del logo (verde azulado → amarillo → naranja → rojo) de arriba hacia abajo
+      var degradadoLogo = ['#0e9f97', '#25b9a5', '#f5b70b', '#f97316', '#e11d2e'].map(function (c) { return new THREE.Color(c) })
+      function colorLogo(y, arriba, abajo) {
+        var t = Math.min(1, Math.max(0, (arriba - y) / (arriba - abajo))) * (degradadoLogo.length - 1)
+        var i = Math.min(degradadoLogo.length - 2, Math.floor(t))
+        return color.copy(degradadoLogo[i]).lerp(degradadoLogo[i + 1], t - i)
       }
 
+      // --- Mano (forma 3D: palma, cinco dedos y muñeca) ---
+      function figuraMano() {
+        var partes = [
+          { tipo: 'palma', peso: 0.30 },
+          { tipo: 'dedo', a: [-0.72, 0.95], ang: -11, largo: 1.75, r: 0.23, peso: 0.085 },
+          { tipo: 'dedo', a: [-0.24, 1.0], ang: -3, largo: 1.98, r: 0.24, peso: 0.095 },
+          { tipo: 'dedo', a: [0.24, 0.97], ang: 5, largo: 1.82, r: 0.23, peso: 0.09 },
+          { tipo: 'dedo', a: [0.70, 0.88], ang: 14, largo: 1.38, r: 0.2, peso: 0.07 },
+          { tipo: 'dedo', a: [-0.98, -0.2], ang: -52, largo: 1.4, r: 0.27, peso: 0.08 },
+          { tipo: 'dedo', a: [0.0, -1.1], ang: 180, largo: 2.6, r: 0.66, peso: 0.18 }
+        ]
+        function puntoDedo(p) {
+          var rad = (p.ang * Math.PI) / 180
+          var dx = Math.sin(rad), dy = Math.cos(rad)
+          var t = Math.random() * p.largo
+          var th = Math.random() * Math.PI * 2
+          var r = p.r * (Math.random() < 0.75 ? 0.92 + Math.random() * 0.08 : Math.random())
+          var punta = t > p.largo - p.r ? Math.sqrt(Math.max(0, 1 - Math.pow((t - (p.largo - p.r)) / p.r, 2))) : 1
+          var ox = Math.cos(th) * r * punta, oz = Math.sin(th) * r * punta * 0.8
+          return [p.a[0] + dx * t + ox * dy, p.a[1] + dy * t - ox * dx, oz]
+        }
+        function puntoPalma() {
+          var x, y
+          do { x = Math.random() * 2 - 1; y = Math.random() * 2.2 - 1.15 } while (Math.pow(Math.abs(x), 4) + Math.pow(Math.abs(y / 1.15), 4) > 1)
+          var z = Math.random() < 0.7 ? (Math.random() < 0.5 ? -1 : 1) * (0.3 - Math.random() * 0.04) : (Math.random() * 2 - 1) * 0.3
+          return [x * 1.02, y, z]
+        }
+        var pos = new Float32Array(TOTAL * 3), col = new Float32Array(TOTAL * 3)
+        for (var i = 0; i < TOTAL; i++) {
+          var azar = Math.random(), acum = 0, parte = partes[0]
+          for (var k = 0; k < partes.length; k++) { acum += partes[k].peso; if (azar <= acum) { parte = partes[k]; break } }
+          var p = parte.tipo === 'palma' ? puntoPalma() : puntoDedo(parte)
+          pos.set(p, i * 3)
+          colorArcoiris(p[0], p[1], 0.58)
+          col[i * 3] = color.r; col[i * 3 + 1] = color.g; col[i * 3 + 2] = color.b
+        }
+        return { pos: pos, col: col, desvanecerBase: 1 }
+      }
+
+      // --- Figuras dibujadas en 2D y convertidas en partículas con volumen ---
+      function figuraSilueta(dibujar, opciones) {
+        var tam = 256
+        var c = document.createElement('canvas')
+        c.width = c.height = tam
+        var ctx = c.getContext('2d')
+        ctx.fillStyle = '#000'
+        ctx.strokeStyle = '#000'
+        dibujar(ctx)
+        var datos = ctx.getImageData(0, 0, tam, tam).data
+        var dentro = []
+        for (var py = 0; py < tam; py++) for (var px = 0; px < tam; px++) if (datos[(py * tam + px) * 4 + 3] > 128) dentro.push(px, py)
+        var escala = 5.8 / tam, centroY = -0.35
+        var pos = new Float32Array(TOTAL * 3), col = new Float32Array(TOTAL * 3)
+        var cantidad = dentro.length / 2
+        for (var i = 0; i < TOTAL; i++) {
+          var k = Math.floor(Math.random() * cantidad) * 2
+          var x = (dentro[k] + Math.random() - tam / 2) * escala
+          var y = -(dentro[k + 1] + Math.random() - tam / 2) * escala + centroY
+          var z = (Math.random() < 0.7 ? (Math.random() < 0.5 ? -1 : 1) * (0.92 + Math.random() * 0.08) : Math.random() * 2 - 1) * 0.32
+          pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z
+          if (opciones.logo) colorLogo(y, centroY + 2.2, centroY - 2.9)
+          else colorArcoiris(x, y, opciones.desfase)
+          col[i * 3] = color.r; col[i * 3 + 1] = color.g; col[i * 3 + 2] = color.b
+        }
+        return { pos: pos, col: col, desvanecerBase: 0 }
+      }
+
+      function figuraColibri() {
+        return figuraSilueta(function (ctx) {
+          ctx.beginPath(); ctx.moveTo(90, 98); ctx.lineTo(12, 88); ctx.lineTo(90, 108); ctx.fill()           // pico
+          ctx.beginPath(); ctx.arc(102, 102, 19, 0, Math.PI * 2); ctx.fill()                                 // cabeza
+          ctx.beginPath(); ctx.ellipse(118, 116, 24, 19, 0.3, 0, Math.PI * 2); ctx.fill()                   // pecho
+          ctx.beginPath(); ctx.ellipse(146, 138, 52, 23, 0.62, 0, Math.PI * 2); ctx.fill()                  // cuerpo
+          ctx.beginPath(); ctx.moveTo(120, 116); ctx.quadraticCurveTo(116, 48, 168, 16); ctx.quadraticCurveTo(162, 82, 140, 122); ctx.fill() // ala de atrás
+          ctx.beginPath(); ctx.moveTo(130, 120); ctx.quadraticCurveTo(152, 40, 232, 10); ctx.quadraticCurveTo(196, 84, 152, 132); ctx.fill() // ala de adelante
+          ctx.beginPath(); ctx.moveTo(176, 162); ctx.lineTo(224, 214); ctx.lineTo(204, 224); ctx.lineTo(164, 174); ctx.fill()               // cola
+          ctx.beginPath(); ctx.moveTo(170, 168); ctx.lineTo(190, 238); ctx.lineTo(172, 240); ctx.lineTo(158, 176); ctx.fill()
+        }, { desfase: 0.32 })
+      }
+
+      function figuraLamparita() {
+        return figuraSilueta(function (ctx) {
+          ctx.beginPath(); ctx.arc(128, 104, 62, 0, Math.PI * 2); ctx.fill()                                 // vidrio
+          ctx.beginPath(); ctx.moveTo(90, 142); ctx.lineTo(166, 142); ctx.lineTo(154, 184); ctx.lineTo(102, 184); ctx.fill() // cuello
+          ;[[102, 188, 52], [104, 204, 48], [110, 220, 36]].forEach(function (r) { ctx.fillRect(r[0], r[1], r[2], 11) }) // rosca
+          ctx.fillRect(119, 234, 18, 10)
+          ctx.lineWidth = 9; ctx.lineCap = 'round'                                                            // rayos de la idea
+          for (var a = -160; a <= -20; a += 35) {
+            var r = (a * Math.PI) / 180
+            ctx.beginPath(); ctx.moveTo(128 + Math.cos(r) * 78, 104 + Math.sin(r) * 78); ctx.lineTo(128 + Math.cos(r) * 100, 104 + Math.sin(r) * 100); ctx.stroke()
+          }
+        }, { desfase: 0.08 })
+      }
+
+      function figuraCohete() {
+        return figuraSilueta(function (ctx) {
+          ctx.translate(128, 128); ctx.rotate(0.55); ctx.translate(-128, -128)
+          ctx.beginPath(); ctx.moveTo(128, 18); ctx.bezierCurveTo(172, 50, 174, 120, 160, 174); ctx.lineTo(96, 174); ctx.bezierCurveTo(82, 120, 84, 50, 128, 18); ctx.fill() // cuerpo
+          ctx.beginPath(); ctx.moveTo(100, 126); ctx.lineTo(62, 192); ctx.lineTo(98, 176); ctx.fill()           // aletas
+          ctx.beginPath(); ctx.moveTo(156, 126); ctx.lineTo(194, 192); ctx.lineTo(158, 176); ctx.fill()
+          ctx.beginPath(); ctx.moveTo(104, 180); ctx.quadraticCurveTo(128, 252, 152, 180); ctx.fill()            // fuego
+          ctx.globalCompositeOperation = 'destination-out'
+          ctx.beginPath(); ctx.arc(128, 88, 15, 0, Math.PI * 2); ctx.fill()                                    // ventanita
+        }, { desfase: 0.82 })
+      }
+
+      function figuraG() {
+        return figuraSilueta(function (ctx) {
+          ctx.font = '900 250px Inter, Arial, sans-serif'
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'alphabetic'
+          ctx.fillText('g', 128, 172)
+        }, { logo: true })
+      }
+
+      var creadores = [figuraMano, figuraColibri, figuraLamparita, figuraCohete, figuraG]
+      var figuras = [figuraMano()]
+      function obtenerFigura(i) { return figuras[i] || (figuras[i] = creadores[i]()) }
+      // Las demás se preparan cuando la fuente ya cargó (la "g" usa Inter)
+      ;(document.fonts ? document.fonts.ready : Promise.resolve()).then(function () {
+        setTimeout(function () { for (var i = 1; i < creadores.length; i++) obtenerFigura(i) }, 300)
+      })
+
+      // Hacia dónde vuela cada partícula al desintegrarse (igual para todas las figuras)
+      var dispersion = new Float32Array(TOTAL * 3)
+      var tamanios = new Float32Array(TOTAL)
+      var semillas = new Float32Array(TOTAL)
+      var base = figuras[0].pos
       for (var i = 0; i < TOTAL; i++) {
-        var azar = Math.random(), acum = 0, parte = partes[0]
-        for (var k = 0; k < partes.length; k++) { acum += partes[k].peso; if (azar <= acum) { parte = partes[k]; break } }
-        var p = parte.tipo === 'palma' ? puntoPalma() : puntoDedo(parte)
-        pos[i * 3] = p[0]; pos[i * 3 + 1] = p[1]; pos[i * 3 + 2] = p[2]
-
-        // Hacia dónde vuela cada partícula al desintegrarse
-        var dir = new THREE.Vector3(p[0] + (Math.random() - 0.5) * 2, p[1] + (Math.random() - 0.3) * 2, p[2] + (Math.random() - 0.5) * 3).normalize()
+        var dir = new THREE.Vector3(base[i * 3] + (Math.random() - 0.5) * 2, base[i * 3 + 1] + (Math.random() - 0.3) * 2, base[i * 3 + 2] + (Math.random() - 0.5) * 3).normalize()
         var dist = 3.5 + Math.random() * 9
         dispersion[i * 3] = dir.x * dist
         dispersion[i * 3 + 1] = dir.y * dist + 2.5
         dispersion[i * 3 + 2] = dir.z * dist + Math.random() * 4
-
-        // Arcoíris recorriendo la mano + puntos de tinta CMYK
-        if (Math.random() < 0.18) color.set(paletaImprenta[Math.floor(Math.random() * paletaImprenta.length)])
-        else color.setHSL((0.58 + p[1] * 0.11 + p[0] * 0.06 + Math.random() * 0.05 + 1) % 1, 0.92, 0.55)
-        colores[i * 3] = color.r; colores[i * 3 + 1] = color.g; colores[i * 3 + 2] = color.b
         tamanios[i] = 0.55 + Math.random() * 1.1
         semillas[i] = Math.random()
       }
 
       var geo = new THREE.BufferGeometry()
-      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(figuras[0].pos), 3))
       geo.setAttribute('aDispersion', new THREE.BufferAttribute(dispersion, 3))
-      geo.setAttribute('aColor', new THREE.BufferAttribute(colores, 3))
+      geo.setAttribute('aColor', new THREE.BufferAttribute(new Float32Array(figuras[0].col), 3))
       geo.setAttribute('aTamanio', new THREE.BufferAttribute(tamanios, 1))
       geo.setAttribute('aSemilla', new THREE.BufferAttribute(semillas, 1))
 
@@ -741,7 +838,8 @@
         uIntro: { value: animar ? 1 : 0 },
         uScroll: { value: 0 },
         uTiempo: { value: 0 },
-        uTamanio: { value: 34 * renderer.getPixelRatio() }
+        uTamanio: { value: 34 * renderer.getPixelRatio() },
+        uDesvanecerBase: { value: 1 }
       }
       var material = new THREE.ShaderMaterial({
         uniforms: uniformes,
@@ -749,7 +847,7 @@
         depthWrite: false,
         vertexShader: [
           'attribute vec3 aDispersion; attribute vec3 aColor; attribute float aTamanio; attribute float aSemilla;',
-          'uniform float uIntro; uniform float uScroll; uniform float uTiempo; uniform float uTamanio;',
+          'uniform float uIntro; uniform float uScroll; uniform float uTiempo; uniform float uTamanio; uniform float uDesvanecerBase;',
           'varying vec3 vColor; varying float vAlfa;',
           'void main() {',
           '  float avance = max(uIntro, uScroll);',
@@ -762,7 +860,8 @@
           '  gl_Position = projectionMatrix * mv;',
           '  gl_PointSize = uTamanio * aTamanio * (1.0 + p * 1.5) / -mv.z;',
           '  vColor = aColor;',
-          '  vAlfa = (1.0 - smoothstep(0.45, 1.0, p)) * mix(smoothstep(-3.7, -2.5, position.y), 1.0, p);',
+          '  float base = mix(1.0, smoothstep(-3.7, -2.5, position.y), uDesvanecerBase);',
+          '  vAlfa = (1.0 - smoothstep(0.45, 1.0, p)) * mix(base, 1.0, p);',
           '}'
         ].join('\n'),
         fragmentShader: [
@@ -775,15 +874,32 @@
         ].join('\n')
       })
 
-      var mano = new THREE.Points(geo, material)
+      var particulas = new THREE.Points(geo, material)
+      particulas.frustumCulled = false
       var grupo = new THREE.Group()
-      grupo.add(mano)
+      grupo.add(particulas)
       var ALTURA_MANO = 0.5
       grupo.position.y = ALTURA_MANO
       grupo.rotation.set(-0.12, -0.35, 0.08)
       escena.add(grupo)
 
-      // El lienzo cubre toda la portada (las partículas vuelan libres); la mano se ubica en el hueco .mano-3d
+      // Cambia a la figura siguiente (se hace con todo desintegrado, así no se nota el salto)
+      var actual = 0
+      // La mano tiene volumen y se luce girada; las figuras planas se leen mejor casi de frente
+      var giroBase = -0.35, giroOnda = 0.18
+      function siguienteFigura() {
+        actual = (actual + 1) % creadores.length
+        var fig = obtenerFigura(actual)
+        geo.attributes.position.array.set(fig.pos)
+        geo.attributes.position.needsUpdate = true
+        geo.attributes.aColor.array.set(fig.col)
+        geo.attributes.aColor.needsUpdate = true
+        uniformes.uDesvanecerBase.value = fig.desvanecerBase
+        giroBase = fig.desvanecerBase ? -0.35 : -0.06
+        giroOnda = fig.desvanecerBase ? 0.18 : 0.1
+      }
+
+      // El lienzo cubre toda la portada (las partículas vuelan libres); la figura se ubica en el hueco .mano-3d
       var hueco = document.querySelector('.mano-3d')
       function ajustar() {
         var w = lienzo.clientWidth, h = lienzo.clientHeight
@@ -809,13 +925,17 @@
       }, { passive: true })
 
       var visible = true
+      var yaCambio = false
       var reloj = new THREE.Clock()
       function dibujar() {
+        var s = uniformes.uScroll.value
+        // Desintegrada del todo: queda lista la próxima figura para cuando vuelvas a subir
+        if (s > 0.9 && !yaCambio) { siguienteFigura(); yaCambio = true }
+        if (s < 0.4) yaCambio = false
         if (visible) {
           var t = reloj.getElapsedTime()
           uniformes.uTiempo.value = t
-          var s = uniformes.uScroll.value
-          grupo.rotation.y += ((-0.35 + Math.sin(t * 0.4) * 0.18 + mouse.x * 0.5 + s * 1.6) - grupo.rotation.y) * 0.06
+          grupo.rotation.y += ((giroBase + Math.sin(t * 0.4) * giroOnda + mouse.x * 0.3 + s * 1.6) - grupo.rotation.y) * 0.06
           grupo.rotation.x += ((-0.12 + mouse.y * 0.25 - s * 0.3) - grupo.rotation.x) * 0.06
           grupo.position.y = ALTURA_MANO + Math.sin(t * 0.8) * 0.08 + s * 1.4
           renderer.render(escena, camara)
@@ -830,7 +950,7 @@
 
       // Se arma desde una nube de colores al entrar a la página
       gsap.to(uniformes.uIntro, { value: 0, duration: 2.6, ease: 'power3.out', delay: 0.4 })
-      // Se desintegra a medida que bajás, y se vuelve a armar si subís
+      // Se desintegra a medida que bajás, y al subir se arma (en la figura siguiente si se había desarmado del todo)
       gsap.to(uniformes.uScroll, {
         value: 1,
         ease: 'none',
@@ -839,7 +959,7 @@
           start: 'center 55%',
           end: 'bottom top',
           scrub: 1.2,
-          onUpdate: function (st) { visible = st.progress < 1 }
+          onUpdate: function (st) { visible = st.progress < 1 || uniformes.uScroll.value < 1 }
         }
       })
       requestAnimationFrame(dibujar)
