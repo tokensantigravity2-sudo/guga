@@ -127,7 +127,7 @@
     .ubicacion-corta { display: inline-flex; align-items: center; gap: 8px; margin-top: 26px; font-size: 14px; color: var(--texto-3); font-weight: 600; }
     .ubicacion-corta svg { width: 18px; height: 18px; color: var(--naranja); }
 
-    .mano-3d { position: relative; height: 640px; margin-bottom: -90px; align-self: end; }
+    .mano-3d { position: relative; height: 620px; align-self: center; margin-top: -60px; }
     #mano { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
     .portada .contenedor { z-index: 1; }
     .chip {
@@ -653,8 +653,8 @@
     })()
   </script>
   <script>
-    // Figura 3D hecha de miles de partículas de colores. Arranca como mano, al bajar se desintegra
-    // y al volver a subir se arma en la figura siguiente: mano → colibrí → lamparita → cohete → "g" de GUGA
+    // Figura 3D hecha de miles de partículas de colores. Arranca como la "g" de GUGA, al bajar se desintegra
+    // y al volver a subir se arma en la figura siguiente: "g" → mano → colibrí → lamparita → cohete
     (function () {
       var lienzo = document.getElementById('mano')
       if (!lienzo || !window.THREE) return
@@ -804,13 +804,9 @@
         }, { logo: true })
       }
 
-      var creadores = [figuraMano, figuraColibri, figuraLamparita, figuraCohete, figuraG]
-      var figuras = [figuraMano()]
+      var creadores = [figuraG, figuraMano, figuraColibri, figuraLamparita, figuraCohete]
+      var figuras = [figuraG()]
       function obtenerFigura(i) { return figuras[i] || (figuras[i] = creadores[i]()) }
-      // Las demás se preparan cuando la fuente ya cargó (la "g" usa Inter)
-      ;(document.fonts ? document.fonts.ready : Promise.resolve()).then(function () {
-        setTimeout(function () { for (var i = 1; i < creadores.length; i++) obtenerFigura(i) }, 300)
-      })
 
       // Hacia dónde vuela cada partícula al desintegrarse (igual para todas las figuras)
       var dispersion = new Float32Array(TOTAL * 3)
@@ -839,7 +835,7 @@
         uScroll: { value: 0 },
         uTiempo: { value: 0 },
         uTamanio: { value: 34 * renderer.getPixelRatio() },
-        uDesvanecerBase: { value: 1 }
+        uDesvanecerBase: { value: figuras[0].desvanecerBase }
       }
       var material = new THREE.ShaderMaterial({
         uniforms: uniformes,
@@ -878,18 +874,16 @@
       particulas.frustumCulled = false
       var grupo = new THREE.Group()
       grupo.add(particulas)
-      var ALTURA_MANO = 0.5
+      var ALTURA_MANO = 0.9
       grupo.position.y = ALTURA_MANO
-      grupo.rotation.set(-0.12, -0.35, 0.08)
+      grupo.rotation.set(-0.12, -0.06, 0.04)
       escena.add(grupo)
 
       // Cambia a la figura siguiente (se hace con todo desintegrado, así no se nota el salto)
       var actual = 0
       // La mano tiene volumen y se luce girada; las figuras planas se leen mejor casi de frente
-      var giroBase = -0.35, giroOnda = 0.18
-      function siguienteFigura() {
-        actual = (actual + 1) % creadores.length
-        var fig = obtenerFigura(actual)
+      var giroBase = -0.06, giroOnda = 0.1
+      function aplicarFigura(fig) {
         geo.attributes.position.array.set(fig.pos)
         geo.attributes.position.needsUpdate = true
         geo.attributes.aColor.array.set(fig.col)
@@ -898,6 +892,18 @@
         giroBase = fig.desvanecerBase ? -0.35 : -0.06
         giroOnda = fig.desvanecerBase ? 0.18 : 0.1
       }
+      function siguienteFigura() {
+        actual = (actual + 1) % creadores.length
+        aplicarFigura(obtenerFigura(actual))
+      }
+
+      // La "g" usa la fuente Inter: cuando termina de cargar se rehace con la letra correcta
+      // y se preparan las demás figuras
+      ;(document.fonts ? document.fonts.ready : Promise.resolve()).then(function () {
+        figuras[0] = figuraG()
+        if (actual === 0) aplicarFigura(figuras[0])
+        setTimeout(function () { for (var i = 1; i < creadores.length; i++) obtenerFigura(i) }, 300)
+      })
 
       // El lienzo cubre toda la portada (las partículas vuelan libres); la figura se ubica en el hueco .mano-3d
       var hueco = document.querySelector('.mano-3d')
