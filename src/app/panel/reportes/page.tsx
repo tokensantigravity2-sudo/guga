@@ -383,9 +383,10 @@ export default function ReportesPage() {
       const isCobradoFlag = p.cobrado === true || (p.notas || '').includes('[COBRADO:true]')
       const totalP = Number(p.total) || 0
 
-      // Si fue marcado como cobrado pero no tiene movimientos explícitos en caja
+      // Si fue marcado como cobrado pero no tiene ningún movimiento en caja. Si tiene cobros en otro mes,
+      // esos cobros ya cuentan en su propio período (si no, el mismo pedido se sumaba dos veces)
       let montoCobradoPeriodo = montoCajaPeriodo
-      if (montoCobradoPeriodo === 0 && isCobradoFlag && creadoEnPeriodo) {
+      if (montoCobradoPeriodo === 0 && totalHistoricoCaja === 0 && isCobradoFlag && creadoEnPeriodo) {
         montoCobradoPeriodo = totalP
       }
 
