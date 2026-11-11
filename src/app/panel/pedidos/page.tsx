@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase, fetchAll } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { Servicio, Cliente, PedidoItem, Pedido, StockItem, VariableServicio, EscalaPrecio } from '@/lib/types'
-import { formatCurrency, formatDateTime, generateNumeroPedido, ESTADOS_PEDIDO, cleanProductDescription, formatProductUnit, parseVariantesTag } from '@/lib/helpers'
+import { formatCurrency, formatDate, formatDateTime, generateNumeroPedido, ESTADOS_PEDIDO, cleanProductDescription, formatProductUnit, parseVariantesTag, leerVencimientoPago } from '@/lib/helpers'
 import {
   Plus, Minus, ShoppingCart, Search, X, Trash2,
   CreditCard, Banknote, ArrowLeftRight, Printer,
@@ -33,6 +33,7 @@ export default function PedidosPage() {
   const [metodoPago, setMetodoPago] = useState('efectivo')
   const [estadoPedido, setEstadoPedido] = useState('presupuesto')
   const [fechaEntrega, setFechaEntrega] = useState('')
+  const [vencimientoPago, setVencimientoPago] = useState('')
   const [notas, setNotas] = useState('')
   const [categoriaFilter, setCategoriaFilter] = useState('')
   const [productSearch, setProductSearch] = useState('')
@@ -190,6 +191,7 @@ export default function PedidosPage() {
     setMetodoPago(p.metodo_pago || 'efectivo')
     setEstadoPedido(p.estado || 'presupuesto')
     setFechaEntrega(p.fecha_entrega ? p.fecha_entrega.split('T')[0] : '')
+    setVencimientoPago(leerVencimientoPago(p.notas))
 
     const descMatch = (p.notas || '').match(/\[Desc:\s*(\d+)%\]/)
     setDescuentoPorcentaje(p.descuento_porcentaje || (descMatch ? Number(descMatch[1]) : 0))
@@ -204,6 +206,7 @@ export default function PedidosPage() {
       .replace(/\[Adicional:.*?\]/g, '')
       .replace(/\[\+IVA.*?\]/g, '')
       .replace(/\[COBRADO:true\]/g, '')
+      .replace(/\[VencePago:[^\]]*\]/g, '')
       .trim()
     setNotas(cleanNotas)
     setActiveTab('nuevo')
@@ -378,6 +381,7 @@ export default function PedidosPage() {
     setIncluirIva(false)
     setNotas('')
     setFechaEntrega('')
+    setVencimientoPago('')
   }
 
   const handleCrearPedido = async () => {
@@ -392,7 +396,8 @@ export default function PedidosPage() {
     const ivaTag = incluirIva ? `[+IVA 22%]` : null
     const isTotalPaid = montoSena >= total && total > 0
     const cobradoTag = isTotalPaid ? '[COBRADO:true]' : null
-    const notasFinal = [notas, descTag, adicTag, ivaTag, cobradoTag].filter(Boolean).join(' ') || null
+    const vencePagoTag = vencimientoPago ? `[VencePago: ${vencimientoPago}]` : null
+    const notasFinal = [notas, descTag, adicTag, ivaTag, cobradoTag, vencePagoTag].filter(Boolean).join(' ') || null
     let pedidoData: any = {
       numero,
       cliente_id: selectedCliente?.id || null,
@@ -1133,15 +1138,29 @@ export default function PedidosPage() {
                 )}
               </div>
 
-              {/* Fecha Entrega */}
-              <div className="form-group" style={{ marginBottom: 12 }}>
-                <label>Fecha Estimada de Entrega</label>
-                <input
-                  className="input"
-                  type="date"
-                  value={fechaEntrega}
-                  onChange={e => setFechaEntrega(e.target.value)}
-                />
+              {/* Fecha de entrega y vencimiento del pago (pueden ser distintas) */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label>Fecha de entrega</label>
+                  <input
+                    className="input"
+                    type="date"
+                    value={fechaEntrega}
+                    onChange={e => setFechaEntrega(e.target.value)}
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label>Vence el pago</label>
+                  <input
+                    className="input"
+                    type="date"
+                    value={vencimientoPago}
+                    onChange={e => setVencimientoPago(e.target.value)}
+                  />
+                </div>
+                <div style={{ gridColumn: '1 / -1', fontSize: 11, color: 'var(--text-muted)', marginTop: -2 }}>
+                  Si no cargás el vencimiento del pago, se toma la fecha de entrega.
+                </div>
               </div>
 
               {/* Descuento (%) & Adicional (%) */}
@@ -1551,7 +1570,14 @@ export default function PedidosPage() {
                             ))}
                           </select>
                         </td>
-                        <td>{p.fecha_entrega ? formatDateTime(p.fecha_entrega) : '—'}</td>
+                        <td>
+                          {p.fecha_entrega ? formatDateTime(p.fecha_entrega) : '—'}
+                          {leerVencimientoPago(p.notas) && (
+                            <div style={{ fontSize: 11, color: 'var(--warning)', fontWeight: 600, marginTop: 2 }}>
+                              Vence pago: {formatDate(leerVencimientoPago(p.notas))}
+                            </div>
+                          )}
+                        </td>
                         <td><span className="badge badge-neutral">{p.metodo_pago}</span></td>
                         <td>
                           {isCobrado ? (

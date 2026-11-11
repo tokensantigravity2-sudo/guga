@@ -18,7 +18,8 @@ import {
   Calendar as CalendarIcon,
   CheckSquare,
   Store,
-  ExternalLink
+  ExternalLink,
+  Globe,
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -38,6 +39,7 @@ export default function Sidebar() {
       items: [
         { name: 'Pedidos CRM', icon: ShoppingCart, href: '/panel/pedidos' },
         { name: 'E-commerce', icon: Store, href: '/panel/ecommerce', highlight: true },
+        { name: 'Página web', icon: Globe, href: '/panel/web' },
         { name: 'Notas & Tareas', icon: CheckSquare, href: '/panel/pendientes' },
         { name: 'Gastos', icon: DollarSign, href: '/panel/gastos' },
       ],

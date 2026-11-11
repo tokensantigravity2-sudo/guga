@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase, fetchAll } from '@/lib/supabase'
 import Header from '@/components/Header'
-import { formatCurrency, formatDate, getTodayStr, proyectarGastosFijos, esGastoFijo } from '@/lib/helpers'
+import { formatCurrency, formatDate, getTodayStr, proyectarGastosFijos, esGastoFijo, vencimientoDelPedido } from '@/lib/helpers'
 import { Pedido, Gasto, StockItem, Cliente, CajaMovimiento } from '@/lib/types'
 import {
   BarChart3, TrendingUp, TrendingDown, DollarSign, ShoppingCart,
@@ -66,6 +66,7 @@ interface PedidoCobradoDetalle {
   estadoPedido: string
   metodoPago: string
   fechaEntrega?: string
+  fechaVencimiento?: string // límite de pago (si no se cargó, la fecha de entrega)
   tipoSaldo?: 'sena' | 'cuenta_corriente' | 'sin_cobrar' | 'saldado'
   estadoVencimiento?: 'vencido' | 'hoy' | 'a_vencer' | 'sin_fecha'
   items?: any[]
@@ -126,6 +127,7 @@ export default function ReportesPage() {
     descuentos: 0,
     inventarioValor: 0,
     cajaSaldo: 0,
+    entradasCaja: 0,
   })
 
   // Ganancia Neta al día de la fecha (HOY)
@@ -308,7 +310,7 @@ export default function ReportesPage() {
       const saldoPend = Math.max(0, totalP - totalHistoricoCaja)
 
       if (saldoPend > 0) {
-        const fechaEnt = p.fecha_entrega ? p.fecha_entrega.substring(0, 10) : ''
+        const fechaEnt = vencimientoDelPedido(p)
         let estVenc: 'vencido' | 'hoy' | 'a_vencer' | 'sin_fecha' = 'sin_fecha'
         if (fechaEnt) {
           if (fechaEnt < todayStr) {
@@ -343,6 +345,7 @@ export default function ReportesPage() {
           estadoPedido: p.estado || 'aprobado',
           metodoPago: p.metodo_pago || 'efectivo',
           fechaEntrega: p.fecha_entrega,
+          fechaVencimiento: vencimientoDelPedido(p),
           tipoSaldo: tipoSald,
           estadoVencimiento: estVenc,
           items: p.items || []
@@ -354,7 +357,7 @@ export default function ReportesPage() {
     todosSaldosPendientes.sort((a, b) => {
       if (a.estadoVencimiento === 'vencido' && b.estadoVencimiento !== 'vencido') return -1
       if (a.estadoVencimiento !== 'vencido' && b.estadoVencimiento === 'vencido') return 1
-      return new Date(a.fechaEntrega || a.fecha || 0).getTime() - new Date(b.fechaEntrega || b.fecha || 0).getTime()
+      return new Date(a.fechaVencimiento || a.fecha || 0).getTime() - new Date(b.fechaVencimiento || b.fecha || 0).getTime()
     })
     setSaldosPendientesList(todosSaldosPendientes)
 
@@ -405,7 +408,7 @@ export default function ReportesPage() {
           else totalSenas += montoCobradoPeriodo
         }
 
-        const fechaEnt = p.fecha_entrega ? p.fecha_entrega.substring(0, 10) : ''
+        const fechaEnt = vencimientoDelPedido(p)
         let estVenc: 'vencido' | 'hoy' | 'a_vencer' | 'sin_fecha' = 'sin_fecha'
         if (fechaEnt) {
           if (fechaEnt < todayStr) estVenc = 'vencido'
@@ -429,6 +432,7 @@ export default function ReportesPage() {
           estadoPedido: p.estado || 'aprobado',
           metodoPago: p.metodo_pago || (movsEnPeriodo[0] ? extractMetodoPago(movsEnPeriodo[0]) : 'efectivo'),
           fechaEntrega: p.fecha_entrega,
+          fechaVencimiento: vencimientoDelPedido(p),
           tipoSaldo: tipoSald,
           estadoVencimiento: estVenc,
           items: p.items || []
@@ -457,6 +461,7 @@ export default function ReportesPage() {
     const ticketPromedio = pedidosCount > 0 ? Math.round(totalVentasFacturadas / pedidosCount) : 0
     const inventarioValor = stockRaw.reduce((sum, s) => sum + (Number(s.cantidad) * Number(s.costo_unitario || 0)), 0)
     const cajaSaldoTotal = cajaFiltrada.reduce((sum, c) => sum + (c.tipo === 'ingreso' ? Number(c.monto) : -Number(c.monto)), 0)
+    const entradasCaja = cajaFiltrada.filter(c => c.tipo === 'ingreso').reduce((sum, c) => sum + Number(c.monto), 0)
 
     setResumen({
       ventasFacturadas: totalVentasFacturadas,
@@ -488,6 +493,7 @@ export default function ReportesPage() {
       descuentos: 0,
       inventarioValor,
       cajaSaldo: cajaSaldoTotal,
+      entradasCaja,
     })
 
     // 2. Gráfico por Meses (Evolución de Ingresos Cobrados vs Egresos)
@@ -711,73 +717,50 @@ export default function ReportesPage() {
           )}
         </div>
 
-        {/* KPIs Grid */}
-        <div className="grid-stats" style={{ marginBottom: 24 }}>
-          <div className="stat-card">
-            <div className="stat-icon" style={{ background: 'var(--success-muted)', color: 'var(--success)' }}>
-              <TrendingUp size={22} />
-            </div>
-            <div>
-              <div className="stat-label">Dinero Cobrado en Caja</div>
-              <div className="stat-value" style={{ color: 'var(--success)' }}>{formatCurrency(resumen.ingresos)}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                {formatCurrency(resumen.ingresosPagosCompletos)} cobros 100% · {formatCurrency(resumen.ingresosSenas)} señas · {formatCurrency(resumen.cajaIngresosDirectos)} mostrador
-              </div>
-            </div>
-          </div>
-
-          <div className="stat-card">
-            <div className="stat-icon" style={{ background: 'rgba(245, 158, 11, 0.12)', color: '#d97706' }}>
-              <CreditCard size={22} />
-            </div>
-            <div>
-              <div className="stat-label">Saldo Pendiente a Cobrar</div>
-              <div className="stat-value" style={{ color: '#d97706' }}>{formatCurrency(resumen.saldoPorCobrar)}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                {formatCurrency(resumen.saldoSenas)} en señas · {formatCurrency(resumen.saldoCuentasCorrientes)} ctas. corrientes · {formatCurrency(resumen.saldoSinCobrar)} sin cobrar
-              </div>
-              <div style={{ fontSize: 11, color: resumen.saldoVencido > 0 ? '#dc2626' : 'var(--success)', marginTop: 2, fontWeight: 600 }}>
-                {resumen.saldoVencido > 0 ? `⚠️ ${formatCurrency(resumen.saldoVencido)} vencido a la fecha` : '✓ Sin saldos vencidos'}
-              </div>
-            </div>
-          </div>
-
-          <div className="stat-card">
-            <div className="stat-icon" style={{ background: 'var(--danger-muted)', color: 'var(--danger)' }}>
-              <TrendingDown size={22} />
-            </div>
-            <div>
-              <div className="stat-label">Gastos & Egresos Totales</div>
-              <div className="stat-value" style={{ color: 'var(--danger)' }}>{formatCurrency(resumen.gastos)}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                {formatCurrency(resumen.gastosTabla)} operativos + {formatCurrency(resumen.egresosCaja)} salidas de caja
-              </div>
-              {resumen.gastosFijos > 0 && (
-                <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                  Incluye {formatCurrency(resumen.gastosFijos)} de gastos fijos del mes
+        {/* Resumen: Entrada − Salida − Gastos Fijos = Ganancia Neta */}
+        {(() => {
+          const salida = resumen.gastos - resumen.gastosFijos
+          const otrosGastos = salida - resumen.egresosCaja
+          const ganancia = resumen.entradasCaja - salida - resumen.gastosFijos
+          const tarjetas = [
+            { titulo: 'Entrada', valor: resumen.entradasCaja, color: '#16a34a', detalle: 'Entradas de caja' },
+            { titulo: 'Salida', valor: salida, color: '#dc2626', detalle: 'Salidas de caja', extra: otrosGastos > 0 ? `Incluye ${formatCurrency(otrosGastos)} de otros gastos` : '' },
+            { titulo: 'Gastos Fijos', valor: resumen.gastosFijos, color: '#dc2626', detalle: 'Gastos fijos del mes' },
+            {
+              titulo: 'Pendiente de cobro', valor: resumen.saldoPorCobrar, color: '#ea8a0c', detalle: 'Señas / Cta. Cte. / Sin cobrar',
+              extra: `${formatCurrency(resumen.saldoSenas)} · ${formatCurrency(resumen.saldoCuentasCorrientes)} · ${formatCurrency(resumen.saldoSinCobrar)}`,
+              alerta: resumen.saldoVencido > 0 ? `${formatCurrency(resumen.saldoVencido)} vencido` : ''
+            },
+            { titulo: 'Ganancia Neta', valor: ganancia, color: ganancia >= 0 ? '#16a34a' : '#dc2626', detalle: 'Entrada − Salida − Gastos Fijos' },
+          ]
+          return (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14, marginBottom: 24 }}>
+              {tarjetas.map(t => (
+                <div
+                  key={t.titulo}
+                  style={{
+                    background: 'var(--bg-card, #ffffff)',
+                    border: '1.5px solid #b8bec8',
+                    borderRadius: 20,
+                    padding: '20px 14px',
+                    textAlign: 'center',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    gap: 4,
+                    minHeight: 150
+                  }}
+                >
+                  <div style={{ fontSize: 22, fontWeight: 800, color: t.color, lineHeight: 1.1 }}>{t.titulo}</div>
+                  <div style={{ fontSize: 26, fontWeight: 900, color: t.color, letterSpacing: '-0.02em' }}>{formatCurrency(t.valor)}</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: '#6b6b6b' }}>{t.detalle}</div>
+                  {t.extra && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t.extra}</div>}
+                  {t.alerta && <div style={{ fontSize: 11, color: '#dc2626', fontWeight: 700 }}>⚠️ {t.alerta}</div>}
                 </div>
-              )}
+              ))}
             </div>
-          </div>
-
-          <div className="stat-card">
-            <div className="stat-icon" style={{
-              background: resumen.gananciaCaja >= 0 ? 'rgba(22, 163, 74, 0.1)' : 'rgba(220, 38, 38, 0.1)',
-              color: resumen.gananciaCaja >= 0 ? 'var(--success)' : 'var(--danger)'
-            }}>
-              <DollarSign size={22} />
-            </div>
-            <div>
-              <div className="stat-label">Ganancia Neta</div>
-              <div className="stat-value" style={{ color: resumen.gananciaCaja >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                {formatCurrency(resumen.gananciaCaja)}
-              </div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                Cobrado ({formatCurrency(resumen.ingresos)}) − Gastos ({formatCurrency(resumen.gastos)})
-              </div>
-            </div>
-          </div>
-        </div>
+          )
+        })()}
 
         {/* TABLA DETALLADA: SALDOS PENDIENTES POR COBRAR (SEÑAS Y CUENTAS CORRIENTES A VENCIMIENTO) */}
         <div className="card" style={{ marginBottom: 24 }}>
@@ -878,7 +861,8 @@ export default function ReportesPage() {
                     <th>Total</th>
                     <th>Cobrado (Seña)</th>
                     <th>Saldo a Cobrar</th>
-                    <th>Vencimiento / Entrega</th>
+                    <th>Entrega</th>
+                    <th>Vence el pago</th>
                     <th>Estado Pedido</th>
                   </tr>
                 </thead>
@@ -925,10 +909,13 @@ export default function ReportesPage() {
                         <td>
                           <strong style={{ color: '#d97706', fontSize: 14 }}>{formatCurrency(s.saldoPendiente)}</strong>
                         </td>
+                        <td style={{ fontSize: 12.5 }}>
+                          {s.fechaEntrega ? formatDate(s.fechaEntrega.substring(0, 10)) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                        </td>
                         <td>
                           {s.estadoVencimiento === 'vencido' ? (
                             <span className="badge badge-danger" style={{ fontWeight: 700 }}>
-                              ⚠️ Vencido ({s.fechaEntrega ? formatDate(s.fechaEntrega) : 'Pasado'})
+                              ⚠️ Vencido ({s.fechaVencimiento ? formatDate(s.fechaVencimiento) : 'Pasado'})
                             </span>
                           ) : s.estadoVencimiento === 'hoy' ? (
                             <span className="badge badge-warning" style={{ fontWeight: 700 }}>
@@ -936,7 +923,7 @@ export default function ReportesPage() {
                             </span>
                           ) : s.estadoVencimiento === 'a_vencer' ? (
                             <span className="badge badge-success">
-                              Vence {s.fechaEntrega ? formatDate(s.fechaEntrega) : ''}
+                              Vence {s.fechaVencimiento ? formatDate(s.fechaVencimiento) : ''}
                             </span>
                           ) : (
                             <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Sin fecha asignada</span>

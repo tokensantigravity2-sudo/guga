@@ -301,6 +301,7 @@ export default function PresupuestoPDFModal({ pedido, cliente, onClose }: Presup
   let notasLimpias = (pedido.notas || '')
     .replace(/\[TIENDA ONLINE\]/gi, '')
     .replace(/\[COBRADO:true\]/gi, '')
+    .replace(/\[VencePago:[^\]]*\]/gi, '')
     .replace(/\[Desc:.*?\]/gi, '')
     .replace(/\[Adicional:.*?\]/gi, '')
     .replace(/\[\+IVA.*?\]/gi, '')

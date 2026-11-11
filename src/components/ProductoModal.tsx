@@ -57,6 +57,7 @@ export default function ProductoModal({ servicio, imagenUrl, onClose, onAdd }: P
   const [escala, setEscala] = useState<EscalaPrecio | null>(ordenarEscalas(variantes[0]?.escalas)[0] || null)
   const [tiradas, setTiradas] = useState(1)
   const [unidades, setUnidades] = useState(1)
+  const [verMas, setVerMas] = useState(false)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -74,6 +75,7 @@ export default function ProductoModal({ servicio, imagenUrl, onClose, onAdd }: P
   const cantidad = escala ? escala.cantidad * tiradas : unidades
   const subtotal = escala ? escala.precio * tiradas : unidades * Number(servicio.precio_base || 0)
   const descripcion = cleanProductDescription(servicio.descripcion)
+  const descripcionLarga = descripcion.length > 240
   const escalas = ordenarEscalas(variante?.escalas)
   const unidad = servicio.unidad && !['unidad', 'u', 'u.', 'unidades'].includes(servicio.unidad.toLowerCase()) ? ` (${servicio.unidad})` : ''
 
@@ -91,6 +93,7 @@ export default function ProductoModal({ servicio, imagenUrl, onClose, onAdd }: P
 
   return (
     <div
+      className="producto-modal-overlay"
       onClick={onClose}
       style={{
         position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', zIndex: 110,
@@ -98,6 +101,7 @@ export default function ProductoModal({ servicio, imagenUrl, onClose, onAdd }: P
       }}
     >
       <div
+        className="producto-modal-box"
         onClick={(e) => e.stopPropagation()}
         style={{
           backgroundColor: '#ffffff', borderRadius: '20px', width: '100%', maxWidth: '560px', maxHeight: '92vh',
@@ -117,9 +121,9 @@ export default function ProductoModal({ servicio, imagenUrl, onClose, onAdd }: P
           <X size={18} />
         </button>
 
-        <img src={imagenUrl} alt={servicio.nombre} style={{ width: '100%', height: '220px', objectFit: 'cover', display: 'block' }} />
+        <img className="producto-modal-img" src={imagenUrl} alt={servicio.nombre} style={{ width: '100%', height: '220px', objectFit: 'cover', display: 'block' }} />
 
-        <div style={{ padding: '20px 22px 22px' }}>
+        <div className="producto-modal-body" style={{ padding: '20px 22px 0' }}>
           <div style={{ fontSize: '11px', fontWeight: 800, color: '#149b8e', textTransform: 'uppercase' }}>{servicio.categoria}</div>
           <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', margin: '4px 0 6px', lineHeight: 1.25 }}>{servicio.nombre}</h2>
           {servicio.tiempo_estimado && (
@@ -129,7 +133,21 @@ export default function ProductoModal({ servicio, imagenUrl, onClose, onAdd }: P
             </div>
           )}
           {descripcion && (
-            <p style={{ fontSize: '13.5px', color: '#475569', lineHeight: 1.5, margin: '12px 0 0', whiteSpace: 'pre-line' }}>{descripcion}</p>
+            <>
+              <p style={{
+                fontSize: '13.5px', color: '#475569', lineHeight: 1.5, margin: '12px 0 0', whiteSpace: 'pre-line',
+                ...(descripcionLarga && !verMas ? { display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' } : {})
+              }}>{descripcion}</p>
+              {descripcionLarga && (
+                <button
+                  type="button"
+                  onClick={() => setVerMas(v => !v)}
+                  style={{ background: 'none', border: 'none', padding: '4px 0 0', color: '#149b8e', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  {verMas ? 'Ver menos' : 'Ver más'}
+                </button>
+              )}
+            </>
           )}
 
           {variantes.length > 0 && (
@@ -201,8 +219,10 @@ export default function ProductoModal({ servicio, imagenUrl, onClose, onAdd }: P
             )}
           </div>
 
-          <div style={{
-            marginTop: '22px', paddingTop: '16px', borderTop: '1px solid #e2e8f0',
+          {/* Total + botón: quedan fijos abajo mientras se desplaza la ventana */}
+          <div className="producto-modal-footer" style={{
+            position: 'sticky', bottom: 0, backgroundColor: '#ffffff', zIndex: 2,
+            margin: '22px -22px 0', padding: '14px 22px 18px', borderTop: '1px solid #e2e8f0',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px'
           }}>
             <div>

@@ -33,7 +33,8 @@ export default function WhatsAppWidget({
       setIsVibrating(true)
       setTimeout(() => setIsVibrating(false), 900)
 
-      // 2. Expand button
+      // 2. Expand button (en el celular no: taparía los productos, queda solo el ícono)
+      if (window.matchMedia('(max-width: 640px)').matches) return
       setIsExpanded(true)
 
       // 3. Auto-close after 4.5s if not hovered
@@ -75,6 +76,7 @@ export default function WhatsAppWidget({
       `}</style>
 
       <div
+        className="wpp-widget"
         onMouseEnter={() => {
           isHoveredRef.current = true
           setIsExpanded(true)
@@ -111,6 +113,7 @@ export default function WhatsAppWidget({
           href={whatsappUrl}
           target="_blank"
           rel="noopener noreferrer"
+          className="wpp-widget-btn"
           style={{
             height: '56px',
             backgroundColor: '#25d366',

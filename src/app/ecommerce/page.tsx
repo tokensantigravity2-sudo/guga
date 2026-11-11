@@ -775,7 +775,7 @@ export default function TiendaPage() {
       <main style={{ maxWidth: '1360px', margin: '0 auto', padding: '16px 16px' }}>
 
         {/* HERO SECTION WITH TITLE & SEARCH */}
-        <div style={{
+        <div className="tienda-hero-row" style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -791,14 +791,16 @@ export default function TiendaPage() {
               letterSpacing: '-0.02em',
               margin: 0
             }}>
-              Encuentra lo que necesitas
+              {storeConfig.tituloTienda || TEXTOS_PIE_TIENDA.tituloTienda}
             </h1>
-            <p style={{ color: '#64748b', fontSize: '13px', margin: '3px 0 0 0' }}>
-              Catálogo oficial de productos, formatos y presupuestos de <strong>GUGA Imprenta</strong>
-            </p>
+            {storeConfig.subtituloTienda && (
+              <p style={{ color: '#64748b', fontSize: '13px', margin: '3px 0 0 0' }}>
+                {storeConfig.subtituloTienda}
+              </p>
+            )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <div className="tienda-hero-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             {/* Mobile Filter Button (Visible on screens <= 960px) */}
             <button
               type="button"
@@ -1412,7 +1414,7 @@ export default function TiendaPage() {
                         />
 
                         {/* Category Badge with Vector Line Icon */}
-                        <div style={{
+                        <div className="product-card-badge" style={{
                           position: 'absolute',
                           top: '8px',
                           left: '8px',
@@ -1454,7 +1456,7 @@ export default function TiendaPage() {
                           </h4>
 
                           {srv.tiempo_estimado && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b', marginBottom: '10px' }}>
+                            <div className="product-card-entrega" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b', marginBottom: '10px' }}>
                               <Clock size={12} />
                               <span>Entrega: {srv.tiempo_estimado}</span>
                             </div>

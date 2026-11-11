@@ -198,7 +198,7 @@
     .tarjeta h3 { margin: 18px 0 6px; font-size: 16.5px; }
     .tarjeta p { margin: 0; color: var(--texto-3); font-size: 14px; }
 
-    .pasos { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 48px; }
+    .pasos { position: relative; display: grid; grid-template-columns: repeat(var(--columnas, 3), 1fr); gap: 22px; margin-top: 48px; }
     .pasos-linea { position: absolute; top: 46px; left: 16%; right: 16%; height: 3px; background: var(--degradado); border-radius: 3px; transform-origin: left; }
     .paso { position: relative; padding: 28px; border-radius: 20px; border: 1px solid var(--borde); background: #ffffff; text-align: center; }
     .numero {
@@ -324,15 +324,16 @@
   </style>
 </head>
 <body>
+  <!-- Todo lo marcado con data-c / data-lista se completa con lo que se edita en Panel → Página web -->
   <header class="intro">
     <div class="contenedor barra">
-      <a href="#inicio" aria-label="GUGA Print"><img src="/logo-guga.png" alt="GUGA Print · Imprenta & Soluciones Gráficas" /></a>
+      <a href="#inicio" aria-label="GUGA Print"><img data-c-src="general.logo" src="/logo-guga.png" alt="GUGA Print · Imprenta & Soluciones Gráficas" /></a>
       <nav>
-        <a class="enlace" href="#nosotros">Nosotros</a>
-        <a class="enlace" href="#servicios">Servicios</a>
-        <a class="enlace" href="#como-pedir">Cómo pedir</a>
-        <a class="enlace" href="#ubicacion">Ubicación</a>
-        <a class="boton boton-principal boton-chico" href="/ecommerce">Ir a la tienda</a>
+        <a class="enlace" href="#nosotros" data-c="menu.nosotros">Nosotros</a>
+        <a class="enlace" href="#servicios" data-c="menu.servicios">Servicios</a>
+        <a class="enlace" href="#como-pedir" data-c="menu.comoPedir">Cómo pedir</a>
+        <a class="enlace" href="#ubicacion" data-c="menu.ubicacion">Ubicación</a>
+        <a class="boton boton-principal boton-chico" href="/ecommerce" data-c="menu.tienda">Ir a la tienda</a>
       </nav>
     </div>
   </header>
@@ -345,42 +346,42 @@
       <div class="contenedor portada-grilla">
         <div>
           <h1 class="intro">
-            <span class="linea"><span>Tu imprenta</span></span>
-            <span class="linea"><span>de confianza,</span></span>
-            <span class="linea"><span class="degradado-texto">de la idea al impreso</span></span>
+            <span class="linea"><span data-c="portada.titulo1">Tu imprenta</span></span>
+            <span class="linea"><span data-c="portada.titulo2">de confianza,</span></span>
+            <span class="linea"><span class="degradado-texto" data-c="portada.titulo3">de la idea al impreso</span></span>
           </h1>
-          <p class="bajada intro">Fabricamos tarjetas, folletos, talonarios, stickers, banners y etiquetas con la mayor calidad gráfica. Elegí tu producto en la tienda online o escribinos y te asesoramos.</p>
+          <p class="bajada intro" data-c="portada.bajada">Fabricamos tarjetas, folletos, talonarios, stickers, banners y etiquetas con la mayor calidad gráfica. Elegí tu producto en la tienda online o escribinos y te asesoramos.</p>
           <div class="acciones intro">
             <a class="boton boton-principal" href="/ecommerce">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
-              Ir a la tienda
+              <span data-c="portada.botonTienda">Ir a la tienda</span>
             </a>
-            <a class="boton boton-wpp" href="https://wa.me/59899724454?text=Hola%20GUGA%2C%20quiero%20hacer%20una%20consulta" target="_blank" rel="noopener">
+            <a class="boton boton-wpp" data-wpp="contacto.mensaje" href="https://wa.me/59899724454?text=Hola%20GUGA%2C%20quiero%20hacer%20una%20consulta" target="_blank" rel="noopener">
               <img src="/whatsapp.svg" alt="" />
-              Escribinos por WhatsApp
+              <span data-c="portada.botonWhatsapp">Escribinos por WhatsApp</span>
             </a>
           </div>
           <div class="ubicacion-corta intro">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.99-5.54 10.19-7.4 11.8a1 1 0 0 1-1.2 0C9.54 20.19 4 14.99 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
-            Chiossi y Luxemburgo, Maldonado
+            <span data-direccion>Chiossi y Luxemburgo, Maldonado</span>
           </div>
         </div>
 
         <div class="mano-3d">
           <div class="chip chip-1 intro">
             <div class="chip-icono"><img src="/whatsapp.svg" alt="" /></div>
-            <div>Pedidos por WhatsApp<small>Te asesoramos al instante</small></div>
+            <div><span data-c="portada.chip1Titulo">Pedidos por WhatsApp</span><small data-c="portada.chip1Texto">Te asesoramos al instante</small></div>
           </div>
           <div class="chip chip-2 intro">
             <div class="chip-icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg></div>
-            <div>Retiro o envío<small>En Maldonado</small></div>
+            <div><span data-c="portada.chip2Titulo">Retiro o envío</span><small data-c="portada.chip2Texto">En Maldonado</small></div>
           </div>
         </div>
       </div>
     </div>
 
     <div class="cinta" aria-hidden="true">
-      <div class="cinta-pista">
+      <div class="cinta-pista" data-lista="cinta">
         <div class="cinta-grupo"><span>Tarjetas</span><i></i><span>Folletos</span><i></i><span>Talonarios</span><i></i><span>Stickers</span><i></i><span>Banners</span><i></i><span>Packaging</span><i></i><span>Papelería</span><i></i><span>Diseño</span><i></i></div>
         <div class="cinta-grupo"><span>Tarjetas</span><i></i><span>Folletos</span><i></i><span>Talonarios</span><i></i><span>Stickers</span><i></i><span>Banners</span><i></i><span>Packaging</span><i></i><span>Papelería</span><i></i><span>Diseño</span><i></i></div>
       </div>
@@ -389,14 +390,14 @@
     <section id="nosotros">
       <div class="contenedor nosotros">
         <div class="nosotros-foto revelar">
-          <img class="parallax" src="https://images.unsplash.com/photo-1563986768609-322da13575f3?w=1000&auto=format&fit=crop&q=80" alt="Trabajo en el taller de impresión" />
+          <img class="parallax" data-c-src="nosotros.foto" src="https://images.unsplash.com/photo-1563986768609-322da13575f3?w=1000&auto=format&fit=crop&q=80" alt="Trabajo en el taller de impresión" />
         </div>
         <div>
-          <span class="antetitulo revelar">Quiénes somos</span>
-          <h2 class="titulo-seccion revelar">Una imprenta cerca tuyo, en Maldonado</h2>
-          <p class="texto-seccion revelar">En GUGA Print somos una imprenta y estudio de soluciones gráficas. Acompañamos a emprendedores, comercios y empresas para que su marca se vea bien en cada impreso: desde una tarjeta personal hasta un banner o el packaging de sus productos.</p>
-          <p class="texto-seccion revelar" style="margin-top: 14px;">Te asesoramos en papel, formato y terminaciones, y nos ocupamos de que el trabajo llegue a tiempo.</p>
-          <div class="datos">
+          <span class="antetitulo revelar" data-c="nosotros.antetitulo">Quiénes somos</span>
+          <h2 class="titulo-seccion revelar" data-c="nosotros.titulo">Una imprenta cerca tuyo, en Maldonado</h2>
+          <p class="texto-seccion revelar" data-c="nosotros.parrafo1">En GUGA Print somos una imprenta y estudio de soluciones gráficas. Acompañamos a emprendedores, comercios y empresas para que su marca se vea bien en cada impreso: desde una tarjeta personal hasta un banner o el packaging de sus productos.</p>
+          <p class="texto-seccion revelar" style="margin-top: 14px;" data-c="nosotros.parrafo2">Te asesoramos en papel, formato y terminaciones, y nos ocupamos de que el trabajo llegue a tiempo.</p>
+          <div class="datos" data-lista="nosotros.datos">
             <div class="dato revelar"><strong>Impresión digital y offset</strong><span>Tiradas chicas y grandes</span></div>
             <div class="dato revelar"><strong>Terminaciones</strong><span>Laminado mate, brillo y troquelado</span></div>
             <div class="dato revelar"><strong>Diseño</strong><span>Te ayudamos a preparar tu archivo</span></div>
@@ -408,10 +409,10 @@
 
     <section id="servicios" class="servicios">
       <div class="contenedor">
-        <span class="antetitulo revelar">Qué ofrecemos</span>
-        <h2 class="titulo-seccion revelar">Todo lo que tu negocio necesita imprimir</h2>
-        <p class="texto-seccion revelar">Elegí el producto, la terminación y la cantidad en nuestra tienda online.</p>
-        <div class="grilla">
+        <span class="antetitulo revelar" data-c="servicios.antetitulo">Qué ofrecemos</span>
+        <h2 class="titulo-seccion revelar" data-c="servicios.titulo">Todo lo que tu negocio necesita imprimir</h2>
+        <p class="texto-seccion revelar" data-c="servicios.texto">Elegí el producto, la terminación y la cantidad en nuestra tienda online.</p>
+        <div class="grilla" data-lista="servicios.items">
           <a class="tarjeta" href="/ecommerce">
             <div class="tarjeta-foto"><img src="https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&auto=format&fit=crop&q=80" alt="Tarjetas personales" loading="lazy" /></div>
             <div class="tarjeta-cuerpo">
@@ -482,50 +483,38 @@
 
     <section id="como-pedir">
       <div class="contenedor">
-        <span class="antetitulo revelar">Cómo pedir</span>
-        <h2 class="titulo-seccion revelar">En tres pasos tenés tu trabajo listo</h2>
-        <div class="pasos">
+        <span class="antetitulo revelar" data-c="pasos.antetitulo">Cómo pedir</span>
+        <h2 class="titulo-seccion revelar" data-c="pasos.titulo">En tres pasos tenés tu trabajo listo</h2>
+        <div class="pasos" data-lista="pasos.items">
           <div class="pasos-linea"></div>
-          <div class="paso">
-            <div class="numero">1</div>
-            <h3>Elegí tu producto</h3>
-            <p>Entrá a la tienda, elegí la opción y la cantidad que necesitás.</p>
-          </div>
-          <div class="paso">
-            <div class="numero">2</div>
-            <h3>Confirmá tu pedido</h3>
-            <p>Te contactamos por WhatsApp para coordinar el diseño y el pago.</p>
-          </div>
-          <div class="paso">
-            <div class="numero">3</div>
-            <h3>Retiralo o recibilo</h3>
-            <p>Pasá por el taller en Maldonado o te lo enviamos.</p>
-          </div>
+          <div class="paso"><div class="numero">1</div><h3>Elegí tu producto</h3><p>Entrá a la tienda, elegí la opción y la cantidad que necesitás.</p></div>
+          <div class="paso"><div class="numero">2</div><h3>Confirmá tu pedido</h3><p>Te contactamos por WhatsApp para coordinar el diseño y el pago.</p></div>
+          <div class="paso"><div class="numero">3</div><h3>Retiralo o recibilo</h3><p>Pasá por el taller en Maldonado o te lo enviamos.</p></div>
         </div>
       </div>
     </section>
 
     <section id="ubicacion" class="ubicacion">
       <div class="contenedor">
-        <span class="antetitulo revelar">Ubicación</span>
-        <h2 class="titulo-seccion revelar">Visitanos en Maldonado</h2>
+        <span class="antetitulo revelar" data-c="ubicacion.antetitulo">Ubicación</span>
+        <h2 class="titulo-seccion revelar" data-c="ubicacion.titulo">Visitanos en Maldonado</h2>
         <div class="ubicacion-grilla" style="margin-top: 36px;">
           <div class="direccion revelar">
-            <h3>Chiossi y Luxemburgo</h3>
-            <p>Maldonado, Uruguay. Coordiná el retiro de tu pedido por WhatsApp.</p>
+            <h3 data-c="contacto.direccion">Chiossi y Luxemburgo</h3>
+            <p data-c="ubicacion.texto">Maldonado, Uruguay. Coordiná el retiro de tu pedido por WhatsApp.</p>
             <div class="acciones">
-              <a class="boton boton-principal" href="https://www.google.com/maps/search/?api=1&query=Chiossi+y+Luxemburgo%2C+Maldonado%2C+Uruguay" target="_blank" rel="noopener">
+              <a class="boton boton-principal" data-mapa-link href="https://www.google.com/maps/search/?api=1&query=Chiossi+y+Luxemburgo%2C+Maldonado%2C+Uruguay" target="_blank" rel="noopener">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
-                Cómo llegar
+                <span data-c="ubicacion.botonMapa">Cómo llegar</span>
               </a>
-              <a class="boton boton-wpp" href="https://wa.me/59899724454?text=Hola%20GUGA%2C%20quiero%20coordinar%20un%20retiro" target="_blank" rel="noopener">
+              <a class="boton boton-wpp" data-wpp="ubicacion.mensajeWhatsapp" href="https://wa.me/59899724454?text=Hola%20GUGA%2C%20quiero%20coordinar%20un%20retiro" target="_blank" rel="noopener">
                 <img src="/whatsapp.svg" alt="" />
-                Coordinar retiro
+                <span data-c="ubicacion.botonWhatsapp">Coordinar retiro</span>
               </a>
             </div>
           </div>
           <div class="mapa revelar">
-            <iframe title="Mapa: Chiossi y Luxemburgo, Maldonado" src="https://www.google.com/maps?q=Chiossi%20y%20Luxemburgo%2C%20Maldonado%2C%20Uruguay&z=16&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+            <iframe data-mapa title="Mapa de la ubicación" src="https://www.google.com/maps?q=Chiossi%20y%20Luxemburgo%2C%20Maldonado%2C%20Uruguay&z=16&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
           </div>
         </div>
       </div>
@@ -533,13 +522,13 @@
 
     <section style="padding-bottom: 0;">
       <div class="llamado revelar">
-        <h2>¿Listo para tu próximo impreso?</h2>
-        <p>Mirá los productos y precios en la tienda, o consultanos lo que necesites.</p>
+        <h2 data-c="llamado.titulo">¿Listo para tu próximo impreso?</h2>
+        <p data-c="llamado.texto">Mirá los productos y precios en la tienda, o consultanos lo que necesites.</p>
         <div class="acciones">
-          <a class="boton boton-principal" href="/ecommerce">Ir a la tienda</a>
-          <a class="boton boton-wpp" href="https://wa.me/59899724454?text=Hola%20GUGA%2C%20quiero%20hacer%20una%20consulta" target="_blank" rel="noopener">
+          <a class="boton boton-principal" href="/ecommerce" data-c="llamado.botonTienda">Ir a la tienda</a>
+          <a class="boton boton-wpp" data-wpp="contacto.mensaje" href="https://wa.me/59899724454?text=Hola%20GUGA%2C%20quiero%20hacer%20una%20consulta" target="_blank" rel="noopener">
             <img src="/whatsapp-blanco.svg" alt="" />
-            WhatsApp
+            <span data-c="llamado.botonWhatsapp">WhatsApp</span>
           </a>
         </div>
       </div>
@@ -548,17 +537,17 @@
 
   <footer>
     <div class="contenedor pie">
-      <img src="/logo-guga.png" alt="GUGA Print" />
-      <div>Chiossi y Luxemburgo, Maldonado</div>
+      <img data-c-src="general.logo" src="/logo-guga.png" alt="GUGA Print" />
+      <div data-direccion>Chiossi y Luxemburgo, Maldonado</div>
       <div>
-        <a href="https://wa.me/59899724454" target="_blank" rel="noopener">WhatsApp 099 724 454</a>
+        <a data-wpp="" href="https://wa.me/59899724454" target="_blank" rel="noopener">WhatsApp <span data-c="contacto.whatsappVisible">099 724 454</span></a>
         &nbsp;·&nbsp;
-        <a href="/ecommerce">Tienda online</a>
+        <a href="/ecommerce" data-c="pie.enlaceTienda">Tienda online</a>
       </div>
     </div>
   </footer>
 
-  <a class="wpp-flotante" href="https://wa.me/59899724454?text=Hola%20GUGA%2C%20quiero%20hacer%20una%20consulta" target="_blank" rel="noopener" aria-label="Escribinos por WhatsApp">
+  <a class="wpp-flotante" data-wpp="contacto.mensaje" href="https://wa.me/59899724454?text=Hola%20GUGA%2C%20quiero%20hacer%20una%20consulta" target="_blank" rel="noopener" aria-label="Escribinos por WhatsApp">
     <img src="/whatsapp-blanco.svg" alt="" />
   </a>
 
@@ -582,74 +571,158 @@
       window.addEventListener('scroll', alScrollear, { passive: true })
       alScrollear()
 
-      // Si no hay animaciones (movimiento reducido o no cargó GSAP), todo queda visible y quieto
-      if (!raiz.classList.contains('animado') || !window.gsap || !window.ScrollTrigger) {
-        raiz.classList.remove('animado')
-        return
+      // Sin animaciones (movimiento reducido o no cargó GSAP) todo queda visible y quieto
+      var animar = raiz.classList.contains('animado') && window.gsap && window.ScrollTrigger
+      if (!animar) raiz.classList.remove('animado')
+
+      // ---------- Contenido editable desde Panel → Página web ----------
+      var ICONOS = {
+        tarjeta: '<rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/>',
+        folleto: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>',
+        talonario: '<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/>',
+        etiqueta: '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1"/>',
+        imagen: '<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+        caja: '<path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 7.7 4.73a2 2 0 0 0 2 0L20.7 7"/>',
+        sobre: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+        paleta: '<path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.13a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.55-2.5 5.55-5.55C21.97 6.01 17.46 2 12 2z"/><circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/>'
       }
-
-      gsap.registerPlugin(ScrollTrigger)
-
-      // Scroll suave con Lenis, sincronizado con ScrollTrigger
-      var lenis = window.Lenis ? new Lenis({ duration: 1.15, smoothWheel: true }) : null
-      if (lenis) {
-        lenis.on('scroll', ScrollTrigger.update)
-        gsap.ticker.add(function (t) { lenis.raf(t * 1000) })
-        gsap.ticker.lagSmoothing(0)
+      var valor = function (c, ruta) {
+        return ruta.split('.').reduce(function (o, k) { return o == null ? undefined : o[k] }, c)
       }
-
-      // Enlaces internos con scroll suave
-      document.querySelectorAll('a[href^="#"]').forEach(function (a) {
-        a.addEventListener('click', function (e) {
-          var destino = document.querySelector(a.getAttribute('href'))
-          if (!destino) return
-          e.preventDefault()
-          if (lenis) lenis.scrollTo(destino, { offset: -80 })
-          else destino.scrollIntoView({ behavior: 'smooth' })
+      var esc = function (t) {
+        return String(t == null ? '' : t).replace(/[&<>"']/g, function (ch) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
         })
-      })
+      }
+      var lista = function (clave, html) {
+        document.querySelectorAll('[data-lista="' + clave + '"]').forEach(function (el) { el.innerHTML = html })
+      }
 
-      // Intro de la portada
-      gsap.set('.intro', { visibility: 'visible' })
-      var intro = gsap.timeline({ defaults: { ease: 'power3.out' } })
-      intro
-        .from('header', { yPercent: -100, duration: 0.8, clearProps: 'transform' })
-        .from('h1 .linea > span', { yPercent: 110, duration: 1, stagger: 0.12 }, '-=0.4')
-        .from('.bajada', { y: 24, autoAlpha: 0, duration: 0.8 }, '-=0.6')
-        .from('.portada .acciones .boton', { y: 20, autoAlpha: 0, duration: 0.6, stagger: 0.1 }, '-=0.5')
-        .from('.ubicacion-corta', { autoAlpha: 0, duration: 0.6 }, '-=0.3')
-        .from('.chip', { scale: 0.6, autoAlpha: 0, duration: 0.7, stagger: 0.15, ease: 'back.out(1.7)' }, 1)
+      function aplicarContenido(c) {
+        document.querySelectorAll('[data-c]').forEach(function (el) {
+          var v = valor(c, el.getAttribute('data-c'))
+          if (typeof v === 'string') el.textContent = v
+        })
+        document.querySelectorAll('[data-c-src]').forEach(function (el) {
+          var v = valor(c, el.getAttribute('data-c-src'))
+          if (v) el.src = v
+        })
+        var telefono = String(c.contacto.whatsapp || '').replace(/\D/g, '')
+        document.querySelectorAll('[data-wpp]').forEach(function (el) {
+          var mensaje = el.getAttribute('data-wpp') ? valor(c, el.getAttribute('data-wpp')) : ''
+          el.href = 'https://wa.me/' + telefono + (mensaje ? '?text=' + encodeURIComponent(mensaje) : '')
+        })
+        document.querySelectorAll('[data-direccion]').forEach(function (el) {
+          el.textContent = [c.contacto.direccion, c.contacto.ciudad].filter(Boolean).join(', ')
+        })
+        var busqueda = encodeURIComponent(c.contacto.busquedaMapa || [c.contacto.direccion, c.contacto.ciudad].join(', '))
+        document.querySelectorAll('[data-mapa]').forEach(function (el) { el.src = 'https://www.google.com/maps?q=' + busqueda + '&z=16&output=embed' })
+        document.querySelectorAll('[data-mapa-link]').forEach(function (el) { el.href = 'https://www.google.com/maps/search/?api=1&query=' + busqueda })
 
-      // Manchas de color y chips flotando suave
-      gsap.to('.mancha-1', { x: -60, y: 40, duration: 9, repeat: -1, yoyo: true, ease: 'sine.inOut' })
-      gsap.to('.mancha-2', { x: 50, y: -30, duration: 11, repeat: -1, yoyo: true, ease: 'sine.inOut' })
-      gsap.to('.chip-1', { y: -10, duration: 2.6, repeat: -1, yoyo: true, ease: 'sine.inOut', delay: 2 })
-      gsap.to('.chip-2', { y: 10, duration: 3, repeat: -1, yoyo: true, ease: 'sine.inOut', delay: 2 })
+        if (c.general.tituloPagina) document.title = c.general.tituloPagina
+        var meta = document.querySelector('meta[name="description"]')
+        if (meta && c.general.descripcion) meta.setAttribute('content', c.general.descripcion)
 
-      // Cinta de servicios infinita
-      gsap.to('.cinta-pista', { xPercent: -50, duration: 28, ease: 'none', repeat: -1 })
+        var grupo = '<div class="cinta-grupo">' + (c.cinta || []).map(function (t) { return '<span>' + esc(t) + '</span><i></i>' }).join('') + '</div>'
+        lista('cinta', grupo + grupo)
 
-      // Aparición al hacer scroll
-      gsap.utils.toArray('.revelar').forEach(function (el) {
-        gsap.from(el, { y: 40, autoAlpha: 0, duration: 0.9, ease: 'power3.out', scrollTrigger: { trigger: el, start: 'top 88%' } })
-      })
+        lista('nosotros.datos', (c.nosotros.datos || []).map(function (d) {
+          return '<div class="dato revelar"><strong>' + esc(d.titulo) + '</strong><span>' + esc(d.texto) + '</span></div>'
+        }).join(''))
 
-      // Tarjetas de servicios de a grupos
-      gsap.set('.tarjeta', { y: 50, autoAlpha: 0 })
-      ScrollTrigger.batch('.tarjeta', {
-        start: 'top 90%',
-        onEnter: function (lote) { gsap.to(lote, { y: 0, autoAlpha: 1, duration: 0.8, stagger: 0.08, ease: 'power3.out', overwrite: true }) }
-      })
+        lista('servicios.items', (c.servicios.items || []).map(function (s) {
+          return '<a class="tarjeta" href="/ecommerce">' +
+            (s.foto ? '<div class="tarjeta-foto"><img src="' + esc(s.foto) + '" alt="' + esc(s.titulo) + '" loading="lazy" /></div>' : '') +
+            '<div class="tarjeta-cuerpo"><div class="icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+            (ICONOS[s.icono] || ICONOS.tarjeta) + '</svg></div><h3>' + esc(s.titulo) + '</h3><p>' + esc(s.texto) + '</p></div></a>'
+        }).join(''))
 
-      // Foto de nosotros con parallax interno
-      gsap.fromTo('.parallax', { yPercent: -8 }, { yPercent: 0, ease: 'none', scrollTrigger: { trigger: '.nosotros-foto', start: 'top bottom', end: 'bottom top', scrub: true } })
+        var pasos = c.pasos.items || []
+        document.querySelectorAll('[data-lista="pasos.items"]').forEach(function (el) { el.style.setProperty('--columnas', String(Math.max(1, pasos.length))) })
+        lista('pasos.items', '<div class="pasos-linea"></div>' + pasos.map(function (p, i) {
+          return '<div class="paso"><div class="numero">' + (i + 1) + '</div><h3>' + esc(p.titulo) + '</h3><p>' + esc(p.texto) + '</p></div>'
+        }).join(''))
+      }
 
-      // Línea que une los pasos y pasos que entran
-      gsap.from('.pasos-linea', { scaleX: 0, ease: 'none', scrollTrigger: { trigger: '.pasos', start: 'top 80%', end: 'top 40%', scrub: true } })
-      gsap.from('.paso', { y: 40, autoAlpha: 0, duration: 0.8, stagger: 0.15, ease: 'power3.out', scrollTrigger: { trigger: '.pasos', start: 'top 82%' } })
+      // Las animaciones esperan el contenido como máximo 2,5 s (mientras, se ve lo que viene escrito en la página).
+      // Si llega más tarde se aplica igual, sin la animación de entrada en las listas.
+      var pedido = window.fetch
+        ? fetch('/api/web', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null }).catch(function () { return null })
+        : Promise.resolve(null)
+      var aplicado = false
+      var aplicar = function (c) {
+        if (aplicado || !c || !c.contacto) return
+        aplicado = true
+        try { aplicarContenido(c) } catch (e) { console.warn('No se pudo aplicar el contenido de la web:', e) }
+      }
+      var limite = new Promise(function (resolver) { setTimeout(resolver, 2500) })
+      Promise.race([pedido, limite]).then(aplicar).then(function () { if (animar) iniciarAnimaciones() })
+      pedido.then(aplicar)
 
-      // Botón de WhatsApp entra al final de la intro
-      gsap.from('.wpp-flotante', { scale: 0, duration: 0.6, ease: 'back.out(2)', delay: 1.6 })
+      function iniciarAnimaciones() {
+        gsap.registerPlugin(ScrollTrigger)
+
+        // Scroll suave con Lenis, sincronizado con ScrollTrigger
+        var lenis = window.Lenis ? new Lenis({ duration: 1.15, smoothWheel: true }) : null
+        if (lenis) {
+          lenis.on('scroll', ScrollTrigger.update)
+          gsap.ticker.add(function (t) { lenis.raf(t * 1000) })
+          gsap.ticker.lagSmoothing(0)
+        }
+
+        // Enlaces internos con scroll suave
+        document.querySelectorAll('a[href^="#"]').forEach(function (a) {
+          a.addEventListener('click', function (e) {
+            var destino = document.querySelector(a.getAttribute('href'))
+            if (!destino) return
+            e.preventDefault()
+            if (lenis) lenis.scrollTo(destino, { offset: -80 })
+            else destino.scrollIntoView({ behavior: 'smooth' })
+          })
+        })
+
+        // Intro de la portada
+        gsap.set('.intro', { visibility: 'visible' })
+        var intro = gsap.timeline({ defaults: { ease: 'power3.out' } })
+        intro
+          .from('header', { yPercent: -100, duration: 0.8, clearProps: 'transform' })
+          .from('h1 .linea > span', { yPercent: 110, duration: 1, stagger: 0.12 }, '-=0.4')
+          .from('.bajada', { y: 24, autoAlpha: 0, duration: 0.8 }, '-=0.6')
+          .from('.portada .acciones .boton', { y: 20, autoAlpha: 0, duration: 0.6, stagger: 0.1 }, '-=0.5')
+          .from('.ubicacion-corta', { autoAlpha: 0, duration: 0.6 }, '-=0.3')
+          .from('.chip', { scale: 0.6, autoAlpha: 0, duration: 0.7, stagger: 0.15, ease: 'back.out(1.7)' }, 1)
+
+        // Manchas de color y carteles flotando suave
+        gsap.to('.mancha-1', { x: -60, y: 40, duration: 9, repeat: -1, yoyo: true, ease: 'sine.inOut' })
+        gsap.to('.mancha-2', { x: 50, y: -30, duration: 11, repeat: -1, yoyo: true, ease: 'sine.inOut' })
+        gsap.to('.chip-1', { y: -10, duration: 2.6, repeat: -1, yoyo: true, ease: 'sine.inOut', delay: 2 })
+        gsap.to('.chip-2', { y: 10, duration: 3, repeat: -1, yoyo: true, ease: 'sine.inOut', delay: 2 })
+
+        // Cinta de servicios infinita
+        gsap.to('.cinta-pista', { xPercent: -50, duration: 28, ease: 'none', repeat: -1 })
+
+        // Aparición al hacer scroll
+        gsap.utils.toArray('.revelar').forEach(function (el) {
+          gsap.from(el, { y: 40, autoAlpha: 0, duration: 0.9, ease: 'power3.out', scrollTrigger: { trigger: el, start: 'top 88%' } })
+        })
+
+        // Tarjetas de servicios de a grupos
+        gsap.set('.tarjeta', { y: 50, autoAlpha: 0 })
+        ScrollTrigger.batch('.tarjeta', {
+          start: 'top 90%',
+          onEnter: function (lote) { gsap.to(lote, { y: 0, autoAlpha: 1, duration: 0.8, stagger: 0.08, ease: 'power3.out', overwrite: true }) }
+        })
+
+        // Foto de nosotros con parallax interno
+        gsap.fromTo('.parallax', { yPercent: -8 }, { yPercent: 0, ease: 'none', scrollTrigger: { trigger: '.nosotros-foto', start: 'top bottom', end: 'bottom top', scrub: true } })
+
+        // Línea que une los pasos y pasos que entran
+        gsap.from('.pasos-linea', { scaleX: 0, ease: 'none', scrollTrigger: { trigger: '.pasos', start: 'top 80%', end: 'top 40%', scrub: true } })
+        gsap.from('.paso', { y: 40, autoAlpha: 0, duration: 0.8, stagger: 0.15, ease: 'power3.out', scrollTrigger: { trigger: '.pasos', start: 'top 82%' } })
+
+        // Botón de WhatsApp entra al final de la intro
+        gsap.from('.wpp-flotante', { scale: 0, duration: 0.6, ease: 'back.out(2)', delay: 1.6 })
+      }
     })()
   </script>
   <script>

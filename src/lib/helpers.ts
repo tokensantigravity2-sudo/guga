@@ -175,6 +175,18 @@ export const parseVariantesTag = (desc?: string): VariableServicio[] => {
 export const getVariantesServicio = (srv: { variantes?: VariableServicio[]; descripcion?: string }): VariableServicio[] =>
   Array.isArray(srv.variantes) && srv.variantes.length > 0 ? srv.variantes : parseVariantesTag(srv.descripcion);
 
+// Fecha límite de pago de un pedido (distinta de la fecha de entrega). Se guarda en las notas como
+// [VencePago: AAAA-MM-DD], igual que el descuento o el IVA, porque la tabla pedidos no tiene esa columna
+export const leerVencimientoPago = (notas?: string): string =>
+  (notas || '').match(/\[VencePago:\s*(\d{4}-\d{2}-\d{2})\]/)?.[1] || '';
+
+export const quitarVencimientoPago = (notas?: string): string =>
+  (notas || '').replace(/\[VencePago:[^\]]*\]/g, '').trim();
+
+// Vencimiento que rige para cobrar: el del pago si se cargó, si no la fecha de entrega
+export const vencimientoDelPedido = (p: { notas?: string; fecha_entrega?: string }): string =>
+  leerVencimientoPago(p.notas) || (p.fecha_entrega || '').substring(0, 10);
+
 // La tienda guarda teléfono, entrega y email también dentro de `notas`, porque la tabla pedidos
 // puede no tener esas columnas. Completa desde ahí los campos que no vengan de la base.
 export const completarPedidoTienda = <T extends Partial<Pedido>>(p: T): T => {

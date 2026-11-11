@@ -541,9 +541,14 @@ tbody td {
 /* Tienda Main Layout */
 .tienda-main-grid {
   display: grid;
-  grid-template-columns: 270px 1fr;
+  grid-template-columns: 270px minmax(0, 1fr);
   gap: 28px;
   align-items: start;
+}
+
+/* Sin esto, la barra de categorías (muy ancha) estira la columna y la página se corre al costado */
+.tienda-main-grid > * {
+  min-width: 0;
 }
 
 .tienda-sidebar-desktop {
@@ -560,7 +565,7 @@ tbody td {
 
 @media (max-width: 960px) {
   .tienda-main-grid {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: minmax(0, 1fr) !important;
     gap: 18px !important;
   }
 
@@ -568,15 +573,22 @@ tbody td {
     display: none !important;
   }
 
+  /* Chips de categorías: se deslizan con el dedo y llegan de borde a borde */
   .tienda-mobile-categories-bar {
     display: flex !important;
+    flex-wrap: nowrap;
     overflow-x: auto;
     white-space: nowrap;
     gap: 8px;
-    padding: 4px 2px 10px 2px;
-    margin-bottom: 16px;
+    max-width: none;
+    margin: 0 -16px 14px -16px;
+    padding: 4px 16px 8px 16px;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+  }
+  .tienda-mobile-categories-bar > button {
+    scroll-snap-align: start;
   }
   .tienda-mobile-categories-bar::-webkit-scrollbar {
     display: none;
@@ -600,15 +612,45 @@ tbody td {
     gap: 10px !important;
   }
 
+  .tienda-products-grid > div {
+    border-radius: 14px !important;
+  }
   .product-card-img-container {
-    height: 135px !important;
+    height: auto !important;
+    aspect-ratio: 1 / 1;
+  }
+  .product-card-badge {
+    font-size: 8.5px !important;
+    padding: 2px 5px !important;
+    top: 6px !important;
+    left: 6px !important;
+    max-width: calc(100% - 12px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .product-card-badge svg {
+    display: none;
   }
   .product-card-body {
     padding: 10px !important;
   }
   .product-card-title {
     font-size: 13px !important;
-    min-height: 32px !important;
+    min-height: 34px !important;
+  }
+  .product-card-entrega {
+    font-size: 10px !important;
+    margin-bottom: 6px !important;
+    min-width: 0;
+  }
+  .product-card-entrega span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .product-card-entrega svg {
+    flex-shrink: 0;
   }
   .product-card-price {
     font-size: 15px !important;
@@ -617,15 +659,38 @@ tbody td {
     font-size: 10px !important;
   }
   .product-card-btn {
-    padding: 7px 8px !important;
-    font-size: 11.5px !important;
+    padding: 8px 6px !important;
+    font-size: 12px !important;
+    border-radius: 10px !important;
+  }
+  .product-card-btn svg {
+    display: none;
+  }
+
+  /* Encabezado de la tienda: título más compacto y filtros/orden en una fila */
+  .tienda-hero-row {
+    margin-bottom: 12px !important;
+  }
+  .tienda-hero-row p {
+    display: none;
+  }
+  .tienda-hero-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 }
 
-@media (max-width: 370px) {
+@media (max-width: 330px) {
   .tienda-products-grid {
     grid-template-columns: 1fr !important;
     gap: 12px !important;
+  }
+}
+
+/* En pantallas táctiles no hay "hover": que las tarjetas no queden levantadas al tocarlas */
+@media (hover: none) {
+  .tienda-products-grid > div {
+    transform: none !important;
   }
 }
 
@@ -652,4 +717,51 @@ tbody td {
     grid-template-columns: 1fr !important;
     gap: 8px !important;
   }
+}
+
+/* Botón de WhatsApp en el celular: más chico y pegado a la esquina */
+@media (max-width: 640px) {
+  .wpp-widget {
+    bottom: 14px !important;
+    right: 14px !important;
+  }
+  .wpp-widget-btn {
+    height: 50px !important;
+    width: 50px !important;
+    min-width: 50px !important;
+    padding: 0 !important;
+  }
+}
+
+/* Ventana de producto en el celular: sube desde abajo, ocupa todo el ancho */
+@media (max-width: 640px) {
+  .producto-modal-overlay {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+  .producto-modal-box {
+    border-radius: 20px 20px 0 0 !important;
+    max-height: 94vh !important;
+    max-height: 94dvh !important;
+    animation: productoSubir 0.25s ease;
+  }
+  .producto-modal-img {
+    height: 190px !important;
+  }
+  .producto-modal-body {
+    padding: 16px 16px 0 !important;
+  }
+  .producto-modal-footer {
+    margin: 18px -16px 0 !important;
+    padding: 12px 16px calc(14px + env(safe-area-inset-bottom)) !important;
+    box-shadow: 0 -6px 16px rgba(15, 23, 42, 0.06);
+  }
+  .producto-modal-footer button {
+    padding: 12px 16px !important;
+    font-size: 14px !important;
+  }
+}
+@keyframes productoSubir {
+  from { transform: translateY(40px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }

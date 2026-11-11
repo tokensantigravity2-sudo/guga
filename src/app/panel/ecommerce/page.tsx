@@ -1515,6 +1515,19 @@ export default function EcommerceAdminPage() {
               </div>
 
               <div style={{ paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
+                <h4 style={{ fontSize: '14px', fontWeight: 800, margin: '0 0 2px' }}>Encabezado de la tienda</h4>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>El título grande que aparece arriba de los productos.</p>
+              </div>
+              <div>
+                <label>Título</label>
+                <input type="text" className="input" value={storeConfig.tituloTienda} onChange={(e) => setStoreConfig(prev => ({ ...prev, tituloTienda: e.target.value }))} />
+              </div>
+              <div>
+                <label>Subtítulo</label>
+                <input type="text" className="input" value={storeConfig.subtituloTienda} onChange={(e) => setStoreConfig(prev => ({ ...prev, subtituloTienda: e.target.value }))} />
+              </div>
+
+              <div style={{ paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
                 <h4 style={{ fontSize: '14px', fontWeight: 800, margin: '0 0 2px' }}>Pie de página de la tienda</h4>
                 <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>Lo que ven los clientes al final de la tienda.</p>
               </div>
