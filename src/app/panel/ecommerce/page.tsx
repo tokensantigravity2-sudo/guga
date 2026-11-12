@@ -1549,8 +1549,12 @@ export default function EcommerceAdminPage() {
                 <input type="text" className="input" value={storeConfig.textoConsultas} onChange={(e) => setStoreConfig(prev => ({ ...prev, textoConsultas: e.target.value }))} />
               </div>
               <div>
-                <label>Formas de pago</label>
-                <textarea className="input" rows={2} value={storeConfig.formasPago} onChange={(e) => setStoreConfig(prev => ({ ...prev, formasPago: e.target.value }))} />
+                <label>Datos para transferencia (única forma de pago)</label>
+                <textarea className="input" rows={4} value={storeConfig.datosTransferencia} onChange={(e) => setStoreConfig(prev => ({ ...prev, datosTransferencia: e.target.value }))} />
+              </div>
+              <div>
+                <label>Aviso de comprobante</label>
+                <input type="text" className="input" value={storeConfig.avisoComprobante} onChange={(e) => setStoreConfig(prev => ({ ...prev, avisoComprobante: e.target.value }))} />
               </div>
               <div>
                 <label>Texto final (©)</label>

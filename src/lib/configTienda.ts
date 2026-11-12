@@ -8,7 +8,10 @@ export const TEXTOS_PIE_TIENDA = {
   horarioRetiro: 'Retiro en taller: Lunes a Viernes 08:30 a 18:30hs',
   textoEnvios: 'Envíos a todo el país por agencia o cadetería',
   textoConsultas: 'Consultas directas al WhatsApp oficial',
-  formasPago: 'Aceptamos Efectivo contra entrega, Transferencias bancarias (BROU, Itaú, Santander) y Mercado Pago.',
+  formasPago: 'Transferencia bancaria',
+  // Única forma de pago de la tienda. Se muestra al finalizar la compra, en el pedido confirmado y en el pie
+  datosTransferencia: 'ITAÚ\nCA Pesos 8957876\nCA Dólares 8957860\nGustavo Gabriel Delgado Dominguez',
+  avisoComprobante: 'Enviar comprobante una vez realizada la transferencia o depósito',
   textoCopyright: 'GUGA Imprenta & Gráfica · Tienda Oficial',
 }
 

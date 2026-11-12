@@ -81,6 +81,17 @@ const CATEGORY_IMAGES: Record<string, string> = {
   'default': 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=600&auto=format&fit=crop&q=80'
 }
 
+// Datos para pagar por transferencia (la única forma de pago de la tienda)
+function DatosTransferencia({ datos, aviso }: { datos?: string; aviso?: string }) {
+  return (
+    <div style={{ padding: '12px 14px', borderRadius: '10px', border: '1.5px solid #149b8e', backgroundColor: 'rgba(20, 155, 142, 0.06)' }}>
+      <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#0f766e', marginBottom: '6px' }}>Transferencia bancaria</div>
+      <div style={{ fontSize: '13px', color: '#0f172a', lineHeight: 1.55, whiteSpace: 'pre-line', fontWeight: 600 }}>{datos}</div>
+      {aviso && <div style={{ fontSize: '12px', color: '#475569', marginTop: '8px' }}>📎 {aviso}</div>}
+    </div>
+  )
+}
+
 export default function TiendaPage() {
   const [servicios, setServicios] = useState<Servicio[]>([])
   const [loading, setLoading] = useState(true)
@@ -139,7 +150,7 @@ export default function TiendaPage() {
     direccion: '',
     email: '',
     metodoEntrega: 'retiro', // 'retiro' | 'envio'
-    metodoPago: 'efectivo',  // 'efectivo' | 'transferencia' | 'mercadopago'
+    metodoPago: 'transferencia',  // única forma de pago de la tienda
     notas: '',
   })
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false)
@@ -614,7 +625,7 @@ export default function TiendaPage() {
         `[TIENDA ONLINE]`,
         `Tel: ${checkoutForm.telefono.trim()}`,
         `Entrega: ${checkoutForm.metodoEntrega.toUpperCase()} (${checkoutForm.metodoEntrega === 'envio' ? (checkoutForm.direccion.trim() || 'Dirección no especificada') : 'Retiro en Local'})`,
-        `Pago: ${checkoutForm.metodoPago.toUpperCase()}`,
+        'Pago: TRANSFERENCIA BANCARIA',
         checkoutForm.email.trim() ? `Email: ${checkoutForm.email.trim()}` : null,
         shippingCost > 0 ? `Envío: $${shippingCost}` : null,
         checkoutForm.notas.trim() ? `Notas cliente: ${checkoutForm.notas.trim()}` : null
@@ -631,7 +642,7 @@ export default function TiendaPage() {
         subtotal: cartSubtotal,
         descuento: 0,
         total: cartTotal,
-        metodo_pago: checkoutForm.metodoPago,
+        metodo_pago: 'transferencia',
         estado: 'presupuesto',
         origen: 'ecommerce',
         notas: formattedNotas,
@@ -693,7 +704,7 @@ export default function TiendaPage() {
         cartTotal,
         checkoutForm.metodoEntrega,
         checkoutForm.direccion,
-        checkoutForm.metodoPago,
+        'Transferencia bancaria',
         checkoutForm.notas
       )
       const whatsappUrl = `https://wa.me/${STORE_PHONE}?text=${waEncoded}`
@@ -1698,7 +1709,7 @@ export default function TiendaPage() {
               Formas de Pago
             </h4>
             <p style={{ fontSize: '13px', lineHeight: '1.5', color: '#cbd5e1' }}>
-              {storeConfig.formasPago}
+              <span style={{ whiteSpace: 'pre-line' }}>{'Transferencia bancaria\n' + (storeConfig.datosTransferencia || '')}</span>
             </p>
           </div>
         </div>
@@ -2087,23 +2098,7 @@ export default function TiendaPage() {
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
                   Forma de Pago
                 </label>
-                <select
-                  value={checkoutForm.metodoPago}
-                  onChange={(e) => setCheckoutForm(prev => ({ ...prev, metodoPago: e.target.value }))}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    backgroundColor: '#f8fafc',
-                    fontSize: '13.5px',
-                    fontWeight: 600
-                  }}
-                >
-                  <option value="efectivo">Efectivo al recibir / retirar</option>
-                  <option value="transferencia">Transferencia Bancaria (BROU / Itaú / Santander)</option>
-                  <option value="mercadopago">Mercado Pago / Tarjeta de Débito/Crédito</option>
-                </select>
+                <DatosTransferencia datos={storeConfig.datosTransferencia} aviso={storeConfig.avisoComprobante} />
               </div>
 
               {/* Notes */}
@@ -2255,6 +2250,10 @@ export default function TiendaPage() {
               lineHeight: '1.5'
             }}>
               El pedido ya ingresó a la cola del CRM de <strong>GUGA Imprenta</strong>. Para acelerar la producción o enviarnos tus archivos de diseño, enviá el resumen por WhatsApp.
+            </div>
+
+            <div style={{ marginBottom: '24px', textAlign: 'left' }}>
+              <DatosTransferencia datos={storeConfig.datosTransferencia} aviso={storeConfig.avisoComprobante} />
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
