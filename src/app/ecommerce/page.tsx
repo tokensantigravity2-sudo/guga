@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Servicio, Pedido } from '@/lib/types'
-import { formatCurrency, generateNumeroEcommerce, formatWhatsAppMessage, LINEAS_IMPRENTA, formatProductUnit, cleanProductDescription, completarPedidoTienda, getVariantesServicio, LOGO_URL } from '@/lib/helpers'
+import { formatCurrency, generateNumeroEcommerce, formatWhatsAppMessage, LINEAS_IMPRENTA, formatProductUnit, cleanProductDescription, completarPedidoTienda, getVariantesServicio } from '@/lib/helpers'
 import {
   Search, ShoppingCart, Truck, User, Plus, Minus, Trash2,
   X, Check, Phone, MapPin,
@@ -1666,19 +1666,12 @@ export default function TiendaPage() {
           marginBottom: '30px'
         }}>
           <div>
-            <div style={{
-              display: 'inline-block',
-              backgroundColor: '#ffffff',
-              padding: '6px 14px',
-              borderRadius: '8px',
-              marginBottom: '14px'
-            }}>
-              <img
-                src={LOGO_URL}
-                alt="GUGA Imprenta & Gráfica"
-                style={{ height: '46px', maxWidth: '170px', width: 'auto', display: 'block', objectFit: 'contain' }}
-              />
-            </div>
+            {/* Logo con letras blancas, sin fondo, para el pie oscuro */}
+            <img
+              src="/logo-guga-blanco.png"
+              alt="GUGA Imprenta & Gráfica"
+              style={{ height: '54px', maxWidth: '200px', width: 'auto', display: 'block', objectFit: 'contain', marginBottom: '14px' }}
+            />
             <p style={{ fontSize: '13px', lineHeight: '1.5', color: '#cbd5e1' }}>
               {storeConfig.textoPie}
             </p>
