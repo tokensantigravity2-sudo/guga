@@ -368,14 +368,6 @@
         </div>
 
         <div class="mano-3d">
-          <div class="chip chip-1 intro">
-            <div class="chip-icono"><img src="/whatsapp.svg" alt="" /></div>
-            <div><span data-c="portada.chip1Titulo">Pedidos por WhatsApp</span><small data-c="portada.chip1Texto">Te asesoramos al instante</small></div>
-          </div>
-          <div class="chip chip-2 intro">
-            <div class="chip-icono"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg></div>
-            <div><span data-c="portada.chip2Titulo">Retiro o envío</span><small data-c="portada.chip2Texto">En Maldonado</small></div>
-          </div>
         </div>
       </div>
     </div>
@@ -690,13 +682,10 @@
           .from('.bajada', { y: 24, autoAlpha: 0, duration: 0.8 }, '-=0.6')
           .from('.portada .acciones .boton', { y: 20, autoAlpha: 0, duration: 0.6, stagger: 0.1 }, '-=0.5')
           .from('.ubicacion-corta', { autoAlpha: 0, duration: 0.6 }, '-=0.3')
-          .from('.chip', { scale: 0.6, autoAlpha: 0, duration: 0.7, stagger: 0.15, ease: 'back.out(1.7)' }, 1)
 
         // Manchas de color y carteles flotando suave
         gsap.to('.mancha-1', { x: -60, y: 40, duration: 9, repeat: -1, yoyo: true, ease: 'sine.inOut' })
         gsap.to('.mancha-2', { x: 50, y: -30, duration: 11, repeat: -1, yoyo: true, ease: 'sine.inOut' })
-        gsap.to('.chip-1', { y: -10, duration: 2.6, repeat: -1, yoyo: true, ease: 'sine.inOut', delay: 2 })
-        gsap.to('.chip-2', { y: 10, duration: 3, repeat: -1, yoyo: true, ease: 'sine.inOut', delay: 2 })
 
         // Cinta de servicios infinita
         gsap.to('.cinta-pista', { xPercent: -50, duration: 28, ease: 'none', repeat: -1 })

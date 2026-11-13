@@ -42,10 +42,6 @@ export const CONTENIDO_WEB = {
     bajada: 'Fabricamos tarjetas, folletos, talonarios, stickers, banners y etiquetas con la mayor calidad gráfica. Elegí tu producto en la tienda online o escribinos y te asesoramos.',
     botonTienda: 'Ir a la tienda',
     botonWhatsapp: 'Escribinos por WhatsApp',
-    chip1Titulo: 'Pedidos por WhatsApp',
-    chip1Texto: 'Te asesoramos al instante',
-    chip2Titulo: 'Retiro o envío',
-    chip2Texto: 'En Maldonado',
   },
   cinta: ['Tarjetas', 'Folletos', 'Talonarios', 'Stickers', 'Banners', 'Packaging', 'Papelería', 'Diseño'],
   nosotros: {

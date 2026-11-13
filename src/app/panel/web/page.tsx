@@ -228,10 +228,6 @@ export default function PaginaWebPanel() {
           <div className="form-grid">
             <Campo etiqueta="Botón de la tienda" valor={texto(['portada', 'botonTienda'])} onChange={v => set(['portada', 'botonTienda'], v)} />
             <Campo etiqueta="Botón de WhatsApp" valor={texto(['portada', 'botonWhatsapp'])} onChange={v => set(['portada', 'botonWhatsapp'], v)} />
-            <Campo etiqueta="Cartel 1 — título" valor={texto(['portada', 'chip1Titulo'])} onChange={v => set(['portada', 'chip1Titulo'], v)} />
-            <Campo etiqueta="Cartel 1 — texto" valor={texto(['portada', 'chip1Texto'])} onChange={v => set(['portada', 'chip1Texto'], v)} />
-            <Campo etiqueta="Cartel 2 — título" valor={texto(['portada', 'chip2Titulo'])} onChange={v => set(['portada', 'chip2Titulo'], v)} />
-            <Campo etiqueta="Cartel 2 — texto" valor={texto(['portada', 'chip2Texto'])} onChange={v => set(['portada', 'chip2Texto'], v)} />
           </div>
         </Seccion>
 
